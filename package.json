@@ -1,0 +1,11 @@
+{
+  "name": "price-tracker",
+  "private": true,
+  "scripts": {
+    "dev": "cd server && npm run dev",
+    "build": "cd client && npm run build && cd ../server && npm run build",
+    "start": "cd server && npm start",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build"
+  }
+}

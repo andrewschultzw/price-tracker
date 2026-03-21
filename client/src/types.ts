@@ -1,0 +1,29 @@
+export interface Tracker {
+  id: number;
+  name: string;
+  url: string;
+  threshold_price: number | null;
+  check_interval_minutes: number;
+  css_selector: string | null;
+  last_price: number | null;
+  last_checked_at: string | null;
+  last_error: string | null;
+  consecutive_failures: number;
+  status: 'active' | 'paused' | 'error';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PriceRecord {
+  id: number;
+  tracker_id: number;
+  price: number;
+  currency: string;
+  scraped_at: string;
+}
+
+export interface ScrapeResult {
+  price: number;
+  currency: string;
+  strategy: string;
+}
