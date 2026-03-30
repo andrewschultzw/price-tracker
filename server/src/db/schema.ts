@@ -1,4 +1,5 @@
 import { getDb } from './connection.js';
+import { runMigrations } from './migrations.js';
 
 export function initializeSchema(): void {
   const db = getDb();
@@ -46,4 +47,6 @@ export function initializeSchema(): void {
       value TEXT NOT NULL
     );
   `);
+
+  runMigrations();
 }
