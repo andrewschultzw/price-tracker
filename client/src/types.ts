@@ -27,3 +27,27 @@ export interface ScrapeResult {
   currency: string;
   strategy: string;
 }
+
+export interface User {
+  id: number;
+  email: string;
+  display_name: string;
+  role: 'admin' | 'user';
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InviteCode {
+  id: number;
+  code: string;
+  created_by: number;
+  used_by: number | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface SetupStatus {
+  needsSetup: boolean;
+  hasSetupToken: boolean;
+}
