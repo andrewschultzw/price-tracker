@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import PQueue from 'p-queue';
-import { getDueTrackers, updateTracker, addPriceRecord } from '../db/queries.js';
+import { getDueTrackers, updateTracker, addPriceRecord, getSetting } from '../db/queries.js';
 import { extractPrice } from '../scraper/extractor.js';
 import { sendPriceAlert, sendErrorAlert } from '../notifications/discord.js';
 import { config } from '../config.js';
@@ -10,50 +10,63 @@ const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
 let task: cron.ScheduledTask | null = null;
 
 export async function checkTracker(trackerId: number): Promise<void> {
-  const { getTrackerById } = await import('../db/queries.js');
-  const tracker = getTrackerById(trackerId);
-  if (!tracker) return;
-
-  logger.info({ trackerId: tracker.id, name: tracker.name }, 'Checking tracker');
-
   try {
-    const result = await extractPrice(tracker.url, tracker.css_selector);
+    const { getTrackerById } = await import('../db/queries.js');
+    const tracker = getTrackerById(trackerId);
+    if (!tracker) return;
 
-    // Store price history
-    addPriceRecord(tracker.id, result.price, result.currency);
+    const webhookUrl = tracker.user_id
+      ? getSetting('discord_webhook_url', tracker.user_id) || null
+      : null;
 
-    // Update tracker
-    updateTracker(tracker.id, {
-      last_price: result.price,
-      last_checked_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      last_error: null,
-      consecutive_failures: 0,
-      status: 'active',
-    });
+    logger.info({ trackerId: tracker.id, name: tracker.name }, 'Checking tracker');
 
-    logger.info({ trackerId: tracker.id, price: result.price, strategy: result.strategy }, 'Price check complete');
+    try {
+      const result = await extractPrice(tracker.url, tracker.css_selector);
 
-    // Check threshold and notify
-    if (tracker.threshold_price && result.price <= tracker.threshold_price) {
-      await sendPriceAlert(tracker, result.price);
+      // Store price history
+      addPriceRecord(tracker.id, result.price, result.currency);
+
+      // Update tracker
+      updateTracker(tracker.id, {
+        last_price: result.price,
+        last_checked_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        last_error: null,
+        consecutive_failures: 0,
+        status: 'active',
+      });
+
+      logger.info({ trackerId: tracker.id, price: result.price, strategy: result.strategy }, 'Price check complete');
+
+      // Check threshold and notify
+      if (tracker.threshold_price && result.price <= tracker.threshold_price) {
+        await sendPriceAlert(tracker, result.price, webhookUrl);
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      const failures = tracker.consecutive_failures + 1;
+      const newStatus = failures >= config.maxConsecutiveFailures ? 'error' : tracker.status;
+
+      updateTracker(tracker.id, {
+        last_checked_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        last_error: errorMsg,
+        consecutive_failures: failures,
+        status: newStatus,
+      });
+
+      logger.error({ trackerId: tracker.id, failures, err: errorMsg }, 'Price check failed');
+
+      if (newStatus === 'error') {
+        await sendErrorAlert(tracker, errorMsg, webhookUrl);
+      }
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    const failures = tracker.consecutive_failures + 1;
-    const newStatus = failures >= config.maxConsecutiveFailures ? 'error' : tracker.status;
-
-    updateTracker(tracker.id, {
-      last_checked_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      last_error: errorMsg,
-      consecutive_failures: failures,
-      status: newStatus,
-    });
-
-    logger.error({ trackerId: tracker.id, failures, err: errorMsg }, 'Price check failed');
-
-    if (newStatus === 'error') {
-      await sendErrorAlert(tracker, errorMsg);
+    if (errorMsg.includes('FOREIGN KEY constraint failed')) {
+      logger.warn({ trackerId }, 'Tracker was deleted during scrape, skipping');
+      return;
     }
+    throw err;
   }
 }
 

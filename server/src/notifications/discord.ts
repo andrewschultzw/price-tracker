@@ -1,16 +1,11 @@
 import { config } from '../config.js';
-import { getSetting, getLastNotification, addNotification } from '../db/queries.js';
+import { getLastNotification, addNotification } from '../db/queries.js';
 import type { Tracker } from '../db/queries.js';
 import { logger } from '../logger.js';
 
-function getWebhookUrl(): string | null {
-  return getSetting('discord_webhook_url') || config.discordWebhookUrl || null;
-}
-
-export async function sendPriceAlert(tracker: Tracker, currentPrice: number): Promise<boolean> {
-  const webhookUrl = getWebhookUrl();
+export async function sendPriceAlert(tracker: Tracker, currentPrice: number, webhookUrl: string | null): Promise<boolean> {
   if (!webhookUrl) {
-    logger.warn('Discord webhook URL not configured, skipping notification');
+    logger.debug({ trackerId: tracker.id }, 'No webhook URL configured for user, skipping notification');
     return false;
   }
 
@@ -66,8 +61,7 @@ export async function sendPriceAlert(tracker: Tracker, currentPrice: number): Pr
   }
 }
 
-export async function sendErrorAlert(tracker: Tracker, error: string): Promise<void> {
-  const webhookUrl = getWebhookUrl();
+export async function sendErrorAlert(tracker: Tracker, error: string, webhookUrl: string | null): Promise<void> {
   if (!webhookUrl) return;
 
   const embed = {
