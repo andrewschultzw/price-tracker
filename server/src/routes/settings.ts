@@ -4,8 +4,8 @@ import { testWebhook } from '../notifications/discord.js';
 
 const router = Router();
 
-router.get('/', (_req: Request, res: Response) => {
-  const settings = getAllSettings();
+router.get('/', (req: Request, res: Response) => {
+  const settings = getAllSettings(req.user!.userId);
   res.json(settings);
 });
 
@@ -13,10 +13,10 @@ router.put('/', (req: Request, res: Response) => {
   const body = req.body as Record<string, string>;
   for (const [key, value] of Object.entries(body)) {
     if (typeof key === 'string' && typeof value === 'string') {
-      setSetting(key, value);
+      setSetting(key, value, req.user!.userId);
     }
   }
-  const settings = getAllSettings();
+  const settings = getAllSettings(req.user!.userId);
   res.json(settings);
 });
 

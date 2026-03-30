@@ -23,13 +23,13 @@ const updateSchema = z.object({
   status: z.enum(['active', 'paused']).optional(),
 });
 
-router.get('/', (_req: Request, res: Response) => {
-  const trackers = getAllTrackers();
+router.get('/', (req: Request, res: Response) => {
+  const trackers = getAllTrackers(req.user!.userId);
   res.json(trackers);
 });
 
-router.get('/sparklines', (_req: Request, res: Response) => {
-  const data = getRecentPricesForAllTrackers(10);
+router.get('/sparklines', (req: Request, res: Response) => {
+  const data = getRecentPricesForAllTrackers(req.user!.userId, 10);
   res.json(data);
 });
 
@@ -39,12 +39,12 @@ router.post('/', (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const tracker = createTracker(parsed.data);
+  const tracker = createTracker({ ...parsed.data, user_id: req.user!.userId });
   res.status(201).json(tracker);
 });
 
 router.get('/:id', (req: Request, res: Response) => {
-  const tracker = getTrackerById(Number(req.params.id));
+  const tracker = getTrackerById(Number(req.params.id), req.user!.userId);
   if (!tracker) {
     res.status(404).json({ error: 'Tracker not found' });
     return;
@@ -58,7 +58,7 @@ router.put('/:id', (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const tracker = updateTracker(Number(req.params.id), parsed.data);
+  const tracker = updateTracker(Number(req.params.id), parsed.data, req.user!.userId);
   if (!tracker) {
     res.status(404).json({ error: 'Tracker not found' });
     return;
@@ -67,7 +67,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 router.delete('/:id', (req: Request, res: Response) => {
-  const deleted = deleteTracker(Number(req.params.id));
+  const deleted = deleteTracker(Number(req.params.id), req.user!.userId);
   if (!deleted) {
     res.status(404).json({ error: 'Tracker not found' });
     return;
@@ -77,14 +77,14 @@ router.delete('/:id', (req: Request, res: Response) => {
 
 // Trigger immediate check
 router.post('/:id/check', async (req: Request, res: Response) => {
-  const tracker = getTrackerById(Number(req.params.id));
+  const tracker = getTrackerById(Number(req.params.id), req.user!.userId);
   if (!tracker) {
     res.status(404).json({ error: 'Tracker not found' });
     return;
   }
   try {
     await checkTracker(tracker.id);
-    const updated = getTrackerById(tracker.id);
+    const updated = getTrackerById(tracker.id, req.user!.userId);
     res.json(updated);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
