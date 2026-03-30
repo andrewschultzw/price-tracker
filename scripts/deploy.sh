@@ -15,6 +15,7 @@ rsync -avz \
   --exclude='.git' \
   --exclude='data' \
   --exclude='.env' \
+  --exclude='.worktrees' \
   --delete \
   ./ "$TARGET:$REMOTE_DIR/"
 
