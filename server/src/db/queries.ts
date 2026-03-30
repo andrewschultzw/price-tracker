@@ -14,6 +14,7 @@ export interface Tracker {
   status: 'active' | 'paused' | 'error';
   created_at: string;
   updated_at: string;
+  user_id: number | null;
 }
 
 export interface PriceRecord {
@@ -34,11 +35,14 @@ export interface NotificationRecord {
 
 // --- Trackers ---
 
-export function getAllTrackers(): Tracker[] {
-  return getDb().prepare('SELECT * FROM trackers ORDER BY created_at DESC').all() as Tracker[];
+export function getAllTrackers(userId: number): Tracker[] {
+  return getDb().prepare('SELECT * FROM trackers WHERE user_id = ? ORDER BY created_at DESC').all(userId) as Tracker[];
 }
 
-export function getTrackerById(id: number): Tracker | undefined {
+export function getTrackerById(id: number, userId?: number): Tracker | undefined {
+  if (userId !== undefined) {
+    return getDb().prepare('SELECT * FROM trackers WHERE id = ? AND user_id = ?').get(id, userId) as Tracker | undefined;
+  }
   return getDb().prepare('SELECT * FROM trackers WHERE id = ?').get(id) as Tracker | undefined;
 }
 
@@ -48,10 +52,11 @@ export function createTracker(data: {
   threshold_price?: number | null;
   check_interval_minutes?: number;
   css_selector?: string | null;
+  user_id: number;
 }): Tracker {
   const stmt = getDb().prepare(`
-    INSERT INTO trackers (name, url, threshold_price, check_interval_minutes, css_selector)
-    VALUES (@name, @url, @threshold_price, @check_interval_minutes, @css_selector)
+    INSERT INTO trackers (name, url, threshold_price, check_interval_minutes, css_selector, user_id)
+    VALUES (@name, @url, @threshold_price, @check_interval_minutes, @css_selector, @user_id)
   `);
   const result = stmt.run({
     name: data.name,
@@ -59,8 +64,9 @@ export function createTracker(data: {
     threshold_price: data.threshold_price ?? null,
     check_interval_minutes: data.check_interval_minutes ?? 360,
     css_selector: data.css_selector ?? null,
+    user_id: data.user_id,
   });
-  return getTrackerById(Number(result.lastInsertRowid))!;
+  return getTrackerById(Number(result.lastInsertRowid), data.user_id)!;
 }
 
 export function updateTracker(id: number, data: Partial<{
@@ -74,7 +80,7 @@ export function updateTracker(id: number, data: Partial<{
   last_error: string | null;
   consecutive_failures: number;
   status: string;
-}>): Tracker | undefined {
+}>, userId?: number): Tracker | undefined {
   const fields: string[] = [];
   const values: Record<string, unknown> = { id };
 
@@ -85,16 +91,22 @@ export function updateTracker(id: number, data: Partial<{
     }
   }
 
-  if (fields.length === 0) return getTrackerById(id);
+  if (fields.length === 0) return getTrackerById(id, userId);
 
   fields.push("updated_at = datetime('now')");
 
-  getDb().prepare(`UPDATE trackers SET ${fields.join(', ')} WHERE id = @id`).run(values);
-  return getTrackerById(id);
+  let where = 'WHERE id = @id';
+  if (userId !== undefined) {
+    where += ' AND user_id = @userId';
+    values.userId = userId;
+  }
+
+  getDb().prepare(`UPDATE trackers SET ${fields.join(', ')} ${where}`).run(values);
+  return getTrackerById(id, userId);
 }
 
-export function deleteTracker(id: number): boolean {
-  const result = getDb().prepare('DELETE FROM trackers WHERE id = ?').run(id);
+export function deleteTracker(id: number, userId: number): boolean {
+  const result = getDb().prepare('DELETE FROM trackers WHERE id = ? AND user_id = ?').run(id, userId);
   return result.changes > 0;
 }
 
@@ -137,14 +149,15 @@ export function getPriceHistory(trackerId: number, range?: string): PriceRecord[
   `).all(trackerId) as PriceRecord[];
 }
 
-export function getRecentPricesForAllTrackers(limit: number = 10): Record<number, number[]> {
+export function getRecentPricesForAllTrackers(userId: number, limit: number = 10): Record<number, number[]> {
   const rows = getDb().prepare(`
-    SELECT tracker_id, price FROM (
+    SELECT ph.tracker_id, ph.price FROM (
       SELECT tracker_id, price, ROW_NUMBER() OVER (PARTITION BY tracker_id ORDER BY scraped_at DESC) as rn
       FROM price_history
-    ) WHERE rn <= ?
-    ORDER BY tracker_id, rn DESC
-  `).all(limit) as { tracker_id: number; price: number }[];
+      WHERE tracker_id IN (SELECT id FROM trackers WHERE user_id = ?)
+    ) ph WHERE ph.rn <= ?
+    ORDER BY ph.tracker_id, ph.rn DESC
+  `).all(userId, limit) as { tracker_id: number; price: number }[];
 
   const result: Record<number, number[]> = {};
   for (const row of rows) {
@@ -176,19 +189,29 @@ export function getLastNotification(trackerId: number): NotificationRecord | und
 
 // --- Settings ---
 
-export function getSetting(key: string): string | undefined {
-  const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+export function getSetting(key: string, userId?: number | null): string | undefined {
+  if (userId !== undefined && userId !== null) {
+    const row = getDb().prepare('SELECT value FROM settings WHERE key = ? AND user_id = ?').get(key, userId) as { value: string } | undefined;
+    return row?.value;
+  }
+  const row = getDb().prepare('SELECT value FROM settings WHERE key = ? AND user_id IS NULL').get(key) as { value: string } | undefined;
   return row?.value;
 }
 
-export function setSetting(key: string, value: string): void {
-  getDb().prepare(`
-    INSERT INTO settings (key, value) VALUES (?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `).run(key, value);
+export function setSetting(key: string, value: string, userId?: number | null): void {
+  if (userId !== undefined && userId !== null) {
+    getDb().prepare(`
+      INSERT INTO settings (user_id, key, value) VALUES (?, ?, ?)
+      ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value
+    `).run(userId, key, value);
+  } else {
+    const db = getDb();
+    db.prepare('DELETE FROM settings WHERE key = ? AND user_id IS NULL').run(key);
+    db.prepare('INSERT INTO settings (user_id, key, value) VALUES (NULL, ?, ?)').run(key, value);
+  }
 }
 
-export function getAllSettings(): Record<string, string> {
-  const rows = getDb().prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[];
+export function getAllSettings(userId: number): Record<string, string> {
+  const rows = getDb().prepare('SELECT key, value FROM settings WHERE user_id = ?').all(userId) as { key: string; value: string }[];
   return Object.fromEntries(rows.map(r => [r.key, r.value]));
 }
