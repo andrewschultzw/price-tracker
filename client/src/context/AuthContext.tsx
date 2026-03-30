@@ -48,8 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const handleSetUser = (u: User) => {
+    setUser(u);
+    setNeedsSetup(false);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, needsSetup, login, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, needsSetup, login, logout, setUser: handleSetUser }}>
       {children}
     </AuthContext.Provider>
   );
