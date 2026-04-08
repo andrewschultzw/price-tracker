@@ -105,7 +105,7 @@ export async function sendGenericErrorAlert(
   }
 }
 
-export async function testGenericWebhook(webhookUrl: string): Promise<boolean> {
+export async function testGenericWebhook(webhookUrl: string): Promise<{ ok: boolean; error?: string }> {
   try {
     assertWebhookUrl(webhookUrl);
     const response = await fetch(webhookUrl, {
@@ -117,8 +117,12 @@ export async function testGenericWebhook(webhookUrl: string): Promise<boolean> {
         timestamp: new Date().toISOString(),
       }),
     });
-    return response.ok;
-  } catch {
-    return false;
+    if (!response.ok) {
+      const body = await response.text();
+      return { ok: false, error: `Webhook returned ${response.status}: ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

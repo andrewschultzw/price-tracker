@@ -2,18 +2,73 @@ import type { Tracker } from '../db/queries.js';
 import { logger } from '../logger.js';
 
 /**
- * ntfy publishes a plain-text body as the message, and uses HTTP headers for
- * title, priority, click-through URL, and tags. Works with ntfy.sh or any
- * self-hosted ntfy instance — the user just pastes their topic URL
- * (e.g. https://ntfy.sh/my-price-alerts).
+ * ntfy has two publish APIs:
  *
- * See https://docs.ntfy.sh/publish/
+ *   1. Per-topic URL with metadata in HTTP headers
+ *      (POST https://ntfy.sh/my-topic with Title: / Priority: / etc headers)
+ *
+ *   2. JSON publish: POST to the instance root with { topic, title, message,
+ *      priority, tags, click } in the JSON body.
+ *
+ * We use (2). Rationale: HTTP header values must be ASCII per RFC 7230, and
+ * Node's fetch rejects non-ASCII header values at the client side before the
+ * request is even sent. Any tracker name with an emoji, accented letter, or
+ * em-dash would cause a silent failure with approach (1). The JSON body is
+ * UTF-8 safe.
+ *
+ * Users paste a topic URL like `https://ntfy.sh/my-topic`. We split that into
+ * a base (https://ntfy.sh) and a topic (my-topic) so the JSON publish can
+ * target the right instance without a second input.
+ *
+ * See https://docs.ntfy.sh/publish/#publish-as-json
  */
 
-function assertNtfyUrl(url: string): void {
+interface NtfyTarget {
+  base: string;
+  topic: string;
+}
+
+function parseNtfyUrl(url: string): NtfyTarget {
   const u = new URL(url);
   if (u.protocol !== 'http:' && u.protocol !== 'https:') {
     throw new Error('ntfy URL must be http or https');
+  }
+  // Strip leading/trailing slashes from the path; ntfy topic is whatever is
+  // left. Reject empty topics (bare server URL with no topic).
+  const topic = u.pathname.replace(/^\/+|\/+$/g, '');
+  if (!topic) {
+    throw new Error('ntfy URL is missing a topic (e.g. https://ntfy.sh/my-topic)');
+  }
+  if (topic.includes('/')) {
+    throw new Error('ntfy URL contains nested path segments; expected a single topic name');
+  }
+  return { base: `${u.protocol}//${u.host}`, topic };
+}
+
+interface NtfyPayload {
+  topic: string;
+  title?: string;
+  message: string;
+  priority?: number;
+  tags?: string[];
+  click?: string;
+}
+
+async function publish(base: string, payload: NtfyPayload): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const response = await fetch(base, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      return { ok: false, error: `ntfy returned ${response.status}: ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
   }
 }
 
@@ -24,36 +79,30 @@ export async function sendNtfyPriceAlert(
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
+  let target: NtfyTarget;
   try {
-    assertNtfyUrl(ntfyUrl);
-    const savings = (tracker.threshold_price - currentPrice).toFixed(2);
-    const body = `Now $${currentPrice.toFixed(2)} (target $${tracker.threshold_price.toFixed(2)}, save $${savings})`;
-
-    const response = await fetch(ntfyUrl, {
-      method: 'POST',
-      headers: {
-        'Title': `Price Drop: ${tracker.name}`,
-        'Priority': 'high',
-        'Tags': 'tada,money_with_wings',
-        'Click': tracker.url,
-      },
-      body,
-    });
-
-    if (!response.ok) {
-      logger.error(
-        { status: response.status, body: await response.text(), trackerId: tracker.id },
-        'ntfy price alert failed',
-      );
-      return false;
-    }
-
-    logger.info({ trackerId: tracker.id, price: currentPrice }, 'ntfy price alert sent');
-    return true;
+    target = parseNtfyUrl(ntfyUrl);
   } catch (err) {
-    logger.error({ err, trackerId: tracker.id }, 'ntfy request failed');
+    logger.error({ err, trackerId: tracker.id }, 'Invalid ntfy URL');
     return false;
   }
+
+  const savings = (tracker.threshold_price - currentPrice).toFixed(2);
+  const result = await publish(target.base, {
+    topic: target.topic,
+    title: `Price Drop: ${tracker.name}`,
+    message: `Now $${currentPrice.toFixed(2)} (target $${tracker.threshold_price.toFixed(2)}, save $${savings})`,
+    priority: 4,
+    tags: ['tada', 'money_with_wings'],
+    click: tracker.url,
+  });
+
+  if (!result.ok) {
+    logger.error({ error: result.error, trackerId: tracker.id }, 'ntfy price alert failed');
+    return false;
+  }
+  logger.info({ trackerId: tracker.id, price: currentPrice }, 'ntfy price alert sent');
+  return true;
 }
 
 export async function sendNtfyErrorAlert(
@@ -61,40 +110,51 @@ export async function sendNtfyErrorAlert(
   error: string,
   ntfyUrl: string,
 ): Promise<boolean> {
+  let target: NtfyTarget;
   try {
-    assertNtfyUrl(ntfyUrl);
-    const body = `Scrape failed ${tracker.consecutive_failures}x: ${error.slice(0, 300)}`;
-    const response = await fetch(ntfyUrl, {
-      method: 'POST',
-      headers: {
-        'Title': `Tracker Error: ${tracker.name}`,
-        'Priority': 'default',
-        'Tags': 'warning',
-        'Click': tracker.url,
-      },
-      body,
-    });
-    return response.ok;
+    target = parseNtfyUrl(ntfyUrl);
   } catch (err) {
-    logger.error({ err, trackerId: tracker.id }, 'ntfy error alert failed');
+    logger.error({ err, trackerId: tracker.id }, 'Invalid ntfy URL');
     return false;
   }
+
+  const result = await publish(target.base, {
+    topic: target.topic,
+    title: `Tracker Error: ${tracker.name}`,
+    message: `Scrape failed ${tracker.consecutive_failures}x: ${error.slice(0, 300)}`,
+    priority: 3,
+    tags: ['warning'],
+    click: tracker.url,
+  });
+
+  if (!result.ok) {
+    logger.error({ error: result.error, trackerId: tracker.id }, 'ntfy error alert failed');
+    return false;
+  }
+  return true;
 }
 
-export async function testNtfyWebhook(ntfyUrl: string): Promise<boolean> {
+/**
+ * Unlike the price/error alerts, the test function returns the actual error
+ * string so the Settings page can display it instead of a bare "Failed".
+ */
+export async function testNtfyWebhook(ntfyUrl: string): Promise<{ ok: boolean; error?: string }> {
+  let target: NtfyTarget;
   try {
-    assertNtfyUrl(ntfyUrl);
-    const response = await fetch(ntfyUrl, {
-      method: 'POST',
-      headers: {
-        'Title': 'Price Tracker — Test Notification',
-        'Priority': 'default',
-        'Tags': 'white_check_mark',
-      },
-      body: 'ntfy is wired up and working correctly.',
-    });
-    return response.ok;
-  } catch {
-    return false;
+    target = parseNtfyUrl(ntfyUrl);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
   }
+
+  const result = await publish(target.base, {
+    topic: target.topic,
+    title: 'Price Tracker - Test Notification',
+    message: 'ntfy is wired up and working correctly.',
+    priority: 3,
+    tags: ['white_check_mark'],
+  });
+
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
 }

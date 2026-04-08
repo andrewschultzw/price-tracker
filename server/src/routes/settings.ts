@@ -30,8 +30,8 @@ router.post('/test-webhook', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Webhook URL is required' });
     return;
   }
-  const ok = await testDiscordWebhook(url);
-  res.json({ success: ok });
+  const result = await testDiscordWebhook(url);
+  res.json({ success: result.ok, error: result.error });
 });
 
 router.post('/test-ntfy', async (req: Request, res: Response) => {
@@ -40,8 +40,8 @@ router.post('/test-ntfy', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'ntfy URL is required' });
     return;
   }
-  const ok = await testNtfyWebhook(url);
-  res.json({ success: ok });
+  const result = await testNtfyWebhook(url);
+  res.json({ success: result.ok, error: result.error });
 });
 
 router.post('/test-generic-webhook', async (req: Request, res: Response) => {
@@ -50,8 +50,8 @@ router.post('/test-generic-webhook', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Webhook URL is required' });
     return;
   }
-  const ok = await testGenericWebhook(url);
-  res.json({ success: ok });
+  const result = await testGenericWebhook(url);
+  res.json({ success: result.ok, error: result.error });
 });
 
 export default router;

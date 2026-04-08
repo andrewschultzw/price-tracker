@@ -12,7 +12,7 @@ interface ChannelConfig {
   title: string
   description: React.ReactNode
   placeholder: string
-  test: (url: string) => Promise<{ success: boolean }>
+  test: (url: string) => Promise<{ success: boolean; error?: string }>
 }
 
 const CHANNELS: ChannelConfig[] = [
@@ -70,7 +70,7 @@ export default function SettingsPage() {
   const [savingKey, setSavingKey] = useState<ChannelKey | null>(null)
   const [savedKey, setSavedKey] = useState<ChannelKey | null>(null)
   const [testingKey, setTestingKey] = useState<ChannelKey | null>(null)
-  const [testResult, setTestResult] = useState<{ key: ChannelKey; ok: boolean } | null>(null)
+  const [testResult, setTestResult] = useState<{ key: ChannelKey; ok: boolean; error?: string } | null>(null)
 
   useEffect(() => {
     getSettings().then(s => {
@@ -100,12 +100,13 @@ export default function SettingsPage() {
     setTestResult(null)
     try {
       const result = await ch.test(values[ch.key])
-      setTestResult({ key: ch.key, ok: result.success })
-    } catch {
-      setTestResult({ key: ch.key, ok: false })
+      setTestResult({ key: ch.key, ok: result.success, error: result.error })
+    } catch (err) {
+      setTestResult({ key: ch.key, ok: false, error: err instanceof Error ? err.message : String(err) })
     } finally {
       setTestingKey(null)
-      setTimeout(() => setTestResult(r => (r?.key === ch.key ? null : r)), 5000)
+      // Success auto-dismisses after 5s; failure sticks until next interaction
+      setTimeout(() => setTestResult(r => (r?.key === ch.key && r.ok ? null : r)), 5000)
     }
   }
 
@@ -122,7 +123,7 @@ export default function SettingsPage() {
           const saving = savingKey === ch.key
           const saved = savedKey === ch.key
           const testing = testingKey === ch.key
-          const testOk = testResult?.key === ch.key ? testResult.ok : null
+          const testForThis = testResult?.key === ch.key ? testResult : null
 
           return (
             <div key={ch.key} className="bg-surface border border-border rounded-xl p-4 sm:p-6">
@@ -158,17 +159,23 @@ export default function SettingsPage() {
                   <Send className="w-4 h-4" />
                   {testing ? 'Sending...' : 'Test'}
                 </button>
-                {testOk === true && (
+                {testForThis?.ok && (
                   <span className="flex items-center gap-1 text-sm text-success">
                     <CheckCircle className="w-4 h-4" /> Sent!
                   </span>
                 )}
-                {testOk === false && (
-                  <span className="flex items-center gap-1 text-sm text-danger">
-                    <XCircle className="w-4 h-4" /> Failed
-                  </span>
-                )}
               </div>
+              {testForThis && !testForThis.ok && (
+                <div className="mt-3 flex items-start gap-2 text-sm text-danger bg-danger/10 rounded-lg px-3 py-2">
+                  <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0 break-words">
+                    <div className="font-medium">Test failed</div>
+                    {testForThis.error && (
+                      <div className="text-xs text-danger/80 mt-0.5 font-mono break-all">{testForThis.error}</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}

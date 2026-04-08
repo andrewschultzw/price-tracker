@@ -122,19 +122,25 @@ describe('sendDiscordErrorAlert', () => {
 describe('testDiscordWebhook', () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it('returns true on 2xx', async () => {
+  it('returns ok:true on 2xx', async () => {
     mockFetch(204);
-    expect(await testDiscordWebhook('https://discord.com/api/webhooks/abc')).toBe(true);
+    const result = await testDiscordWebhook('https://discord.com/api/webhooks/abc');
+    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
   });
 
-  it('returns false on non-2xx', async () => {
-    mockFetch(404);
-    expect(await testDiscordWebhook('https://discord.com/api/webhooks/abc')).toBe(false);
+  it('returns ok:false with an error message on non-2xx', async () => {
+    mockFetch(404, 'Unknown Webhook');
+    const result = await testDiscordWebhook('https://discord.com/api/webhooks/abc');
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('404');
+    expect(result.error).toContain('Unknown Webhook');
   });
 
-  it('returns false when fetch throws', async () => {
-    // @ts-expect-error — overwriting the global for the test
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error('nope'));
-    expect(await testDiscordWebhook('https://discord.com/api/webhooks/abc')).toBe(false);
+  it('returns ok:false with the thrown error message when fetch throws', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED')) as typeof globalThis.fetch;
+    const result = await testDiscordWebhook('https://discord.com/api/webhooks/abc');
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('ECONNREFUSED');
   });
 });

@@ -80,22 +80,26 @@ export async function sendDiscordErrorAlert(
   }
 }
 
-export async function testDiscordWebhook(webhookUrl: string): Promise<boolean> {
+export async function testDiscordWebhook(webhookUrl: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         embeds: [{
-          title: 'Price Tracker — Test Notification',
+          title: 'Price Tracker - Test Notification',
           description: 'Webhook is working correctly!',
           color: 0x2196f3,
           timestamp: new Date().toISOString(),
         }],
       }),
     });
-    return response.ok;
-  } catch {
-    return false;
+    if (!response.ok) {
+      const body = await response.text();
+      return { ok: false, error: `Discord returned ${response.status}: ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
