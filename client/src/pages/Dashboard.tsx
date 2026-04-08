@@ -51,6 +51,10 @@ export default function Dashboard() {
   const active = trackers.filter(t => t.status === 'active')
   const paused = trackers.filter(t => t.status === 'paused')
   const errored = trackers.filter(t => t.status === 'error')
+  const belowTarget = active.filter(
+    t => t.threshold_price != null && t.last_price != null && t.last_price <= t.threshold_price,
+  )
+  const activeOther = active.filter(t => !belowTarget.includes(t))
 
   return (
     <div>
@@ -75,7 +79,7 @@ export default function Dashboard() {
       <StatCards trackers={trackers} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[...errored, ...active, ...paused].map(tracker => (
+        {[...errored, ...belowTarget, ...activeOther, ...paused].map(tracker => (
           <TrackerCard
             key={tracker.id}
             tracker={tracker}
