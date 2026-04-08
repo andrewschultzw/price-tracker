@@ -94,6 +94,7 @@ function App() {
             <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-1">
               {navLink('/', 'Dashboard', <BarChart3 className="w-4 h-4" />)}
               {navLink('/add', 'Add Tracker', <Plus className="w-4 h-4" />)}
+              {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
               {navLink('/settings', 'Settings', <SettingsIcon className="w-4 h-4" />)}
               {user?.role === 'admin' && navLink('/admin', 'Admin', <Shield className="w-4 h-4" />)}
               {user && (
