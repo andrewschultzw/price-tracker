@@ -12,6 +12,7 @@ import adminRoutes from './routes/admin.js';
 import trackerRoutes from './routes/trackers.js';
 import priceRoutes from './routes/prices.js';
 import settingsRoutes from './routes/settings.js';
+import notificationRoutes from './routes/notifications.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { closeBrowser } from './scraper/browser.js';
 import { getUserCount, deleteExpiredRefreshTokens } from './db/user-queries.js';
@@ -62,6 +63,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/trackers', authMiddleware, trackerRoutes);
 app.use('/api/trackers', authMiddleware, priceRoutes);
 app.use('/api/settings', authMiddleware, settingsRoutes);
+app.use('/api/notifications', authMiddleware, notificationRoutes);
 app.use('/api/admin', authMiddleware, adminMiddleware, adminRoutes);
 
 app.get('/api/health', (_req, res) => {

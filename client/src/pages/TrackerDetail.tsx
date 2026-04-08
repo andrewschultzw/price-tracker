@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil } from 'lucide-react'
-import { getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker, getTrackerStats } from '../api'
+import { getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker, getTrackerStats, getNotificationHistory } from '../api'
+import type { NotificationHistoryRow } from '../api'
 import type { Tracker, PriceRecord } from '../types'
 import StatusBadge from '../components/StatusBadge'
 import PriceChart from '../components/PriceChart'
@@ -13,6 +14,7 @@ export default function TrackerDetail() {
   const [tracker, setTracker] = useState<Tracker | null>(null)
   const [prices, setPrices] = useState<PriceRecord[]>([])
   const [allTimeLow, setAllTimeLow] = useState<{ price: number; at: string } | null>(null)
+  const [alerts, setAlerts] = useState<NotificationHistoryRow[]>([])
   const [range, setRange] = useState('30d')
   const [loading, setLoading] = useState(true)
   const [checking, setChecking] = useState(false)
@@ -26,13 +28,15 @@ export default function TrackerDetail() {
 
   const load = async () => {
     try {
-      const [t, p, stats] = await Promise.all([
+      const [t, p, stats, notifs] = await Promise.all([
         getTracker(trackerId),
         getPriceHistory(trackerId, range),
         getTrackerStats(),
+        getNotificationHistory(trackerId, 10),
       ])
       setTracker(t)
       setPrices(p)
+      setAlerts(notifs)
       const stat = stats[trackerId]
       if (stat?.min_price != null && stat?.min_price_at != null) {
         setAllTimeLow({ price: stat.min_price, at: stat.min_price_at })
@@ -261,6 +265,36 @@ export default function TrackerDetail() {
           </div>
         )}
       </div>
+
+      {alerts.length > 0 && (
+        <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mt-6">
+          <h2 className="text-lg font-semibold mb-4">Recent Alerts</h2>
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-text-muted text-xs border-b border-border">
+                  <th className="text-left py-2 font-medium">Sent</th>
+                  <th className="text-left py-2 font-medium">Channel</th>
+                  <th className="text-right py-2 font-medium">Price</th>
+                  <th className="text-right py-2 font-medium">Savings</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map(a => (
+                  <tr key={a.id} className="border-b border-border/50">
+                    <td className="py-2 text-text-muted whitespace-nowrap">
+                      {new Date(a.sent_at.includes('Z') ? a.sent_at : a.sent_at + 'Z').toLocaleString()}
+                    </td>
+                    <td className="py-2 text-text-muted capitalize">{a.channel || 'unknown'}</td>
+                    <td className="py-2 text-right font-medium">${a.price.toFixed(2)}</td>
+                    <td className="py-2 text-right text-success">${(a.threshold_price - a.price).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

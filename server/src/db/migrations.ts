@@ -73,6 +73,20 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 2,
+    description: 'Record notification channel per alert',
+    up: () => {
+      const db = getDb();
+      const cols = db.prepare("PRAGMA table_info(notifications)").all() as { name: string }[];
+      if (!cols.some(c => c.name === 'channel')) {
+        // Nullable so pre-migration rows (which don't know which channel fired)
+        // just show as "unknown" in the UI.
+        db.prepare('ALTER TABLE notifications ADD COLUMN channel TEXT').run();
+      }
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_notifications_sent_at ON notifications(sent_at)').run();
+    },
+  },
 ];
 
 export function runMigrations(): void {

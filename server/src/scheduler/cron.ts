@@ -42,13 +42,16 @@ async function firePriceAlerts(
   tracker: Tracker,
   currentPrice: number,
   channels: EnabledChannels,
-): Promise<boolean> {
-  const senders: Promise<boolean>[] = [];
-  if (channels.discord) senders.push(sendDiscordPriceAlert(tracker, currentPrice, channels.discord));
-  if (channels.ntfy) senders.push(sendNtfyPriceAlert(tracker, currentPrice, channels.ntfy));
-  if (channels.webhook) senders.push(sendGenericPriceAlert(tracker, currentPrice, channels.webhook));
-  const results = await Promise.all(senders);
-  return results.some(r => r);
+): Promise<string[]> {
+  // Returns the list of channel names that successfully delivered. The caller
+  // uses this to record one notifications row per successful channel.
+  const attempts: { name: string; promise: Promise<boolean> }[] = [];
+  if (channels.discord) attempts.push({ name: 'discord', promise: sendDiscordPriceAlert(tracker, currentPrice, channels.discord) });
+  if (channels.ntfy) attempts.push({ name: 'ntfy', promise: sendNtfyPriceAlert(tracker, currentPrice, channels.ntfy) });
+  if (channels.webhook) attempts.push({ name: 'webhook', promise: sendGenericPriceAlert(tracker, currentPrice, channels.webhook) });
+
+  const results = await Promise.all(attempts.map(a => a.promise));
+  return attempts.filter((_, i) => results[i]).map(a => a.name);
 }
 
 async function fireErrorAlerts(
@@ -118,9 +121,9 @@ export async function checkTracker(trackerId: number): Promise<void> {
           if (inCooldown) {
             logger.debug({ trackerId: tracker.id }, 'Notification cooldown active, skipping');
           } else {
-            const anySent = await firePriceAlerts(tracker, result.price, channels);
-            if (anySent) {
-              addNotification(tracker.id, result.price, tracker.threshold_price);
+            const sentChannels = await firePriceAlerts(tracker, result.price, channels);
+            for (const channel of sentChannels) {
+              addNotification(tracker.id, result.price, tracker.threshold_price, channel);
             }
           }
         }

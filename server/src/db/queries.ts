@@ -31,6 +31,12 @@ export interface NotificationRecord {
   price: number;
   threshold_price: number;
   sent_at: string;
+  channel: string | null;
+}
+
+export interface NotificationHistoryRow extends NotificationRecord {
+  tracker_name: string;
+  tracker_url: string;
 }
 
 // --- Trackers ---
@@ -220,13 +226,49 @@ export function getTrackerStats(userId: number, sparklineLimit: number = 10): Re
 
 // --- Notifications ---
 
-export function addNotification(trackerId: number, price: number, thresholdPrice: number): NotificationRecord {
+export function addNotification(
+  trackerId: number,
+  price: number,
+  thresholdPrice: number,
+  channel: string | null = null,
+): NotificationRecord {
   const stmt = getDb().prepare(`
-    INSERT INTO notifications (tracker_id, price, threshold_price)
-    VALUES (?, ?, ?)
+    INSERT INTO notifications (tracker_id, price, threshold_price, channel)
+    VALUES (?, ?, ?, ?)
   `);
-  const result = stmt.run(trackerId, price, thresholdPrice);
+  const result = stmt.run(trackerId, price, thresholdPrice, channel);
   return getDb().prepare('SELECT * FROM notifications WHERE id = ?').get(Number(result.lastInsertRowid)) as NotificationRecord;
+}
+
+/**
+ * Notification history for a user, joining in tracker name/url so the UI can
+ * render the full history in a single round-trip. Optional trackerId filter
+ * powers the per-tracker "Recent Alerts" section on TrackerDetail.
+ */
+export function getNotificationHistory(
+  userId: number,
+  trackerId?: number,
+  limit: number = 100,
+): NotificationHistoryRow[] {
+  const db = getDb();
+  if (trackerId !== undefined) {
+    return db.prepare(`
+      SELECT n.*, t.name as tracker_name, t.url as tracker_url
+      FROM notifications n
+      INNER JOIN trackers t ON t.id = n.tracker_id
+      WHERE t.user_id = ? AND n.tracker_id = ?
+      ORDER BY n.sent_at DESC
+      LIMIT ?
+    `).all(userId, trackerId, limit) as NotificationHistoryRow[];
+  }
+  return db.prepare(`
+    SELECT n.*, t.name as tracker_name, t.url as tracker_url
+    FROM notifications n
+    INNER JOIN trackers t ON t.id = n.tracker_id
+    WHERE t.user_id = ?
+    ORDER BY n.sent_at DESC
+    LIMIT ?
+  `).all(userId, limit) as NotificationHistoryRow[];
 }
 
 export function getLastNotification(trackerId: number): NotificationRecord | undefined {

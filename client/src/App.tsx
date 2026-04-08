@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
-import { BarChart3, Plus, Settings as SettingsIcon, Shield, LogOut, Menu, X } from 'lucide-react'
+import { BarChart3, Plus, Settings as SettingsIcon, Shield, LogOut, Menu, X, Inbox } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import AddTracker from './pages/AddTracker'
 import TrackerDetail from './pages/TrackerDetail'
 import Category from './pages/Category'
+import Notifications from './pages/Notifications'
 import SettingsPage from './pages/Settings'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -59,6 +60,7 @@ function App() {
           <div className="hidden md:flex items-center gap-2">
             {navLink('/', 'Dashboard', <BarChart3 className="w-4 h-4" />)}
             {navLink('/add', 'Add Tracker', <Plus className="w-4 h-4" />)}
+            {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
             {navLink('/settings', 'Settings', <SettingsIcon className="w-4 h-4" />)}
             {user?.role === 'admin' && navLink('/admin', 'Admin', <Shield className="w-4 h-4" />)}
             {user && (
@@ -116,6 +118,7 @@ function App() {
           <Route path="/add" element={<ProtectedRoute><AddTracker /></ProtectedRoute>} />
           <Route path="/tracker/:id" element={<ProtectedRoute><TrackerDetail /></ProtectedRoute>} />
           <Route path="/category/:domain" element={<ProtectedRoute><Category /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />
         </Routes>

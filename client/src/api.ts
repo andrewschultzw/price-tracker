@@ -115,6 +115,25 @@ export interface TrackerStat {
 export const getTrackerStats = () =>
   request<Record<string, TrackerStat>>('/trackers/stats');
 
+// Notifications
+export interface NotificationHistoryRow {
+  id: number
+  tracker_id: number
+  tracker_name: string
+  tracker_url: string
+  price: number
+  threshold_price: number
+  sent_at: string
+  channel: string | null
+}
+export const getNotificationHistory = (trackerId?: number, limit?: number) => {
+  const params = new URLSearchParams()
+  if (trackerId != null) params.set('tracker_id', String(trackerId))
+  if (limit != null) params.set('limit', String(limit))
+  const qs = params.toString()
+  return request<NotificationHistoryRow[]>(`/notifications${qs ? '?' + qs : ''}`)
+}
+
 // Settings
 export const getSettings = () => request<Record<string, string>>('/settings');
 export const updateSettings = (data: Record<string, string>) =>
