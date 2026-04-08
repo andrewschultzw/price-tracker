@@ -92,29 +92,31 @@ export default function TrackerDetail() {
         Back to Dashboard
       </Link>
 
-      <div className="bg-surface border border-border rounded-xl p-6 mb-6">
-        <div className="flex items-start justify-between mb-4">
-          <div>
+      <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
+          <div className="min-w-0 flex-1">
             {editing ? (
               <input
                 value={editName}
                 onChange={e => setEditName(e.target.value)}
-                className="bg-bg border border-border rounded-lg px-3 py-1.5 text-text text-xl font-bold focus:outline-none focus:border-primary"
+                className="bg-bg border border-border rounded-lg px-3 py-1.5 text-text text-xl font-bold w-full focus:outline-none focus:border-primary"
               />
             ) : (
-              <h1 className="text-2xl font-bold">{tracker.name}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold break-words">{tracker.name}</h1>
             )}
             <a
               href={tracker.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-text-muted text-sm hover:text-primary flex items-center gap-1 mt-1"
+              className="text-text-muted text-sm hover:text-primary flex items-center gap-1 mt-1 min-w-0"
             >
-              {tracker.url.length > 80 ? tracker.url.slice(0, 80) + '...' : tracker.url}
-              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="truncate">{tracker.url}</span>
+              <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
             </a>
           </div>
-          <StatusBadge status={tracker.status} />
+          <div className="flex-shrink-0">
+            <StatusBadge status={tracker.status} />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
@@ -169,7 +171,7 @@ export default function TrackerDetail() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {editing ? (
             <>
               <button onClick={handleSaveEdit} className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors">
@@ -181,17 +183,17 @@ export default function TrackerDetail() {
             </>
           ) : (
             <>
-              <button onClick={handleCheck} disabled={checking} className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+              <button onClick={handleCheck} disabled={checking} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
                 <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
                 Check Now
               </button>
-              <button onClick={handleToggleStatus} className="flex items-center gap-2 px-4 py-2 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors">
+              <button onClick={handleToggleStatus} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors">
                 {tracker.status === 'active' ? <><Pause className="w-4 h-4" /> Pause</> : <><Play className="w-4 h-4" /> Resume</>}
               </button>
-              <button onClick={startEdit} className="flex items-center gap-2 px-4 py-2 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors">
+              <button onClick={startEdit} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors">
                 <Pencil className="w-4 h-4" /> Edit
               </button>
-              <button onClick={handleDelete} className="flex items-center gap-2 px-4 py-2 bg-danger/10 text-danger hover:bg-danger/20 rounded-lg text-sm font-medium transition-colors ml-auto">
+              <button onClick={handleDelete} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-danger/10 text-danger hover:bg-danger/20 rounded-lg text-sm font-medium transition-colors sm:ml-auto">
                 <Trash2 className="w-4 h-4" /> Delete
               </button>
             </>
@@ -199,7 +201,7 @@ export default function TrackerDetail() {
         </div>
       </div>
 
-      <div className="bg-surface border border-border rounded-xl p-6">
+      <div className="bg-surface border border-border rounded-xl p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Price History</h2>
           <div className="flex gap-1">
