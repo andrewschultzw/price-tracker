@@ -17,7 +17,13 @@ import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { closeBrowser } from './scraper/browser.js';
 import { getUserCount, deleteExpiredRefreshTokens } from './db/user-queries.js';
+import { initSettingsCrypto } from './crypto/settings-crypto.js';
 import { logger } from './logger.js';
+
+// Initialize crypto BEFORE the database so migration v3 (which encrypts
+// existing webhook settings rows) can use it during initializeSchema().
+initSettingsCrypto(process.env.SETTINGS_ENCRYPTION_KEY);
+logger.info('Settings crypto initialized');
 
 // Initialize database
 initializeSchema();

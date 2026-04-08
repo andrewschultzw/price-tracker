@@ -282,29 +282,58 @@ export function getLastNotification(trackerId: number): NotificationRecord | und
 
 // --- Settings ---
 
+import { encrypt, decrypt, isEncrypted } from '../crypto/settings-crypto.js';
+
+// Only these three keys are encrypted at rest. Any other setting key would
+// be stored plaintext as before — add to this set if you introduce another
+// credential-like setting.
+const ENCRYPTED_KEYS = new Set(['discord_webhook_url', 'ntfy_url', 'generic_webhook_url']);
+
+function maybeDecrypt(key: string, value: string): string {
+  if (!ENCRYPTED_KEYS.has(key)) return value;
+  // Old rows from before migration v3 may still be plaintext if the
+  // migration was skipped or for a setting added before encryption shipped.
+  // Only decrypt values that carry our version prefix.
+  if (!isEncrypted(value)) return value;
+  return decrypt(value);
+}
+
+function maybeEncrypt(key: string, value: string): string {
+  if (!ENCRYPTED_KEYS.has(key)) return value;
+  // Empty string means "unset" — don't encrypt the empty string, just store
+  // it as-is so the UI can show a blank field.
+  if (value === '') return value;
+  return encrypt(value);
+}
+
 export function getSetting(key: string, userId?: number | null): string | undefined {
+  let raw: string | undefined;
   if (userId !== undefined && userId !== null) {
     const row = getDb().prepare('SELECT value FROM settings WHERE key = ? AND user_id = ?').get(key, userId) as { value: string } | undefined;
-    return row?.value;
+    raw = row?.value;
+  } else {
+    const row = getDb().prepare('SELECT value FROM settings WHERE key = ? AND user_id IS NULL').get(key) as { value: string } | undefined;
+    raw = row?.value;
   }
-  const row = getDb().prepare('SELECT value FROM settings WHERE key = ? AND user_id IS NULL').get(key) as { value: string } | undefined;
-  return row?.value;
+  if (raw === undefined) return undefined;
+  return maybeDecrypt(key, raw);
 }
 
 export function setSetting(key: string, value: string, userId?: number | null): void {
+  const stored = maybeEncrypt(key, value);
   if (userId !== undefined && userId !== null) {
     getDb().prepare(`
       INSERT INTO settings (user_id, key, value) VALUES (?, ?, ?)
       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value
-    `).run(userId, key, value);
+    `).run(userId, key, stored);
   } else {
     const db = getDb();
     db.prepare('DELETE FROM settings WHERE key = ? AND user_id IS NULL').run(key);
-    db.prepare('INSERT INTO settings (user_id, key, value) VALUES (NULL, ?, ?)').run(key, value);
+    db.prepare('INSERT INTO settings (user_id, key, value) VALUES (NULL, ?, ?)').run(key, stored);
   }
 }
 
 export function getAllSettings(userId: number): Record<string, string> {
   const rows = getDb().prepare('SELECT key, value FROM settings WHERE user_id = ?').all(userId) as { key: string; value: string }[];
-  return Object.fromEntries(rows.map(r => [r.key, r.value]));
+  return Object.fromEntries(rows.map(r => [r.key, maybeDecrypt(r.key, r.value)]));
 }

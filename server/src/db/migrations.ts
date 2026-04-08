@@ -1,5 +1,6 @@
 import { getDb } from './connection.js';
 import { logger } from '../logger.js';
+import { encrypt, isEncrypted } from '../crypto/settings-crypto.js';
 
 interface Migration {
   version: number;
@@ -85,6 +86,31 @@ const migrations: Migration[] = [
         db.prepare('ALTER TABLE notifications ADD COLUMN channel TEXT').run();
       }
       db.prepare('CREATE INDEX IF NOT EXISTS idx_notifications_sent_at ON notifications(sent_at)').run();
+    },
+  },
+  {
+    version: 3,
+    description: 'Encrypt sensitive settings (webhook URLs) at rest',
+    up: () => {
+      // initSettingsCrypto() must have been called before runMigrations()
+      // (see server/src/index.ts startup order).
+      const db = getDb();
+      const ENCRYPTED_KEYS = ['discord_webhook_url', 'ntfy_url', 'generic_webhook_url'];
+
+      const rows = db.prepare(
+        `SELECT rowid, user_id, key, value FROM settings WHERE key IN (${ENCRYPTED_KEYS.map(() => '?').join(',')})`,
+      ).all(...ENCRYPTED_KEYS) as { rowid: number; user_id: number | null; key: string; value: string }[];
+
+      const update = db.prepare('UPDATE settings SET value = ? WHERE rowid = ?');
+      let encryptedCount = 0;
+      for (const row of rows) {
+        if (!row.value) continue;              // skip empty
+        if (isEncrypted(row.value)) continue;  // already encrypted — idempotent re-run
+        const ciphertext = encrypt(row.value);
+        update.run(ciphertext, row.rowid);
+        encryptedCount++;
+      }
+      logger.info({ encryptedCount }, 'Encrypted existing webhook settings rows');
     },
   },
 ];
