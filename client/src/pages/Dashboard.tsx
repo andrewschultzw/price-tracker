@@ -4,8 +4,32 @@ import { Plus, Package } from 'lucide-react'
 import { getTrackers, getSparklines } from '../api'
 import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
+import CategoryCard from '../components/CategoryCard'
 import StatCards from '../components/StatCards'
 import useTitle from '../useTitle'
+
+const CATEGORY_COLLAPSE_THRESHOLD = 10
+
+function getHostname(url: string): string {
+  try { return new URL(url).hostname } catch { return '' }
+}
+
+function isErrored(t: Tracker): boolean {
+  return t.status === 'error' || (t.last_error != null && t.consecutive_failures > 0)
+}
+
+function isBelowTarget(t: Tracker): boolean {
+  return (
+    t.status === 'active' &&
+    t.threshold_price != null &&
+    t.last_price != null &&
+    t.last_price <= t.threshold_price
+  )
+}
+
+type DashboardItem =
+  | { kind: 'tracker'; tracker: Tracker }
+  | { kind: 'category'; hostname: string; trackers: Tracker[] }
 
 export default function Dashboard() {
   const [trackers, setTrackers] = useState<Tracker[]>([])
@@ -48,22 +72,65 @@ export default function Dashboard() {
     )
   }
 
-  // A tracker counts as "errored" for sort purposes if either:
-  //   - status flipped to 'error' (N consecutive failures), OR
-  //   - the most recent scrape failed (last_error set), even if status is still 'active'
-  // This surfaces stale-link / scrape failures immediately instead of waiting for
-  // the consecutive-failure threshold.
-  const errored = trackers.filter(
-    t => t.status === 'error' || (t.last_error != null && t.consecutive_failures > 0),
-  )
-  const erroredIds = new Set(errored.map(t => t.id))
-  const remaining = trackers.filter(t => !erroredIds.has(t.id))
-  const paused = remaining.filter(t => t.status === 'paused')
-  const active = remaining.filter(t => t.status === 'active')
-  const belowTarget = active.filter(
-    t => t.threshold_price != null && t.last_price != null && t.last_price <= t.threshold_price,
-  )
-  const activeOther = active.filter(t => !belowTarget.includes(t))
+  // Group by hostname; any domain with more than CATEGORY_COLLAPSE_THRESHOLD
+  // trackers collapses into a single category card. Categories are placed into
+  // the sort bucket matching their worst contained state (errored > below-target
+  // > active > paused) so problems and deals still surface at the top even when
+  // the underlying items are hidden behind a category.
+  const byHostname = new Map<string, Tracker[]>()
+  for (const t of trackers) {
+    const h = getHostname(t.url)
+    if (!h) continue
+    const arr = byHostname.get(h)
+    if (arr) arr.push(t); else byHostname.set(h, [t])
+  }
+
+  const collapsedHostnames = new Set<string>()
+  const categories: { hostname: string; trackers: Tracker[] }[] = []
+  for (const [hostname, group] of byHostname) {
+    if (group.length > CATEGORY_COLLAPSE_THRESHOLD) {
+      collapsedHostnames.add(hostname)
+      categories.push({ hostname, trackers: group })
+    }
+  }
+
+  const individuals = trackers.filter(t => !collapsedHostnames.has(getHostname(t.url)))
+
+  // Bucket individual trackers
+  const erroredItems = individuals.filter(isErrored)
+  const erroredIds = new Set(erroredItems.map(t => t.id))
+  const remaining = individuals.filter(t => !erroredIds.has(t.id))
+  const pausedItems = remaining.filter(t => t.status === 'paused')
+  const activeItems = remaining.filter(t => t.status === 'active')
+  const belowTargetItems = activeItems.filter(isBelowTarget)
+  const activeOtherItems = activeItems.filter(t => !belowTargetItems.includes(t))
+
+  // Bucket categories by worst contained state
+  const categoryBuckets = { errored: [] as typeof categories, belowTarget: [] as typeof categories, active: [] as typeof categories, paused: [] as typeof categories }
+  for (const cat of categories) {
+    if (cat.trackers.some(isErrored)) categoryBuckets.errored.push(cat)
+    else if (cat.trackers.some(isBelowTarget)) categoryBuckets.belowTarget.push(cat)
+    else if (cat.trackers.some(t => t.status === 'active')) categoryBuckets.active.push(cat)
+    else categoryBuckets.paused.push(cat)
+  }
+
+  const toTrackerItem = (tracker: Tracker): DashboardItem => ({ kind: 'tracker', tracker })
+  const toCategoryItem = (c: { hostname: string; trackers: Tracker[] }): DashboardItem => ({ kind: 'category', hostname: c.hostname, trackers: c.trackers })
+
+  const items: DashboardItem[] = [
+    ...categoryBuckets.errored.map(toCategoryItem),
+    ...erroredItems.map(toTrackerItem),
+    ...categoryBuckets.belowTarget.map(toCategoryItem),
+    ...belowTargetItems.map(toTrackerItem),
+    ...categoryBuckets.active.map(toCategoryItem),
+    ...activeOtherItems.map(toTrackerItem),
+    ...categoryBuckets.paused.map(toCategoryItem),
+    ...pausedItems.map(toTrackerItem),
+  ]
+
+  // Used only for the header summary counts
+  const totalErrored = erroredItems.length + categories.reduce((n, c) => n + c.trackers.filter(isErrored).length, 0)
+  const totalActive = trackers.filter(t => t.status === 'active').length
 
   return (
     <div>
@@ -72,8 +139,8 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-text-muted text-sm mt-1">
             {trackers.length} tracker{trackers.length !== 1 ? 's' : ''} &middot;{' '}
-            {active.length} active
-            {errored.length > 0 && <span className="text-danger"> &middot; {errored.length} error</span>}
+            {totalActive} active
+            {totalErrored > 0 && <span className="text-danger"> &middot; {totalErrored} error{totalErrored !== 1 ? 's' : ''}</span>}
           </p>
         </div>
         <Link
@@ -88,14 +155,22 @@ export default function Dashboard() {
       <StatCards trackers={trackers} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[...errored, ...belowTarget, ...activeOther, ...paused].map(tracker => (
-          <TrackerCard
-            key={tracker.id}
-            tracker={tracker}
-            sparklineData={sparklines[tracker.id] || []}
-            onUpdate={load}
-          />
-        ))}
+        {items.map(item =>
+          item.kind === 'tracker' ? (
+            <TrackerCard
+              key={`t-${item.tracker.id}`}
+              tracker={item.tracker}
+              sparklineData={sparklines[item.tracker.id] || []}
+              onUpdate={load}
+            />
+          ) : (
+            <CategoryCard
+              key={`c-${item.hostname}`}
+              hostname={item.hostname}
+              trackers={item.trackers}
+            />
+          ),
+        )}
       </div>
     </div>
   )

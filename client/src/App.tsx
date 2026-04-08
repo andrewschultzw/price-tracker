@@ -7,6 +7,7 @@ import AdminRoute from './components/AdminRoute'
 import Dashboard from './pages/Dashboard'
 import AddTracker from './pages/AddTracker'
 import TrackerDetail from './pages/TrackerDetail'
+import Category from './pages/Category'
 import SettingsPage from './pages/Settings'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -114,6 +115,7 @@ function App() {
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/add" element={<ProtectedRoute><AddTracker /></ProtectedRoute>} />
           <Route path="/tracker/:id" element={<ProtectedRoute><TrackerDetail /></ProtectedRoute>} />
+          <Route path="/category/:domain" element={<ProtectedRoute><Category /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />
         </Routes>
