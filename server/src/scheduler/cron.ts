@@ -1,13 +1,67 @@
 import cron from 'node-cron';
 import PQueue from 'p-queue';
-import { getDueTrackers, updateTracker, addPriceRecord, getSetting } from '../db/queries.js';
+import {
+  getDueTrackers,
+  updateTracker,
+  addPriceRecord,
+  getSetting,
+  getLastNotification,
+  addNotification,
+} from '../db/queries.js';
+import type { Tracker } from '../db/queries.js';
 import { extractPrice } from '../scraper/extractor.js';
-import { sendPriceAlert, sendErrorAlert } from '../notifications/discord.js';
+import { sendDiscordPriceAlert, sendDiscordErrorAlert } from '../notifications/discord.js';
+import { sendNtfyPriceAlert, sendNtfyErrorAlert } from '../notifications/ntfy.js';
+import { sendGenericPriceAlert, sendGenericErrorAlert } from '../notifications/webhook.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
 const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
 let task: cron.ScheduledTask | null = null;
+
+interface EnabledChannels {
+  discord?: string;
+  ntfy?: string;
+  webhook?: string;
+}
+
+function getEnabledChannels(userId: number | null | undefined): EnabledChannels {
+  if (!userId) return {};
+  return {
+    discord: getSetting('discord_webhook_url', userId) || undefined,
+    ntfy: getSetting('ntfy_url', userId) || undefined,
+    webhook: getSetting('generic_webhook_url', userId) || undefined,
+  };
+}
+
+function hasAnyChannel(channels: EnabledChannels): boolean {
+  return !!(channels.discord || channels.ntfy || channels.webhook);
+}
+
+async function firePriceAlerts(
+  tracker: Tracker,
+  currentPrice: number,
+  channels: EnabledChannels,
+): Promise<boolean> {
+  const senders: Promise<boolean>[] = [];
+  if (channels.discord) senders.push(sendDiscordPriceAlert(tracker, currentPrice, channels.discord));
+  if (channels.ntfy) senders.push(sendNtfyPriceAlert(tracker, currentPrice, channels.ntfy));
+  if (channels.webhook) senders.push(sendGenericPriceAlert(tracker, currentPrice, channels.webhook));
+  const results = await Promise.all(senders);
+  return results.some(r => r);
+}
+
+async function fireErrorAlerts(
+  tracker: Tracker,
+  error: string,
+  channels: EnabledChannels,
+): Promise<void> {
+  const senders: Promise<boolean>[] = [];
+  if (channels.discord) senders.push(sendDiscordErrorAlert(tracker, error, channels.discord));
+  if (channels.ntfy) senders.push(sendNtfyErrorAlert(tracker, error, channels.ntfy));
+  if (channels.webhook) senders.push(sendGenericErrorAlert(tracker, error, channels.webhook));
+  await Promise.all(senders);
+}
 
 export async function checkTracker(trackerId: number): Promise<void> {
   try {
@@ -15,19 +69,15 @@ export async function checkTracker(trackerId: number): Promise<void> {
     const tracker = getTrackerById(trackerId);
     if (!tracker) return;
 
-    const webhookUrl = tracker.user_id
-      ? getSetting('discord_webhook_url', tracker.user_id) || null
-      : null;
+    const channels = getEnabledChannels(tracker.user_id);
 
     logger.info({ trackerId: tracker.id, name: tracker.name }, 'Checking tracker');
 
     try {
       const result = await extractPrice(tracker.url, tracker.css_selector);
 
-      // Store price history
       addPriceRecord(tracker.id, result.price, result.currency);
 
-      // Update tracker
       updateTracker(tracker.id, {
         last_price: result.price,
         last_checked_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
@@ -36,11 +86,44 @@ export async function checkTracker(trackerId: number): Promise<void> {
         status: 'active',
       });
 
-      logger.info({ trackerId: tracker.id, price: result.price, strategy: result.strategy }, 'Price check complete');
+      logger.info(
+        { trackerId: tracker.id, price: result.price, strategy: result.strategy },
+        'Price check complete',
+      );
 
-      // Check threshold and notify
+      // Threshold check + cooldown + fanout — centralized here so every
+      // notification channel shares the same gating.
       if (tracker.threshold_price && result.price <= tracker.threshold_price) {
-        await sendPriceAlert(tracker, result.price, webhookUrl);
+        if (!hasAnyChannel(channels)) {
+          logger.warn(
+            {
+              trackerId: tracker.id,
+              trackerName: tracker.name,
+              userId: tracker.user_id,
+              currentPrice: result.price,
+              thresholdPrice: tracker.threshold_price,
+            },
+            'Price is at/below threshold but no notification channels are configured — alert skipped',
+          );
+        } else {
+          // Cooldown is per-tracker, not per-channel: the point is "don't spam
+          // the user about the same item too often". If any channel succeeds,
+          // we record the notification and the cooldown applies to all channels
+          // on the next pass.
+          const lastNotif = getLastNotification(tracker.id);
+          const cooldownMs = config.notificationCooldownHours * 60 * 60 * 1000;
+          const inCooldown =
+            lastNotif && Date.now() - new Date(lastNotif.sent_at + 'Z').getTime() < cooldownMs;
+
+          if (inCooldown) {
+            logger.debug({ trackerId: tracker.id }, 'Notification cooldown active, skipping');
+          } else {
+            const anySent = await firePriceAlerts(tracker, result.price, channels);
+            if (anySent) {
+              addNotification(tracker.id, result.price, tracker.threshold_price);
+            }
+          }
+        }
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -57,7 +140,14 @@ export async function checkTracker(trackerId: number): Promise<void> {
       logger.error({ trackerId: tracker.id, failures, err: errorMsg }, 'Price check failed');
 
       if (newStatus === 'error') {
-        await sendErrorAlert(tracker, errorMsg, webhookUrl);
+        if (!hasAnyChannel(channels)) {
+          logger.warn(
+            { trackerId: tracker.id, trackerName: tracker.name, userId: tracker.user_id },
+            'Tracker errored but no notification channels are configured — error alert skipped',
+          );
+        } else {
+          await fireErrorAlerts(tracker, errorMsg, channels);
+        }
       }
     }
   } catch (err) {
@@ -82,7 +172,6 @@ function tick(): void {
 }
 
 export function startScheduler(): void {
-  // Run every minute
   task = cron.schedule('* * * * *', tick);
   logger.info('Scheduler started (checking every minute)');
 }

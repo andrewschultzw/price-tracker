@@ -21,7 +21,9 @@ export default function Category() {
       const [data, sparks, settings] = await Promise.all([getTrackers(), getSparklines(), getSettings()])
       setTrackers(data.filter(t => canonicalDomain(t.url) === domain))
       setSparklines(sparks)
-      setNotificationsConfigured(!!settings.discord_webhook_url)
+      setNotificationsConfigured(
+        !!(settings.discord_webhook_url || settings.ntfy_url || settings.generic_webhook_url),
+      )
     } catch (err) {
       console.error('Failed to load trackers', err)
     } finally {

@@ -116,6 +116,14 @@ export const testWebhook = (url: string) =>
   request<{ success: boolean }>('/settings/test-webhook', {
     method: 'POST', body: JSON.stringify({ url }),
   });
+export const testNtfy = (url: string) =>
+  request<{ success: boolean }>('/settings/test-ntfy', {
+    method: 'POST', body: JSON.stringify({ url }),
+  });
+export const testGenericWebhook = (url: string) =>
+  request<{ success: boolean }>('/settings/test-generic-webhook', {
+    method: 'POST', body: JSON.stringify({ url }),
+  });
 
 // Admin
 export const getUsers = () => request<User[]>('/admin/users');

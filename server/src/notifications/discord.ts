@@ -1,48 +1,22 @@
-import { config } from '../config.js';
-import { getLastNotification, addNotification } from '../db/queries.js';
 import type { Tracker } from '../db/queries.js';
 import { logger } from '../logger.js';
 
-export async function sendPriceAlert(tracker: Tracker, currentPrice: number, webhookUrl: string | null): Promise<boolean> {
-  if (!webhookUrl) {
-    // Warn (not debug) so silent-failure mode is visible in journalctl.
-    // This fires every time a below-threshold tracker is checked for a user
-    // with no webhook configured — a real problem the user almost certainly
-    // wants to know about.
-    logger.warn(
-      {
-        trackerId: tracker.id,
-        trackerName: tracker.name,
-        userId: tracker.user_id,
-        currentPrice,
-        thresholdPrice: tracker.threshold_price,
-      },
-      'Price is at/below threshold but no Discord webhook is configured — notification skipped',
-    );
-    return false;
-  }
-
+/**
+ * Pure HTTP sender for Discord. Threshold checks and cooldown are handled
+ * upstream in cron.ts so all notification channels share the same logic.
+ */
+export async function sendDiscordPriceAlert(
+  tracker: Tracker,
+  currentPrice: number,
+  webhookUrl: string,
+): Promise<boolean> {
   if (!tracker.threshold_price) return false;
-
-  // Check cooldown
-  const lastNotif = getLastNotification(tracker.id);
-  if (lastNotif) {
-    const cooldownMs = config.notificationCooldownHours * 60 * 60 * 1000;
-    const lastSentAt = new Date(lastNotif.sent_at + 'Z').getTime();
-    if (Date.now() - lastSentAt < cooldownMs) {
-      logger.debug({ trackerId: tracker.id }, 'Notification cooldown active, skipping');
-      return false;
-    }
-  }
-
-  // Only notify if price is at or below threshold
-  if (currentPrice > tracker.threshold_price) return false;
 
   const savings = (tracker.threshold_price - currentPrice).toFixed(2);
 
   const embed = {
     title: `Price Drop Alert: ${tracker.name}`,
-    color: 0x00c853, // Green
+    color: 0x00c853,
     fields: [
       { name: 'Current Price', value: `$${currentPrice.toFixed(2)}`, inline: true },
       { name: 'Threshold', value: `$${tracker.threshold_price.toFixed(2)}`, inline: true },
@@ -61,31 +35,29 @@ export async function sendPriceAlert(tracker: Tracker, currentPrice: number, web
     });
 
     if (!response.ok) {
-      logger.error({ status: response.status, body: await response.text() }, 'Discord webhook failed');
+      logger.error(
+        { status: response.status, body: await response.text(), trackerId: tracker.id },
+        'Discord webhook failed',
+      );
       return false;
     }
 
-    addNotification(tracker.id, currentPrice, tracker.threshold_price);
-    logger.info({ trackerId: tracker.id, price: currentPrice }, 'Discord notification sent');
+    logger.info({ trackerId: tracker.id, price: currentPrice }, 'Discord price alert sent');
     return true;
   } catch (err) {
-    logger.error({ err }, 'Discord webhook request failed');
+    logger.error({ err, trackerId: tracker.id }, 'Discord webhook request failed');
     return false;
   }
 }
 
-export async function sendErrorAlert(tracker: Tracker, error: string, webhookUrl: string | null): Promise<void> {
-  if (!webhookUrl) {
-    logger.warn(
-      { trackerId: tracker.id, trackerName: tracker.name, userId: tracker.user_id },
-      'Tracker errored but no Discord webhook is configured — error alert skipped',
-    );
-    return;
-  }
-
+export async function sendDiscordErrorAlert(
+  tracker: Tracker,
+  error: string,
+  webhookUrl: string,
+): Promise<boolean> {
   const embed = {
     title: `Tracker Error: ${tracker.name}`,
-    color: 0xff1744, // Red
+    color: 0xff1744,
     description: `Failed to check price after ${tracker.consecutive_failures} consecutive attempts.`,
     fields: [
       { name: 'Error', value: error.slice(0, 1024) },
@@ -96,17 +68,19 @@ export async function sendErrorAlert(tracker: Tracker, error: string, webhookUrl
   };
 
   try {
-    await fetch(webhookUrl, {
+    const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ embeds: [embed] }),
     });
+    return response.ok;
   } catch (err) {
-    logger.error({ err }, 'Failed to send error alert to Discord');
+    logger.error({ err, trackerId: tracker.id }, 'Discord error alert failed');
+    return false;
   }
 }
 
-export async function testWebhook(webhookUrl: string): Promise<boolean> {
+export async function testDiscordWebhook(webhookUrl: string): Promise<boolean> {
   try {
     const response = await fetch(webhookUrl, {
       method: 'POST',

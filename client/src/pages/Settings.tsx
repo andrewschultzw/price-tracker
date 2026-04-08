@@ -1,96 +1,177 @@
 import { useEffect, useState } from 'react'
-import { Save, Send, CheckCircle, XCircle } from 'lucide-react'
-import { getSettings, updateSettings, testWebhook } from '../api'
+import { Save, Send, CheckCircle, XCircle, MessageSquare, Bell, Webhook } from 'lucide-react'
+import { getSettings, updateSettings, testWebhook, testNtfy, testGenericWebhook } from '../api'
 import useTitle from '../useTitle'
+
+type ChannelKey = 'discord' | 'ntfy' | 'webhook'
+
+interface ChannelConfig {
+  key: ChannelKey
+  settingKey: 'discord_webhook_url' | 'ntfy_url' | 'generic_webhook_url'
+  icon: React.ReactNode
+  title: string
+  description: React.ReactNode
+  placeholder: string
+  test: (url: string) => Promise<{ success: boolean }>
+}
+
+const CHANNELS: ChannelConfig[] = [
+  {
+    key: 'discord',
+    settingKey: 'discord_webhook_url',
+    icon: <MessageSquare className="w-5 h-5 text-primary" />,
+    title: 'Discord',
+    description: (
+      <>
+        Paste a Discord channel webhook URL. Create one under{' '}
+        <span className="text-text">Server Settings → Integrations → Webhooks</span>.
+      </>
+    ),
+    placeholder: 'https://discord.com/api/webhooks/...',
+    test: testWebhook,
+  },
+  {
+    key: 'ntfy',
+    settingKey: 'ntfy_url',
+    icon: <Bell className="w-5 h-5 text-primary" />,
+    title: 'ntfy (push notifications)',
+    description: (
+      <>
+        Paste a ntfy topic URL — works with{' '}
+        <a href="https://ntfy.sh" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">ntfy.sh</a>{' '}
+        or any self-hosted instance. Install the ntfy app on your phone, subscribe to the same topic, and
+        you'll get price drops as push notifications. Use a long, unguessable topic name since anyone
+        who knows it can publish to it.
+      </>
+    ),
+    placeholder: 'https://ntfy.sh/my-price-alerts-abc123',
+    test: testNtfy,
+  },
+  {
+    key: 'webhook',
+    settingKey: 'generic_webhook_url',
+    icon: <Webhook className="w-5 h-5 text-primary" />,
+    title: 'Custom Webhook',
+    description: (
+      <>
+        Any HTTPS endpoint that accepts a POST with JSON. Great for Home Assistant, Slack incoming
+        webhooks, n8n, or your own bot. Payload:{' '}
+        <code className="text-xs bg-bg px-1.5 py-0.5 rounded">{'{ event, tracker, current_price, savings, error, timestamp }'}</code>
+      </>
+    ),
+    placeholder: 'https://example.com/hooks/price-alerts',
+    test: testGenericWebhook,
+  },
+]
 
 export default function SettingsPage() {
   useTitle('Settings')
-  const [webhookUrl, setWebhookUrl] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testOk, setTestOk] = useState<boolean | null>(null)
+  const [values, setValues] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '' })
+  const [savingKey, setSavingKey] = useState<ChannelKey | null>(null)
+  const [savedKey, setSavedKey] = useState<ChannelKey | null>(null)
+  const [testingKey, setTestingKey] = useState<ChannelKey | null>(null)
+  const [testResult, setTestResult] = useState<{ key: ChannelKey; ok: boolean } | null>(null)
 
   useEffect(() => {
     getSettings().then(s => {
-      setWebhookUrl(s.discord_webhook_url || '')
+      setValues({
+        discord: s.discord_webhook_url || '',
+        ntfy: s.ntfy_url || '',
+        webhook: s.generic_webhook_url || '',
+      })
     })
   }, [])
 
-  const handleSave = async () => {
-    setSaving(true)
-    setSaved(false)
+  const handleSave = async (ch: ChannelConfig) => {
+    setSavingKey(ch.key)
+    setSavedKey(null)
     try {
-      await updateSettings({ discord_webhook_url: webhookUrl })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      await updateSettings({ [ch.settingKey]: values[ch.key] })
+      setSavedKey(ch.key)
+      setTimeout(() => setSavedKey(k => (k === ch.key ? null : k)), 3000)
     } finally {
-      setSaving(false)
+      setSavingKey(null)
     }
   }
 
-  const handleTest = async () => {
-    if (!webhookUrl) return
-    setTesting(true)
-    setTestOk(null)
+  const handleTest = async (ch: ChannelConfig) => {
+    if (!values[ch.key]) return
+    setTestingKey(ch.key)
+    setTestResult(null)
     try {
-      const result = await testWebhook(webhookUrl)
-      setTestOk(result.success)
+      const result = await ch.test(values[ch.key])
+      setTestResult({ key: ch.key, ok: result.success })
     } catch {
-      setTestOk(false)
+      setTestResult({ key: ch.key, ok: false })
     } finally {
-      setTesting(false)
-      setTimeout(() => setTestOk(null), 5000)
+      setTestingKey(null)
+      setTimeout(() => setTestResult(r => (r?.key === ch.key ? null : r)), 5000)
     }
   }
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Settings</h1>
+      <h1 className="text-2xl font-bold mb-2">Settings</h1>
+      <p className="text-text-muted text-sm mb-6">
+        Configure one or more notification channels. You'll receive alerts on every channel you set up.
+      </p>
 
-      <div className="bg-surface border border-border rounded-xl p-6">
-        <h2 className="text-lg font-semibold mb-4">Discord Notifications</h2>
-        <p className="text-text-muted text-sm mb-4">
-          Enter your Discord webhook URL to receive price drop notifications.
-        </p>
+      <div className="flex flex-col gap-4">
+        {CHANNELS.map(ch => {
+          const val = values[ch.key]
+          const saving = savingKey === ch.key
+          const saved = savedKey === ch.key
+          const testing = testingKey === ch.key
+          const testOk = testResult?.key === ch.key ? testResult.ok : null
 
-        <label className="block text-sm font-medium text-text-muted mb-1.5">Webhook URL</label>
-        <input
-          type="url"
-          value={webhookUrl}
-          onChange={e => setWebhookUrl(e.target.value)}
-          placeholder="https://discord.com/api/webhooks/..."
-          className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary mb-4"
-        />
+          return (
+            <div key={ch.key} className="bg-surface border border-border rounded-xl p-4 sm:p-6">
+              <div className="flex items-center gap-2 mb-2">
+                {ch.icon}
+                <h2 className="text-lg font-semibold">{ch.title}</h2>
+              </div>
+              <p className="text-text-muted text-sm mb-4">{ch.description}</p>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            {saved ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {saved ? 'Saved!' : saving ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            onClick={handleTest}
-            disabled={!webhookUrl || testing}
-            className="flex items-center gap-2 px-4 py-2.5 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            <Send className="w-4 h-4" />
-            {testing ? 'Sending...' : 'Test Webhook'}
-          </button>
-          {testOk === true && (
-            <span className="flex items-center gap-1 text-sm text-success">
-              <CheckCircle className="w-4 h-4" /> Sent!
-            </span>
-          )}
-          {testOk === false && (
-            <span className="flex items-center gap-1 text-sm text-danger">
-              <XCircle className="w-4 h-4" /> Failed
-            </span>
-          )}
-        </div>
+              <label className="block text-sm font-medium text-text-muted mb-1.5">URL</label>
+              <input
+                type="url"
+                value={val}
+                onChange={e => setValues(v => ({ ...v, [ch.key]: e.target.value }))}
+                placeholder={ch.placeholder}
+                className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary mb-4"
+              />
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => handleSave(ch)}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {saved ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                  {saved ? 'Saved!' : saving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => handleTest(ch)}
+                  disabled={!val || testing}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  <Send className="w-4 h-4" />
+                  {testing ? 'Sending...' : 'Test'}
+                </button>
+                {testOk === true && (
+                  <span className="flex items-center gap-1 text-sm text-success">
+                    <CheckCircle className="w-4 h-4" /> Sent!
+                  </span>
+                )}
+                {testOk === false && (
+                  <span className="flex items-center gap-1 text-sm text-danger">
+                    <XCircle className="w-4 h-4" /> Failed
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
