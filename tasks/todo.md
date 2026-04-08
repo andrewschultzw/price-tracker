@@ -29,7 +29,7 @@ Deployed and live at prices.schultzsolutions.tech (CT 302, 192.168.1.166:3100). 
 ### Features
 - [x] **Lowest-ever indicator on TrackerCard.** ~~Show the all-time low next to current price~~ **Done 2026-04-08:** `/api/trackers/stats` returns per-tracker sparkline + all-time low with timestamp. TrackerCard shows a "Low: $X" line plus an "at low" pill when current price matches the historical minimum. TrackerDetail gets a new "All-Time Low" stat tile (not range-scoped).
 - [x] **Notification history view.** ~~We have three channels + cooldowns tracked in the `notifications` table but no UI to see what got sent.~~ **Done 2026-04-08:** new `/notifications` page in the nav with colour-coded channel badges. Added `channel` column via migration v2. cron.ts now records one notification row per successful channel. TrackerDetail has a "Recent Alerts" card scoped to that tracker.
-- [ ] **CSV/JSON export of price history.** Button on TrackerDetail that dumps full `price_history` to CSV. Trivial build, useful for user analysis and as a migration escape hatch.
+- [x] **CSV/JSON export of price history.** ~~Button on TrackerDetail that dumps full `price_history` to CSV.~~ **Done 2026-04-08:** new `GET /api/trackers/:id/export?format={csv|json}` route, RFC 4180 CSV with quote-doubling escape, JSON wraps history with tracker metadata + exported_at. TrackerDetail has CSV and JSON download buttons next to the range picker. Shared `util/csv.ts` with `toCsv()` and `slugify()`, 15 unit tests.
 - [ ] **Email notification channel.** Fourth channel using the existing Cloudflare+Gmail relay already set up for Paperless (`docs@schultzsolutions.tech`). Most accessible channel for non-technical users — no app install, no webhook setup, just paste an email address.
 
 ### Polish
