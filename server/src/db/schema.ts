@@ -57,8 +57,9 @@ export function initializeSchema(): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_price_history_tracker_id ON price_history(tracker_id);
-    CREATE INDEX IF NOT EXISTS idx_price_history_tracker_url_id ON price_history(tracker_url_id);
     CREATE INDEX IF NOT EXISTS idx_price_history_scraped_at ON price_history(scraped_at);
+    -- idx_price_history_tracker_url_id lives in migration v4 because
+    -- pre-existing DBs won't have the column at this point.
 
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,7 +71,8 @@ export function initializeSchema(): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_notifications_tracker_id ON notifications(tracker_id);
-    CREATE INDEX IF NOT EXISTS idx_notifications_tracker_url_id ON notifications(tracker_url_id);
+    -- idx_notifications_tracker_url_id lives in migration v4 for the same
+    -- reason as idx_price_history_tracker_url_id above.
 
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
