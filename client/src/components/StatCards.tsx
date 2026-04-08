@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Activity, TrendingDown, AlertCircle, DollarSign } from 'lucide-react'
 import type { Tracker } from '../types'
+import { isErrored } from '../lib/dashboard-sort'
 
 interface Props {
   trackers: Tracker[]
@@ -8,7 +9,9 @@ interface Props {
 
 export default function StatCards({ trackers }: Props) {
   const active = trackers.filter(t => t.status === 'active').length
-  const errors = trackers.filter(t => t.status === 'error').length
+  // Use the shared isErrored() helper so the count here stays in lockstep
+  // with the /errors page and the dashboard sort's errored bucket.
+  const errors = trackers.filter(isErrored).length
   const belowThreshold = trackers.filter(
     t => t.threshold_price && t.last_price && t.last_price <= t.threshold_price
   ).length
@@ -52,6 +55,9 @@ export default function StatCards({ trackers }: Props) {
       icon: AlertCircle,
       color: errors > 0 ? 'text-danger' : 'text-text-muted',
       bg: errors > 0 ? 'bg-danger/10' : 'bg-surface-hover',
+      // Clickable only when there's something to show. Opens the errors
+      // view with a Check All Now button.
+      href: errors > 0 ? '/errors' : undefined,
     },
     {
       label: 'Potential Savings',
