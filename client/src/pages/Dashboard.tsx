@@ -7,12 +7,9 @@ import TrackerCard from '../components/TrackerCard'
 import CategoryCard from '../components/CategoryCard'
 import StatCards from '../components/StatCards'
 import useTitle from '../useTitle'
+import { canonicalDomain } from '../lib/domains'
 
 const CATEGORY_COLLAPSE_THRESHOLD = 10
-
-function getHostname(url: string): string {
-  try { return new URL(url).hostname } catch { return '' }
-}
 
 function isErrored(t: Tracker): boolean {
   return t.status === 'error' || (t.last_error != null && t.consecutive_failures > 0)
@@ -77,24 +74,24 @@ export default function Dashboard() {
   // the sort bucket matching their worst contained state (errored > below-target
   // > active > paused) so problems and deals still surface at the top even when
   // the underlying items are hidden behind a category.
-  const byHostname = new Map<string, Tracker[]>()
+  const byDomain = new Map<string, Tracker[]>()
   for (const t of trackers) {
-    const h = getHostname(t.url)
+    const h = canonicalDomain(t.url)
     if (!h) continue
-    const arr = byHostname.get(h)
-    if (arr) arr.push(t); else byHostname.set(h, [t])
+    const arr = byDomain.get(h)
+    if (arr) arr.push(t); else byDomain.set(h, [t])
   }
 
-  const collapsedHostnames = new Set<string>()
+  const collapsedDomains = new Set<string>()
   const categories: { hostname: string; trackers: Tracker[] }[] = []
-  for (const [hostname, group] of byHostname) {
+  for (const [domain, group] of byDomain) {
     if (group.length > CATEGORY_COLLAPSE_THRESHOLD) {
-      collapsedHostnames.add(hostname)
-      categories.push({ hostname, trackers: group })
+      collapsedDomains.add(domain)
+      categories.push({ hostname: domain, trackers: group })
     }
   }
 
-  const individuals = trackers.filter(t => !collapsedHostnames.has(getHostname(t.url)))
+  const individuals = trackers.filter(t => !collapsedDomains.has(canonicalDomain(t.url)))
 
   // Bucket individual trackers
   const erroredItems = individuals.filter(isErrored)

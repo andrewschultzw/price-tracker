@@ -5,10 +5,7 @@ import { getTrackers, getSparklines } from '../api'
 import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
 import useTitle from '../useTitle'
-
-function getHostname(url: string): string {
-  try { return new URL(url).hostname } catch { return '' }
-}
+import { canonicalDomain } from '../lib/domains'
 
 export default function Category() {
   const { domain: rawDomain } = useParams<{ domain: string }>()
@@ -21,7 +18,7 @@ export default function Category() {
   const load = async () => {
     try {
       const [data, sparks] = await Promise.all([getTrackers(), getSparklines()])
-      setTrackers(data.filter(t => getHostname(t.url) === domain))
+      setTrackers(data.filter(t => canonicalDomain(t.url) === domain))
       setSparklines(sparks)
     } catch (err) {
       console.error('Failed to load trackers', err)
