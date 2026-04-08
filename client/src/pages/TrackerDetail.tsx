@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Download } from 'lucide-react'
 import { getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker, getTrackerStats, getNotificationHistory } from '../api'
 import type { NotificationHistoryRow } from '../api'
 import type { Tracker, PriceRecord } from '../types'
@@ -225,9 +225,26 @@ export default function TrackerDetail() {
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-4 sm:p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 className="text-lg font-semibold">Price History</h2>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={`/api/trackers/${trackerId}/export?format=csv`}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-surface-hover text-text-muted hover:text-text transition-colors no-underline"
+              title="Download full price history as CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              CSV
+            </a>
+            <a
+              href={`/api/trackers/${trackerId}/export?format=json`}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-surface-hover text-text-muted hover:text-text transition-colors no-underline"
+              title="Download full price history as JSON"
+            >
+              <Download className="w-3.5 h-3.5" />
+              JSON
+            </a>
+            <div className="w-px h-5 bg-border mx-1" />
             {['24h', '7d', '30d', '90d'].map(r => (
               <button
                 key={r}
