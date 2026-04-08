@@ -36,6 +36,8 @@ export interface User {
   is_active: number;
   created_at: string;
   updated_at: string;
+  // Only present when returned from the admin users endpoint.
+  tracker_count?: number;
 }
 
 export interface InviteCode {

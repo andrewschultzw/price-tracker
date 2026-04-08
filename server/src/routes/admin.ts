@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import {
-  getAllUsers, getSafeUserById, updateUser, deleteUser,
+  getAllUsersForAdmin, getSafeUserById, updateUser, deleteUser,
   getActiveAdminCount, resetUserPassword,
   createInviteCode, getAllInviteCodes, deleteInviteCode,
   deleteAllRefreshTokensForUser,
@@ -12,7 +12,7 @@ const router = Router();
 
 // GET /api/admin/users
 router.get('/users', (_req: Request, res: Response) => {
-  res.json(getAllUsers());
+  res.json(getAllUsersForAdmin());
 });
 
 // PATCH /api/admin/users/:id

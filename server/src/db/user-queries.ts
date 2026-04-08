@@ -23,6 +23,10 @@ export interface SafeUser {
   updated_at: string;
 }
 
+export interface AdminUserRow extends SafeUser {
+  tracker_count: number;
+}
+
 export interface InviteCode {
   id: number;
   code: string;
@@ -75,6 +79,23 @@ export function getAllUsers(): SafeUser[] {
   return getDb().prepare(
     'SELECT id, email, display_name, role, is_active, created_at, updated_at FROM users ORDER BY created_at DESC'
   ).all() as SafeUser[];
+}
+
+/**
+ * Admin users list with per-user tracker count. Left join so users with
+ * zero trackers still appear (COUNT returns 0 rather than excluding them).
+ */
+export function getAllUsersForAdmin(): AdminUserRow[] {
+  return getDb().prepare(`
+    SELECT
+      u.id, u.email, u.display_name, u.role, u.is_active,
+      u.created_at, u.updated_at,
+      COUNT(t.id) as tracker_count
+    FROM users u
+    LEFT JOIN trackers t ON t.user_id = u.id
+    GROUP BY u.id
+    ORDER BY u.created_at DESC
+  `).all() as AdminUserRow[];
 }
 
 export function updateUser(id: number, data: Partial<{ role: string; is_active: number }>): SafeUser | undefined {

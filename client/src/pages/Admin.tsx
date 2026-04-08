@@ -91,6 +91,7 @@ export default function Admin() {
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Role</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium text-right">Trackers</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
@@ -112,6 +113,9 @@ export default function Admin() {
                     }`}>
                       {user.is_active ? 'Active' : 'Inactive'}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-right text-text font-medium tabular-nums">
+                    {user.tracker_count ?? 0}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
