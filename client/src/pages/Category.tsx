@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Folder } from 'lucide-react'
-import { getTrackers, getSparklines } from '../api'
+import { getTrackers, getSparklines, getSettings } from '../api'
 import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
 import useTitle from '../useTitle'
@@ -12,14 +12,16 @@ export default function Category() {
   const domain = rawDomain ? decodeURIComponent(rawDomain) : ''
   const [trackers, setTrackers] = useState<Tracker[]>([])
   const [sparklines, setSparklines] = useState<Record<string, number[]>>({})
+  const [notificationsConfigured, setNotificationsConfigured] = useState(true)
   const [loading, setLoading] = useState(true)
   useTitle(domain || 'Category')
 
   const load = async () => {
     try {
-      const [data, sparks] = await Promise.all([getTrackers(), getSparklines()])
+      const [data, sparks, settings] = await Promise.all([getTrackers(), getSparklines(), getSettings()])
       setTrackers(data.filter(t => canonicalDomain(t.url) === domain))
       setSparklines(sparks)
+      setNotificationsConfigured(!!settings.discord_webhook_url)
     } catch (err) {
       console.error('Failed to load trackers', err)
     } finally {
@@ -75,6 +77,7 @@ export default function Category() {
               tracker={tracker}
               sparklineData={sparklines[tracker.id] || []}
               onUpdate={load}
+              notificationsConfigured={notificationsConfigured}
             />
           ))}
         </div>

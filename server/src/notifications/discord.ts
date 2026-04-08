@@ -5,7 +5,20 @@ import { logger } from '../logger.js';
 
 export async function sendPriceAlert(tracker: Tracker, currentPrice: number, webhookUrl: string | null): Promise<boolean> {
   if (!webhookUrl) {
-    logger.debug({ trackerId: tracker.id }, 'No webhook URL configured for user, skipping notification');
+    // Warn (not debug) so silent-failure mode is visible in journalctl.
+    // This fires every time a below-threshold tracker is checked for a user
+    // with no webhook configured — a real problem the user almost certainly
+    // wants to know about.
+    logger.warn(
+      {
+        trackerId: tracker.id,
+        trackerName: tracker.name,
+        userId: tracker.user_id,
+        currentPrice,
+        thresholdPrice: tracker.threshold_price,
+      },
+      'Price is at/below threshold but no Discord webhook is configured — notification skipped',
+    );
     return false;
   }
 
@@ -62,7 +75,13 @@ export async function sendPriceAlert(tracker: Tracker, currentPrice: number, web
 }
 
 export async function sendErrorAlert(tracker: Tracker, error: string, webhookUrl: string | null): Promise<void> {
-  if (!webhookUrl) return;
+  if (!webhookUrl) {
+    logger.warn(
+      { trackerId: tracker.id, trackerName: tracker.name, userId: tracker.user_id },
+      'Tracker errored but no Discord webhook is configured — error alert skipped',
+    );
+    return;
+  }
 
   const embed = {
     title: `Tracker Error: ${tracker.name}`,

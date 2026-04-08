@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Clock, RefreshCw } from 'lucide-react'
+import { ExternalLink, Clock, RefreshCw, BellOff } from 'lucide-react'
 import type { Tracker } from '../types'
 import StatusBadge from './StatusBadge'
 import Sparkline from './Sparkline'
@@ -29,9 +29,10 @@ interface Props {
   tracker: Tracker
   sparklineData: number[]
   onUpdate: () => void
+  notificationsConfigured?: boolean
 }
 
-export default function TrackerCard({ tracker, sparklineData, onUpdate }: Props) {
+export default function TrackerCard({ tracker, sparklineData, onUpdate, notificationsConfigured = true }: Props) {
   const [checking, setChecking] = useState(false)
 
   const handleCheck = async (e: React.MouseEvent) => {
@@ -84,8 +85,19 @@ export default function TrackerCard({ tracker, sparklineData, onUpdate }: Props)
             {tracker.last_price != null ? `$${tracker.last_price.toFixed(2)}` : '--'}
           </div>
           {tracker.threshold_price && (
-            <div className="text-xs text-text-muted mt-0.5">
-              Target: <span className="text-warning">${tracker.threshold_price.toFixed(2)}</span>
+            <div className="text-xs text-text-muted mt-0.5 flex items-center gap-2 flex-wrap">
+              <span>
+                Target: <span className="text-warning">${tracker.threshold_price.toFixed(2)}</span>
+              </span>
+              {belowThreshold && !notificationsConfigured && (
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/10 rounded-full px-2 py-0.5"
+                  title="This tracker is below its target price but no Discord webhook is configured. Set one in Settings."
+                >
+                  <BellOff className="w-3 h-3" />
+                  notify off
+                </span>
+              )}
             </div>
           )}
         </div>
