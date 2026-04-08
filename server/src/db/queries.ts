@@ -167,6 +167,57 @@ export function getRecentPricesForAllTrackers(userId: number, limit: number = 10
   return result;
 }
 
+export interface TrackerStat {
+  sparkline: number[];
+  min_price: number | null;
+  min_price_at: string | null;
+}
+
+/**
+ * Combined per-tracker stats powering the Dashboard card visuals: the
+ * recent-price sparkline and the all-time low (with timestamp). Merged into
+ * one query pair so the Dashboard doesn't need a separate round-trip.
+ */
+export function getTrackerStats(userId: number, sparklineLimit: number = 10): Record<number, TrackerStat> {
+  const db = getDb();
+
+  const sparkRows = db.prepare(`
+    SELECT ph.tracker_id, ph.price FROM (
+      SELECT tracker_id, price, ROW_NUMBER() OVER (PARTITION BY tracker_id ORDER BY scraped_at DESC) as rn
+      FROM price_history
+      WHERE tracker_id IN (SELECT id FROM trackers WHERE user_id = ?)
+    ) ph WHERE ph.rn <= ?
+    ORDER BY ph.tracker_id, ph.rn DESC
+  `).all(userId, sparklineLimit) as { tracker_id: number; price: number }[];
+
+  // All-time low per tracker, plus the earliest timestamp at which that low
+  // was reached. Window function picks the row with the smallest price per
+  // tracker, ties broken by earliest scrape time.
+  const lowRows = db.prepare(`
+    SELECT tracker_id, min_price, min_price_at FROM (
+      SELECT
+        tracker_id,
+        price as min_price,
+        scraped_at as min_price_at,
+        ROW_NUMBER() OVER (PARTITION BY tracker_id ORDER BY price ASC, scraped_at ASC) as rn
+      FROM price_history
+      WHERE tracker_id IN (SELECT id FROM trackers WHERE user_id = ?)
+    ) WHERE rn = 1
+  `).all(userId) as { tracker_id: number; min_price: number; min_price_at: string }[];
+
+  const result: Record<number, TrackerStat> = {};
+  for (const row of sparkRows) {
+    if (!result[row.tracker_id]) result[row.tracker_id] = { sparkline: [], min_price: null, min_price_at: null };
+    result[row.tracker_id].sparkline.push(row.price);
+  }
+  for (const row of lowRows) {
+    if (!result[row.tracker_id]) result[row.tracker_id] = { sparkline: [], min_price: null, min_price_at: null };
+    result[row.tracker_id].min_price = row.min_price;
+    result[row.tracker_id].min_price_at = row.min_price_at;
+  }
+  return result;
+}
+
 // --- Notifications ---
 
 export function addNotification(trackerId: number, price: number, thresholdPrice: number): NotificationRecord {

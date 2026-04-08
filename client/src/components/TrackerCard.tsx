@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Clock, RefreshCw, BellOff } from 'lucide-react'
+import { ExternalLink, Clock, RefreshCw, BellOff, TrendingDown } from 'lucide-react'
 import type { Tracker } from '../types'
 import StatusBadge from './StatusBadge'
 import Sparkline from './Sparkline'
@@ -28,11 +28,12 @@ function getFaviconUrl(url: string): string {
 interface Props {
   tracker: Tracker
   sparklineData: number[]
+  minPrice?: number | null
   onUpdate: () => void
   notificationsConfigured?: boolean
 }
 
-export default function TrackerCard({ tracker, sparklineData, onUpdate, notificationsConfigured = true }: Props) {
+export default function TrackerCard({ tracker, sparklineData, minPrice = null, onUpdate, notificationsConfigured = true }: Props) {
   const [checking, setChecking] = useState(false)
 
   const handleCheck = async (e: React.MouseEvent) => {
@@ -50,6 +51,11 @@ export default function TrackerCard({ tracker, sparklineData, onUpdate, notifica
   }
 
   const belowThreshold = tracker.threshold_price && tracker.last_price && tracker.last_price <= tracker.threshold_price
+  // A tracker is "at its low" when the current price equals the historical
+  // minimum (within a cent to avoid float nonsense). This is the signal that
+  // the current price is an actual historical deal, not just below threshold.
+  const atHistoricalLow =
+    minPrice != null && tracker.last_price != null && Math.abs(tracker.last_price - minPrice) < 0.01
 
   return (
     <Link
@@ -84,22 +90,38 @@ export default function TrackerCard({ tracker, sparklineData, onUpdate, notifica
           <div className={`text-3xl font-bold tracking-tight ${belowThreshold ? 'text-success' : 'text-text'}`}>
             {tracker.last_price != null ? `$${tracker.last_price.toFixed(2)}` : '--'}
           </div>
-          {tracker.threshold_price && (
-            <div className="text-xs text-text-muted mt-0.5 flex items-center gap-2 flex-wrap">
+          <div className="text-xs text-text-muted mt-0.5 flex items-center gap-2 flex-wrap">
+            {tracker.threshold_price && (
               <span>
                 Target: <span className="text-warning">${tracker.threshold_price.toFixed(2)}</span>
               </span>
-              {belowThreshold && !notificationsConfigured && (
-                <span
-                  className="inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/10 rounded-full px-2 py-0.5"
-                  title="This tracker is below its target price but no Discord webhook is configured. Set one in Settings."
-                >
-                  <BellOff className="w-3 h-3" />
-                  notify off
+            )}
+            {minPrice != null && (
+              <span title="All-time low recorded for this tracker">
+                Low: <span className={atHistoricalLow ? 'text-success font-semibold' : 'text-text'}>
+                  ${minPrice.toFixed(2)}
                 </span>
-              )}
-            </div>
-          )}
+              </span>
+            )}
+            {atHistoricalLow && (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-success bg-success/10 rounded-full px-2 py-0.5"
+                title="Current price matches the all-time low"
+              >
+                <TrendingDown className="w-3 h-3" />
+                at low
+              </span>
+            )}
+            {belowThreshold && !notificationsConfigured && (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/10 rounded-full px-2 py-0.5"
+                title="This tracker is below its target price but no notification channel is configured. Set one up in Settings."
+              >
+                <BellOff className="w-3 h-3" />
+                notify off
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex flex-col items-end gap-2">
           <Sparkline data={sparklineData} className="opacity-60 group-hover:opacity-100 transition-opacity" />

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { getAllTrackers, getTrackerById, createTracker, updateTracker, deleteTracker, getRecentPricesForAllTrackers } from '../db/queries.js';
+import { getAllTrackers, getTrackerById, createTracker, updateTracker, deleteTracker, getRecentPricesForAllTrackers, getTrackerStats } from '../db/queries.js';
 import { checkTracker } from '../scheduler/cron.js';
 import { extractPrice } from '../scraper/extractor.js';
 
@@ -30,6 +30,11 @@ router.get('/', (req: Request, res: Response) => {
 
 router.get('/sparklines', (req: Request, res: Response) => {
   const data = getRecentPricesForAllTrackers(req.user!.userId, 10);
+  res.json(data);
+});
+
+router.get('/stats', (req: Request, res: Response) => {
+  const data = getTrackerStats(req.user!.userId, 10);
   res.json(data);
 });
 

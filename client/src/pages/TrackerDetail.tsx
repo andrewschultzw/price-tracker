@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil } from 'lucide-react'
-import { getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker } from '../api'
+import { getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker, getTrackerStats } from '../api'
 import type { Tracker, PriceRecord } from '../types'
 import StatusBadge from '../components/StatusBadge'
 import PriceChart from '../components/PriceChart'
@@ -12,6 +12,7 @@ export default function TrackerDetail() {
   const navigate = useNavigate()
   const [tracker, setTracker] = useState<Tracker | null>(null)
   const [prices, setPrices] = useState<PriceRecord[]>([])
+  const [allTimeLow, setAllTimeLow] = useState<{ price: number; at: string } | null>(null)
   const [range, setRange] = useState('30d')
   const [loading, setLoading] = useState(true)
   const [checking, setChecking] = useState(false)
@@ -25,12 +26,19 @@ export default function TrackerDetail() {
 
   const load = async () => {
     try {
-      const [t, p] = await Promise.all([
+      const [t, p, stats] = await Promise.all([
         getTracker(trackerId),
         getPriceHistory(trackerId, range),
+        getTrackerStats(),
       ])
       setTracker(t)
       setPrices(p)
+      const stat = stats[trackerId]
+      if (stat?.min_price != null && stat?.min_price_at != null) {
+        setAllTimeLow({ price: stat.min_price, at: stat.min_price_at })
+      } else {
+        setAllTimeLow(null)
+      }
     } catch {
       navigate('/')
     } finally {
@@ -119,7 +127,7 @@ export default function TrackerDetail() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-4">
           <div className="bg-bg rounded-lg p-3">
             <div className="text-xs text-text-muted mb-1">Current Price</div>
             <div className="text-xl font-bold">
@@ -162,6 +170,17 @@ export default function TrackerDetail() {
                 {tracker.check_interval_minutes >= 60
                   ? `${tracker.check_interval_minutes / 60}h`
                   : `${tracker.check_interval_minutes}m`}
+              </div>
+            )}
+          </div>
+          <div className="bg-bg rounded-lg p-3">
+            <div className="text-xs text-text-muted mb-1">All-Time Low</div>
+            <div className="text-xl font-bold text-success">
+              {allTimeLow ? `$${allTimeLow.price.toFixed(2)}` : '--'}
+            </div>
+            {allTimeLow && (
+              <div className="text-[10px] text-text-muted mt-0.5">
+                {new Date(allTimeLow.at.includes('Z') ? allTimeLow.at : allTimeLow.at + 'Z').toLocaleDateString()}
               </div>
             )}
           </div>

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Folder } from 'lucide-react'
-import { getTrackers, getSparklines, getSettings } from '../api'
+import { getTrackers, getTrackerStats, getSettings } from '../api'
+import type { TrackerStat } from '../api'
 import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
 import useTitle from '../useTitle'
@@ -11,16 +12,16 @@ export default function Category() {
   const { domain: rawDomain } = useParams<{ domain: string }>()
   const domain = rawDomain ? decodeURIComponent(rawDomain) : ''
   const [trackers, setTrackers] = useState<Tracker[]>([])
-  const [sparklines, setSparklines] = useState<Record<string, number[]>>({})
+  const [stats, setStats] = useState<Record<string, TrackerStat>>({})
   const [notificationsConfigured, setNotificationsConfigured] = useState(true)
   const [loading, setLoading] = useState(true)
   useTitle(domain || 'Category')
 
   const load = async () => {
     try {
-      const [data, sparks, settings] = await Promise.all([getTrackers(), getSparklines(), getSettings()])
+      const [data, trackerStats, settings] = await Promise.all([getTrackers(), getTrackerStats(), getSettings()])
       setTrackers(data.filter(t => canonicalDomain(t.url) === domain))
-      setSparklines(sparks)
+      setStats(trackerStats)
       setNotificationsConfigured(
         !!(settings.discord_webhook_url || settings.ntfy_url || settings.generic_webhook_url),
       )
@@ -77,7 +78,8 @@ export default function Category() {
             <TrackerCard
               key={tracker.id}
               tracker={tracker}
-              sparklineData={sparklines[tracker.id] || []}
+              sparklineData={stats[tracker.id]?.sparkline || []}
+              minPrice={stats[tracker.id]?.min_price ?? null}
               onUpdate={load}
               notificationsConfigured={notificationsConfigured}
             />

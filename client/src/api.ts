@@ -107,6 +107,13 @@ export const getPriceHistory = (id: number, range?: string) =>
   request<PriceRecord[]>(`/trackers/${id}/prices${range ? `?range=${range}` : ''}`);
 export const getSparklines = () =>
   request<Record<string, number[]>>('/trackers/sparklines');
+export interface TrackerStat {
+  sparkline: number[]
+  min_price: number | null
+  min_price_at: string | null
+}
+export const getTrackerStats = () =>
+  request<Record<string, TrackerStat>>('/trackers/stats');
 
 // Settings
 export const getSettings = () => request<Record<string, string>>('/settings');

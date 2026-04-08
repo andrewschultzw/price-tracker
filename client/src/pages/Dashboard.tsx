@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Package } from 'lucide-react'
-import { getTrackers, getSparklines, getSettings } from '../api'
+import { getTrackers, getTrackerStats, getSettings } from '../api'
+import type { TrackerStat } from '../api'
 import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
 import CategoryCard from '../components/CategoryCard'
@@ -30,16 +31,16 @@ type DashboardItem =
 
 export default function Dashboard() {
   const [trackers, setTrackers] = useState<Tracker[]>([])
-  const [sparklines, setSparklines] = useState<Record<string, number[]>>({})
+  const [stats, setStats] = useState<Record<string, TrackerStat>>({})
   const [notificationsConfigured, setNotificationsConfigured] = useState(true)
   const [loading, setLoading] = useState(true)
   useTitle('Dashboard')
 
   const load = async () => {
     try {
-      const [data, sparks, settings] = await Promise.all([getTrackers(), getSparklines(), getSettings()])
+      const [data, trackerStats, settings] = await Promise.all([getTrackers(), getTrackerStats(), getSettings()])
       setTrackers(data)
-      setSparklines(sparks)
+      setStats(trackerStats)
       setNotificationsConfigured(
         !!(settings.discord_webhook_url || settings.ntfy_url || settings.generic_webhook_url),
       )
@@ -161,7 +162,8 @@ export default function Dashboard() {
             <TrackerCard
               key={`t-${item.tracker.id}`}
               tracker={item.tracker}
-              sparklineData={sparklines[item.tracker.id] || []}
+              sparklineData={stats[item.tracker.id]?.sparkline || []}
+              minPrice={stats[item.tracker.id]?.min_price ?? null}
               onUpdate={load}
               notificationsConfigured={notificationsConfigured}
             />
