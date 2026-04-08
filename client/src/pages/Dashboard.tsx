@@ -48,9 +48,18 @@ export default function Dashboard() {
     )
   }
 
-  const active = trackers.filter(t => t.status === 'active')
-  const paused = trackers.filter(t => t.status === 'paused')
-  const errored = trackers.filter(t => t.status === 'error')
+  // A tracker counts as "errored" for sort purposes if either:
+  //   - status flipped to 'error' (N consecutive failures), OR
+  //   - the most recent scrape failed (last_error set), even if status is still 'active'
+  // This surfaces stale-link / scrape failures immediately instead of waiting for
+  // the consecutive-failure threshold.
+  const errored = trackers.filter(
+    t => t.status === 'error' || (t.last_error != null && t.consecutive_failures > 0),
+  )
+  const erroredIds = new Set(errored.map(t => t.id))
+  const remaining = trackers.filter(t => !erroredIds.has(t.id))
+  const paused = remaining.filter(t => t.status === 'paused')
+  const active = remaining.filter(t => t.status === 'active')
   const belowTarget = active.filter(
     t => t.threshold_price != null && t.last_price != null && t.last_price <= t.threshold_price,
   )
