@@ -8,26 +8,7 @@ import TrackerCard from '../components/TrackerCard'
 import CategoryCard from '../components/CategoryCard'
 import StatCards from '../components/StatCards'
 import useTitle from '../useTitle'
-import { canonicalDomain } from '../lib/domains'
-
-const CATEGORY_COLLAPSE_THRESHOLD = 10
-
-function isErrored(t: Tracker): boolean {
-  return t.status === 'error' || (t.last_error != null && t.consecutive_failures > 0)
-}
-
-function isBelowTarget(t: Tracker): boolean {
-  return (
-    t.status === 'active' &&
-    t.threshold_price != null &&
-    t.last_price != null &&
-    t.last_price <= t.threshold_price
-  )
-}
-
-type DashboardItem =
-  | { kind: 'tracker'; tracker: Tracker }
-  | { kind: 'category'; hostname: string; trackers: Tracker[] }
+import { buildDashboardLayout } from '../lib/dashboard-sort'
 
 export default function Dashboard() {
   const [trackers, setTrackers] = useState<Tracker[]>([])
@@ -74,65 +55,7 @@ export default function Dashboard() {
     )
   }
 
-  // Group by hostname; any domain with more than CATEGORY_COLLAPSE_THRESHOLD
-  // trackers collapses into a single category card. Categories are placed into
-  // the sort bucket matching their worst contained state (errored > below-target
-  // > active > paused) so problems and deals still surface at the top even when
-  // the underlying items are hidden behind a category.
-  const byDomain = new Map<string, Tracker[]>()
-  for (const t of trackers) {
-    const h = canonicalDomain(t.url)
-    if (!h) continue
-    const arr = byDomain.get(h)
-    if (arr) arr.push(t); else byDomain.set(h, [t])
-  }
-
-  const collapsedDomains = new Set<string>()
-  const categories: { hostname: string; trackers: Tracker[] }[] = []
-  for (const [domain, group] of byDomain) {
-    if (group.length > CATEGORY_COLLAPSE_THRESHOLD) {
-      collapsedDomains.add(domain)
-      categories.push({ hostname: domain, trackers: group })
-    }
-  }
-
-  const individuals = trackers.filter(t => !collapsedDomains.has(canonicalDomain(t.url)))
-
-  // Bucket individual trackers
-  const erroredItems = individuals.filter(isErrored)
-  const erroredIds = new Set(erroredItems.map(t => t.id))
-  const remaining = individuals.filter(t => !erroredIds.has(t.id))
-  const pausedItems = remaining.filter(t => t.status === 'paused')
-  const activeItems = remaining.filter(t => t.status === 'active')
-  const belowTargetItems = activeItems.filter(isBelowTarget)
-  const activeOtherItems = activeItems.filter(t => !belowTargetItems.includes(t))
-
-  // Bucket categories by worst contained state
-  const categoryBuckets = { errored: [] as typeof categories, belowTarget: [] as typeof categories, active: [] as typeof categories, paused: [] as typeof categories }
-  for (const cat of categories) {
-    if (cat.trackers.some(isErrored)) categoryBuckets.errored.push(cat)
-    else if (cat.trackers.some(isBelowTarget)) categoryBuckets.belowTarget.push(cat)
-    else if (cat.trackers.some(t => t.status === 'active')) categoryBuckets.active.push(cat)
-    else categoryBuckets.paused.push(cat)
-  }
-
-  const toTrackerItem = (tracker: Tracker): DashboardItem => ({ kind: 'tracker', tracker })
-  const toCategoryItem = (c: { hostname: string; trackers: Tracker[] }): DashboardItem => ({ kind: 'category', hostname: c.hostname, trackers: c.trackers })
-
-  const items: DashboardItem[] = [
-    ...categoryBuckets.errored.map(toCategoryItem),
-    ...erroredItems.map(toTrackerItem),
-    ...categoryBuckets.belowTarget.map(toCategoryItem),
-    ...belowTargetItems.map(toTrackerItem),
-    ...categoryBuckets.active.map(toCategoryItem),
-    ...activeOtherItems.map(toTrackerItem),
-    ...categoryBuckets.paused.map(toCategoryItem),
-    ...pausedItems.map(toTrackerItem),
-  ]
-
-  // Used only for the header summary counts
-  const totalErrored = erroredItems.length + categories.reduce((n, c) => n + c.trackers.filter(isErrored).length, 0)
-  const totalActive = trackers.filter(t => t.status === 'active').length
+  const { items, totalErrored, totalActive } = buildDashboardLayout(trackers)
 
   return (
     <div>

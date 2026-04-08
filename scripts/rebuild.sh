@@ -21,11 +21,21 @@ fi
 echo "=== Installing server dependencies ==="
 cd server
 npm ci --production=false
+
+echo "=== Running server tests ==="
+npm test
+
+echo "=== Building server ==="
 npm run build
 
 echo "=== Installing client dependencies ==="
 cd ../client
 npm ci
+
+echo "=== Running client tests ==="
+npm test
+
+echo "=== Building client ==="
 npm run build
 
 echo "=== Restarting service ==="
