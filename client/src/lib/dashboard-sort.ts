@@ -4,7 +4,16 @@ import { canonicalDomain } from './domains'
 export const CATEGORY_COLLAPSE_THRESHOLD = 10
 
 export function isErrored(t: Tracker): boolean {
-  return t.status === 'error' || (t.last_error != null && t.consecutive_failures > 0)
+  // A tracker counts as errored if:
+  //   - aggregated status flipped to 'error' (all sellers errored), OR
+  //   - any individual seller has a current scrape error (exposed via
+  //     errored_seller_count from the admin query), OR
+  //   - legacy: last_error set with consecutive_failures > 0 (pre-multi-
+  //     seller rows, still the fallback for single-seller trackers where
+  //     the aggregate hasn't flipped yet).
+  if (t.status === 'error') return true
+  if ((t.errored_seller_count ?? 0) > 0) return true
+  return t.last_error != null && t.consecutive_failures > 0
 }
 
 export function isBelowTarget(t: Tracker): boolean {

@@ -12,6 +12,27 @@ export interface Tracker {
   status: 'active' | 'paused' | 'error';
   created_at: string;
   updated_at: string;
+  // Aggregates populated by the admin + user tracker list endpoints.
+  // Optional because single-tracker endpoints (GET /trackers/:id) may not
+  // include them.
+  seller_count?: number;
+  errored_seller_count?: number;
+  best_seller_url?: string | null;
+}
+
+// Per-seller row (one row per URL under a tracker).
+export interface TrackerUrl {
+  id: number;
+  tracker_id: number;
+  url: string;
+  position: number;
+  last_price: number | null;
+  last_checked_at: string | null;
+  last_error: string | null;
+  consecutive_failures: number;
+  status: 'active' | 'paused' | 'error';
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PriceRecord {

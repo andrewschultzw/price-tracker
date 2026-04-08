@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getPriceHistory, getTrackerById } from '../db/queries.js';
+import { getPriceHistory, getPriceHistoryWithSeller, getTrackerById } from '../db/queries.js';
 import { toCsv, slugify } from '../util/csv.js';
 
 const router = Router();
@@ -29,8 +29,10 @@ router.get('/:id/export', (req: Request, res: Response) => {
   }
 
   // Full history, no range filter — the point of export is a complete
-  // dataset for analysis / migration, not a dashboard view.
-  const prices = getPriceHistory(tracker.id);
+  // dataset for analysis / migration, not a dashboard view. The WithSeller
+  // variant joins tracker_urls so each row carries which retailer it came
+  // from (historical pre-migration rows may have null seller_url).
+  const prices = getPriceHistoryWithSeller(tracker.id);
   const slug = slugify(tracker.name);
 
   if (format === 'json') {
@@ -53,8 +55,8 @@ router.get('/:id/export', (req: Request, res: Response) => {
   }
 
   const csv = toCsv(
-    ['scraped_at', 'price', 'currency'],
-    prices.map(p => [p.scraped_at, p.price, p.currency]),
+    ['scraped_at', 'seller_url', 'price', 'currency'],
+    prices.map(p => [p.scraped_at, p.seller_url, p.price, p.currency]),
   );
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader(

@@ -86,6 +86,7 @@ export default function NotificationsPage() {
                 <tr className="text-text-muted text-xs">
                   <th className="text-left px-4 py-3 font-medium">Sent</th>
                   <th className="text-left px-4 py-3 font-medium">Tracker</th>
+                  <th className="text-left px-4 py-3 font-medium">Seller</th>
                   <th className="text-left px-4 py-3 font-medium">Channel</th>
                   <th className="text-right px-4 py-3 font-medium">Price</th>
                   <th className="text-right px-4 py-3 font-medium">Target</th>
@@ -95,6 +96,10 @@ export default function NotificationsPage() {
               <tbody>
                 {rows.map(r => {
                   const savings = r.threshold_price - r.price
+                  let sellerHost = '—'
+                  if (r.seller_url) {
+                    try { sellerHost = new URL(r.seller_url).hostname.replace(/^www\./, '') } catch { /* keep dash */ }
+                  }
                   return (
                     <tr key={r.id} className="border-b border-border/50 hover:bg-surface-hover transition-colors">
                       <td className="px-4 py-3 text-text-muted whitespace-nowrap">{formatDateTime(r.sent_at)}</td>
@@ -103,6 +108,7 @@ export default function NotificationsPage() {
                           {r.tracker_name}
                         </Link>
                       </td>
+                      <td className="px-4 py-3 text-text-muted">{sellerHost}</td>
                       <td className="px-4 py-3"><ChannelBadge channel={r.channel} /></td>
                       <td className="px-4 py-3 text-right font-semibold">${r.price.toFixed(2)}</td>
                       <td className="px-4 py-3 text-right text-text-muted">${r.threshold_price.toFixed(2)}</td>

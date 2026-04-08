@@ -119,8 +119,10 @@ export const getTrackerStats = () =>
 export interface NotificationHistoryRow {
   id: number
   tracker_id: number
+  tracker_url_id: number | null
   tracker_name: string
   tracker_url: string
+  seller_url: string | null
   price: number
   threshold_price: number
   sent_at: string
@@ -133,6 +135,17 @@ export const getNotificationHistory = (trackerId?: number, limit?: number) => {
   const qs = params.toString()
   return request<NotificationHistoryRow[]>(`/notifications${qs ? '?' + qs : ''}`)
 }
+
+// Seller URLs (tracker_urls)
+import type { TrackerUrl } from './types'
+export const getTrackerUrls = (trackerId: number) =>
+  request<TrackerUrl[]>(`/trackers/${trackerId}/urls`);
+export const addTrackerUrl = (trackerId: number, url: string) =>
+  request<TrackerUrl[]>(`/trackers/${trackerId}/urls`, {
+    method: 'POST', body: JSON.stringify({ url }),
+  });
+export const deleteTrackerUrl = (trackerId: number, urlId: number) =>
+  request<TrackerUrl[]>(`/trackers/${trackerId}/urls/${urlId}`, { method: 'DELETE' });
 
 // Settings
 export const getSettings = () => request<Record<string, string>>('/settings');

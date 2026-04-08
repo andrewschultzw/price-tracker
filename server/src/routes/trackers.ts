@@ -1,7 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { getAllTrackers, getTrackerById, createTracker, updateTracker, deleteTracker, getRecentPricesForAllTrackers, getTrackerStats } from '../db/queries.js';
-import { checkTracker } from '../scheduler/cron.js';
+import {
+  getAllTrackers, getTrackerById, createTracker, updateTracker, deleteTracker,
+  getRecentPricesForAllTrackers, getTrackerStats,
+  getTrackerUrlsForTracker, addTrackerUrl, deleteTrackerUrl, refreshTrackerAggregates,
+} from '../db/queries.js';
+import { checkTracker, checkTrackerUrl } from '../scheduler/cron.js';
 import { extractPrice } from '../scraper/extractor.js';
 
 const router = Router();
@@ -95,6 +99,69 @@ router.post('/:id/check', async (req: Request, res: Response) => {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: msg });
   }
+});
+
+// --- Seller URLs (tracker_urls) ---
+
+const addUrlSchema = z.object({
+  url: z.string().url(),
+});
+
+// List sellers for a tracker
+router.get('/:id/urls', (req: Request, res: Response) => {
+  const tracker = getTrackerById(Number(req.params.id), req.user!.userId);
+  if (!tracker) {
+    res.status(404).json({ error: 'Tracker not found' });
+    return;
+  }
+  res.json(getTrackerUrlsForTracker(tracker.id));
+});
+
+// Add a seller URL to a tracker
+router.post('/:id/urls', async (req: Request, res: Response) => {
+  const tracker = getTrackerById(Number(req.params.id), req.user!.userId);
+  if (!tracker) {
+    res.status(404).json({ error: 'Tracker not found' });
+    return;
+  }
+  const parsed = addUrlSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const newSeller = addTrackerUrl(tracker.id, parsed.data.url);
+
+  // Scrape immediately so the user sees a price right away instead of
+  // waiting for the next cron tick. Fire-and-forget on failure — the
+  // scheduler will retry on its normal cadence.
+  try {
+    await checkTrackerUrl(newSeller.id);
+  } catch (err) {
+    // Don't fail the request — the seller is created, just unpopulated.
+    // The scheduler will pick it up.
+    void err;
+  }
+
+  const updated = getTrackerUrlsForTracker(tracker.id);
+  res.status(201).json(updated);
+});
+
+// Delete a seller URL from a tracker
+router.delete('/:id/urls/:urlId', (req: Request, res: Response) => {
+  const tracker = getTrackerById(Number(req.params.id), req.user!.userId);
+  if (!tracker) {
+    res.status(404).json({ error: 'Tracker not found' });
+    return;
+  }
+  const result = deleteTrackerUrl(Number(req.params.urlId));
+  if (!result.deleted) {
+    res.status(400).json({ error: result.error || 'Could not delete seller' });
+    return;
+  }
+  // Re-aggregate — if we just deleted the seller that had the lowest
+  // price, the tracker's displayed price needs to update.
+  refreshTrackerAggregates(tracker.id);
+  res.json(getTrackerUrlsForTracker(tracker.id));
 });
 
 // Test scrape without saving
