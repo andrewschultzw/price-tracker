@@ -9,6 +9,11 @@ export const config = {
   notificationCooldownHours: 6,
   maxConsecutiveFailures: 3,
   maxConcurrentScrapes: 2,
+  // Scrape retry policy. We retry the page fetch on transient failures
+  // (network errors, timeouts, 5xx) but not on deterministic ones (4xx,
+  // extraction failures). See server/src/scraper/retry.ts.
+  scrapeMaxRetries: parseInt(process.env.SCRAPE_MAX_RETRIES || '2', 10),
+  scrapeRetryBaseMs: parseInt(process.env.SCRAPE_RETRY_BASE_MS || '1000', 10),
   // Auth
   jwtSecret: process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'dev-secret-do-not-use-in-prod'),
   jwtAccessExpirySeconds: 900,       // 15 minutes

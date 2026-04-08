@@ -5,6 +5,8 @@ import { extractFromOpenGraph } from './strategies/opengraph.js';
 import { extractFromCssPatterns } from './strategies/css-patterns.js';
 import { extractFromRegex } from './strategies/regex.js';
 import { extractWithCssSelector } from './strategies/css-selector.js';
+import { withRetry, ScrapeError } from './retry.js';
+import { config } from '../config.js';
 import { logger } from '../logger.js';
 
 export interface ExtractionResult {
@@ -61,8 +63,24 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
     logger.debug({ url }, 'User CSS selector failed, falling back to pipeline');
   }
 
-  // Fetch page content once, run HTML-based strategies
-  const html = await fetchPageContent(url);
+  // Fetch page content with retry/backoff on transient failures. The
+  // classifier only retries ScrapeErrors marked retryable (network errors,
+  // timeouts, 5xx) plus unknown error types (browser context crashes and
+  // similar). Deterministic failures like 4xx fail fast.
+  const html = await withRetry(
+    () => fetchPageContent(url),
+    {
+      maxRetries: config.scrapeMaxRetries,
+      baseDelayMs: config.scrapeRetryBaseMs,
+      isRetryable: (err) => (err instanceof ScrapeError ? err.retryable : true),
+      onRetry: (err, attempt, delayMs) => {
+        logger.warn(
+          { url, attempt, delayMs, err: err instanceof Error ? err.message : String(err) },
+          'Retrying scrape after transient failure',
+        );
+      },
+    },
+  );
 
   const strategies: { name: string; fn: () => number | null }[] = [
     { name: 'json-ld', fn: () => extractFromJsonLd(html) },
