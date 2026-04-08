@@ -3,7 +3,9 @@ import { Folder, AlertCircle, TrendingDown } from 'lucide-react'
 import type { Tracker } from '../types'
 
 function getFaviconUrl(hostname: string): string {
-  return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`
+  // Local proxy so we don't leak the user's retailer list to a third party
+  // (see server/src/routes/favicon.ts).
+  return `/api/favicon?domain=${encodeURIComponent(hostname)}`
 }
 
 interface Props {

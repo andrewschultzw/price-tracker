@@ -13,6 +13,7 @@ import trackerRoutes from './routes/trackers.js';
 import priceRoutes from './routes/prices.js';
 import settingsRoutes from './routes/settings.js';
 import notificationRoutes from './routes/notifications.js';
+import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { closeBrowser } from './scraper/browser.js';
 import { getUserCount, deleteExpiredRefreshTokens } from './db/user-queries.js';
@@ -58,6 +59,10 @@ app.use('/api/auth/register', authLimiter);
 
 // Auth routes (public - middleware applied per-route inside)
 app.use('/api/auth', authRoutes);
+
+// Public favicon proxy (intentionally no auth — favicons aren't sensitive
+// and unauthenticated <img> tags are simpler than cookie-gated assets).
+app.use('/api/favicon', faviconRouter);
 
 // Protected API routes
 app.use('/api/trackers', authMiddleware, trackerRoutes);

@@ -22,7 +22,9 @@ function getHostname(url: string): string {
 
 function getFaviconUrl(url: string): string {
   const hostname = getHostname(url)
-  return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`
+  // Local proxy so we don't leak the user's retailer list to a third party
+  // (see server/src/routes/favicon.ts).
+  return `/api/favicon?domain=${encodeURIComponent(hostname)}`
 }
 
 interface Props {
