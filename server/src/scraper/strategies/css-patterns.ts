@@ -40,12 +40,38 @@ const COMMON_SELECTORS = [
 ];
 
 /**
- * Direct regex for Amazon's "offscreen" price span — the most reliable
- * source of the full price on amazon.com. Amazon populates this span for
- * screen reader accessibility; it always contains the complete price text
- * with currency symbol and full decimals (e.g. "$53.99"), even when the
- * visual markup uses the split a-price-whole / a-price-fraction pattern
- * that naive class extraction can't reassemble correctly.
+ * Direct regex for Amazon's authoritative "price to pay" accessibility
+ * label. This is the SINGLE most reliable source of the main buy box
+ * price on amazon.com and should be tried before anything else.
+ *
+ * Why this beats `.a-offscreen`: on a product with multiple sellers in
+ * the buy box accordion, Amazon renders multiple copies of
+ * `apex-pricetopay-value` — one per buy option. The first `.a-offscreen`
+ * span on the page frequently belongs to the cheapest third-party seller
+ * in the "Other Sellers" tooltip or the first accordion row, NOT the
+ * main price Amazon displays in the browser. The
+ * `apex-pricetopay-accessibility-label` id is a singleton that Amazon
+ * uses explicitly for its screen-reader "the price you pay" label, and
+ * it always points at the authoritative main-line price.
+ *
+ * Example markup:
+ *   <span id="apex-pricetopay-accessibility-label" class="aok-offscreen"> $72.00 </span>
+ *
+ * Discovered 2026-04-09 while diagnosing tracker #20 (Husq Chainsaw
+ * Case) scraping $53.99 from the "Other Sellers" tooltip when the
+ * actual buy box price was $72.00.
+ */
+const AMAZON_PRICETOPAY_ACCESSIBILITY_RE =
+  /<span[^>]*id=["']apex-pricetopay-accessibility-label["'][^>]*>([^<]+)<\/span>/i;
+
+/**
+ * Fallback regex for Amazon's generic "offscreen" price span. Used when
+ * the accessibility label isn't present (older Amazon layouts, search
+ * result cards, non-product pages, short-link preview pages). This
+ * matches the FIRST `.a-offscreen` span on the page, which is correct
+ * for the majority of Amazon pages with a single buy option but can
+ * pick up a non-main price on multi-seller accordion layouts — hence
+ * the accessibility-label-first strategy above.
  *
  * Example markup:
  *   <span class="a-offscreen">$53.99</span>
@@ -53,8 +79,17 @@ const COMMON_SELECTORS = [
 const AMAZON_OFFSCREEN_RE = /<span[^>]*class=["']a-offscreen["'][^>]*>([^<]+)<\/span>/i;
 
 export function extractFromCssPatterns(html: string): number | null {
-  // Amazon: try the offscreen span first. If present, this is always the
-  // right answer and beats every other strategy in the pipeline.
+  // Amazon: try the authoritative "price to pay" accessibility label
+  // first. On multi-seller buy box layouts this is the only reliable
+  // source of the main price.
+  const priceToPayMatch = AMAZON_PRICETOPAY_ACCESSIBILITY_RE.exec(html);
+  if (priceToPayMatch) {
+    const parsed = parsePrice(priceToPayMatch[1]);
+    if (parsed !== null) return parsed;
+  }
+
+  // Amazon fallback: the generic offscreen span. Covers older page
+  // layouts and non-product pages that lack the accessibility label.
   const amazonMatch = AMAZON_OFFSCREEN_RE.exec(html);
   if (amazonMatch) {
     const parsed = parsePrice(amazonMatch[1]);

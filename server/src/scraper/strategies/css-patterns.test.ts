@@ -2,6 +2,56 @@ import { describe, it, expect } from 'vitest';
 import { extractFromCssPatterns } from './css-patterns.js';
 
 describe('extractFromCssPatterns', () => {
+  describe('Amazon price-to-pay accessibility label (highest priority)', () => {
+    it('extracts the canonical main price from apex-pricetopay-accessibility-label', () => {
+      // This is the authoritative "price you pay" label Amazon uses for
+      // screen readers. It's a singleton and always points at the main
+      // buy box price, unlike .a-offscreen which can belong to any of
+      // several prices on the page.
+      const html = '<span id="apex-pricetopay-accessibility-label" class="aok-offscreen"> $72.00 </span>'
+      expect(extractFromCssPatterns(html)).toBe(72)
+    })
+
+    it('handles the real-world data-attribute-laden span', () => {
+      const html = `
+        <span id="apex-pricetopay-accessibility-label"
+              data-pricetopay-savings-label="{priceToPay} with {savings} percent savings"
+              class="aok-offscreen">
+          $72.00
+        </span>
+      `
+      expect(extractFromCssPatterns(html)).toBe(72)
+    })
+
+    it('wins over a-offscreen spans that appear earlier in the document', () => {
+      // This is the tracker #20 (Husq Chainsaw Case) regression. Before
+      // the fix, the first a-offscreen ($53.99 from "Other Sellers")
+      // would win over the real main price ($72.00). The accessibility
+      // label must beat any a-offscreen wherever it appears.
+      const html = `
+        <span class="a-offscreen">$53.99</span>
+        <span class="a-offscreen">$53.99</span>
+        <span class="a-offscreen">$53.99</span>
+        ...lots of other sellers tooltip stuff...
+        <span id="apex-pricetopay-accessibility-label" class="aok-offscreen"> $72.00 </span>
+      `
+      expect(extractFromCssPatterns(html)).toBe(72)
+    })
+
+    it('falls back to a-offscreen when the accessibility label is missing', () => {
+      // Older Amazon layouts and non-product pages don't have the
+      // accessibility label. The generic offscreen fallback still works
+      // for single-price pages.
+      const html = '<span class="a-offscreen">$19.99</span>'
+      expect(extractFromCssPatterns(html)).toBe(19.99)
+    })
+
+    it('handles thousands separators and cents in the accessibility label', () => {
+      const html = '<span id="apex-pricetopay-accessibility-label">$1,234.56</span>'
+      expect(extractFromCssPatterns(html)).toBe(1234.56)
+    })
+  })
+
   describe('Amazon offscreen span (the critical path)', () => {
     it('extracts the full price from class="a-offscreen"', () => {
       const html = '<span class="a-offscreen">$53.99</span>';
