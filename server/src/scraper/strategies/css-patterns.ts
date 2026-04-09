@@ -40,6 +40,67 @@ const COMMON_SELECTORS = [
 ];
 
 /**
+ * Amazon.com's marketplace retail seller ID. This is a stable,
+ * well-known identifier for Amazon-direct offers (as opposed to
+ * third-party sellers in the Marketplace). It appears in hidden form
+ * inputs alongside each buying option so we can identify which offer
+ * is shipped-and-sold-by-Amazon.
+ *
+ * Reference: https://www.amazon.com/sp?seller=ATVPDKIKX0DER
+ */
+const AMAZON_RETAIL_SELLER_ID = 'ATVPDKIKX0DER';
+
+/**
+ * Extract the Amazon-direct price from a multi-seller buy box.
+ *
+ * Amazon product pages with multiple buying options render each option
+ * as its own hidden form, each containing:
+ *   1. <input name="items[0.base][customerVisiblePrice][displayString]" value="$XX.YY">
+ *   2. <input id="merchantID" name="merchantID" value="<seller-id>">
+ *
+ * The merchantID tells us which seller is behind that specific offer.
+ * By pairing every customerVisiblePrice with its nearest following
+ * merchantID, we can find the form where merchantID == ATVPDKIKX0DER
+ * (Amazon-direct) and return its price — even when Amazon's
+ * anonymous-session buy box winner is a cheaper third-party seller.
+ *
+ * This matches the user's mental model: "I want the Amazon-direct
+ * price, not whichever third-party seller Amazon decided to surface
+ * today." If no Amazon-direct offer exists on the page, returns null
+ * and the caller falls back to other extraction strategies.
+ *
+ * Discovered 2026-04-09 diagnosing tracker #20 (Husq Chainsaw Case)
+ * where Amazon's anonymous buy box winner was Aardvark Trading at
+ * $53.99 but Amazon.com's own offer was $72.00 — matching what the
+ * user saw in their logged-in browser.
+ */
+function extractAmazonDirectPrice(html: string): number | null {
+  // Find every customerVisiblePrice hidden input. There's one per
+  // buy option in the accordion (3 for the Husq Chainsaw page — two
+  // duplicates of the third-party offer and one Amazon-direct offer).
+  const priceRe = /items\[\d+\.base\]\[customerVisiblePrice\]\[displayString\]"\s*value="([^"]+)"/g;
+  const priceMatches = [...html.matchAll(priceRe)];
+  if (priceMatches.length === 0) return null;
+
+  for (const pm of priceMatches) {
+    const priceIdx = pm.index ?? 0;
+    // Look in the next ~3000 chars for the merchantID input paired with
+    // this price. The observed delta on real Amazon markup is ~1250 chars
+    // so 3000 gives comfortable margin without risking bleeding into the
+    // NEXT form's merchantID.
+    const window = html.slice(priceIdx, priceIdx + 3000);
+    const merchantMatch = window.match(/<input[^>]*id="merchantID"[^>]*value="([^"]+)"/);
+    if (!merchantMatch) continue;
+    if (merchantMatch[1] === AMAZON_RETAIL_SELLER_ID) {
+      const parsed = parsePrice(pm[1]);
+      if (parsed !== null) return parsed;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Direct regex for Amazon's authoritative "price to pay" accessibility
  * label. This is the SINGLE most reliable source of the main buy box
  * price on amazon.com and should be tried before anything else.
@@ -79,9 +140,17 @@ const AMAZON_PRICETOPAY_ACCESSIBILITY_RE =
 const AMAZON_OFFSCREEN_RE = /<span[^>]*class=["']a-offscreen["'][^>]*>([^<]+)<\/span>/i;
 
 export function extractFromCssPatterns(html: string): number | null {
-  // Amazon: try the authoritative "price to pay" accessibility label
-  // first. On multi-seller buy box layouts this is the only reliable
-  // source of the main price.
+  // Amazon: prefer the Amazon-direct offer when multiple sellers compete
+  // for the buy box. Matches the user's mental model that "the price on
+  // Amazon" means Amazon's own price, not whichever third-party seller
+  // happened to win the anonymous-session buy box algorithm.
+  const amazonDirect = extractAmazonDirectPrice(html);
+  if (amazonDirect !== null) return amazonDirect;
+
+  // Amazon: next, try the authoritative "price to pay" accessibility
+  // label. This is Amazon's singleton screen-reader marker for the
+  // current buy box winner — used when there's no Amazon-direct offer
+  // on the page (e.g., the product is only sold by third parties).
   const priceToPayMatch = AMAZON_PRICETOPAY_ACCESSIBILITY_RE.exec(html);
   if (priceToPayMatch) {
     const parsed = parsePrice(priceToPayMatch[1]);

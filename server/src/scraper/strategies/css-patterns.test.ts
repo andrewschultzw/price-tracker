@@ -2,7 +2,97 @@ import { describe, it, expect } from 'vitest';
 import { extractFromCssPatterns } from './css-patterns.js';
 
 describe('extractFromCssPatterns', () => {
-  describe('Amazon price-to-pay accessibility label (highest priority)', () => {
+  describe('Amazon-direct seller preference (highest priority)', () => {
+    // Amazon's retail marketplace seller ID (stable, well-known).
+    const AMAZON_RETAIL_SELLER_ID = 'ATVPDKIKX0DER'
+    const THIRD_PARTY_SELLER_ID = 'A3G95P41TUE85V'
+
+    function makeForm(seller: string, price: string, itemIdx = 0): string {
+      // Approximate the shape of one Amazon buy-option form: a
+      // customerVisiblePrice hidden input followed by a merchantID
+      // hidden input within a few hundred chars.
+      return `
+        <form>
+          <input type="hidden" name="items[${itemIdx}.base][customerVisiblePrice][currencyCode]" value="USD">
+          <input type="hidden" name="items[${itemIdx}.base][customerVisiblePrice][displayString]" value="${price}" id="items[${itemIdx}.base][customerVisiblePrice][displayString]">
+          <span>some padding content</span>
+          <input type="hidden" id="merchantID" name="merchantID" value="${seller}">
+        </form>
+      `
+    }
+
+    it('picks the Amazon-direct price when multiple sellers exist (the Husq Chainsaw regression)', () => {
+      // Replicates the real-world case: a third-party seller wins the
+      // anonymous buy box at $53.99 but Amazon.com also sells the item
+      // at $72.00. The user expects $72.00.
+      const html = `
+        ${makeForm(THIRD_PARTY_SELLER_ID, '$53.99')}
+        <span class="a-offscreen">$53.99</span>
+        ${makeForm(AMAZON_RETAIL_SELLER_ID, '$72.00')}
+        ${makeForm(THIRD_PARTY_SELLER_ID, '$53.99')}
+        <span id="apex-pricetopay-accessibility-label"> $53.99 </span>
+      `
+      expect(extractFromCssPatterns(html)).toBe(72)
+    })
+
+    it('returns the Amazon-direct price even when it is cheapest', () => {
+      // Sanity check: the rule is "prefer Amazon-direct", not "prefer
+      // the higher price".
+      const html = `
+        ${makeForm(AMAZON_RETAIL_SELLER_ID, '$19.99')}
+        ${makeForm(THIRD_PARTY_SELLER_ID, '$29.99')}
+      `
+      expect(extractFromCssPatterns(html)).toBe(19.99)
+    })
+
+    it('falls through to accessibility label when no Amazon-direct offer exists', () => {
+      // Product only sold by third parties — no ATVPDKIKX0DER on the
+      // page. The accessibility label is the correct fallback.
+      const html = `
+        ${makeForm(THIRD_PARTY_SELLER_ID, '$53.99')}
+        <span id="apex-pricetopay-accessibility-label"> $53.99 </span>
+      `
+      expect(extractFromCssPatterns(html)).toBe(53.99)
+    })
+
+    it('falls through when merchantID is absent near the price', () => {
+      // Defensive: no merchantID input paired with the price. Not a
+      // real Amazon shape, but the extractor should not crash or hang.
+      const html = `
+        <input type="hidden" name="items[0.base][customerVisiblePrice][displayString]" value="$40.00">
+        <span class="a-offscreen">$40.00</span>
+      `
+      expect(extractFromCssPatterns(html)).toBe(40)
+    })
+
+    it('handles the merchantID being beyond the lookahead window', () => {
+      // If the merchantID is more than ~3000 chars after the price,
+      // the extractor won't pair them — that's the safety margin.
+      // A huge chunk of unrelated HTML between them breaks the pairing.
+      const filler = 'x'.repeat(3500)
+      const html = `
+        <input type="hidden" name="items[0.base][customerVisiblePrice][displayString]" value="$72.00">
+        ${filler}
+        <input type="hidden" id="merchantID" name="merchantID" value="ATVPDKIKX0DER">
+        <span class="a-offscreen">$53.99</span>
+      `
+      // Pairing fails → falls through to a-offscreen (the generic path)
+      expect(extractFromCssPatterns(html)).toBe(53.99)
+    })
+
+    it('picks the first Amazon-direct offer when multiple Amazon forms exist', () => {
+      // Unusual but possible: Amazon sometimes renders the same
+      // Amazon-direct offer twice (different accordion states). Both
+      // should have the same price; we take the first.
+      const html = `
+        ${makeForm(AMAZON_RETAIL_SELLER_ID, '$72.00')}
+        ${makeForm(AMAZON_RETAIL_SELLER_ID, '$72.00')}
+      `
+      expect(extractFromCssPatterns(html)).toBe(72)
+    })
+  })
+
+  describe('Amazon price-to-pay accessibility label (second priority)', () => {
     it('extracts the canonical main price from apex-pricetopay-accessibility-label', () => {
       // This is the authoritative "price you pay" label Amazon uses for
       // screen readers. It's a singleton and always points at the main
