@@ -79,10 +79,61 @@ export async function fetchPageContent(url: string): Promise<string> {
     // Wait a bit for JS to render prices
     await page.waitForTimeout(2000);
 
-    return await page.content();
+    const html = await page.content();
+
+    // Bot-check / captcha detection. Amazon (and some other retailers)
+    // occasionally serve an intercept page instead of the real product
+    // page — the HTML parses fine but contains no real price data, so
+    // every extraction strategy returns null and the caller sees a
+    // confusing "Could not extract price" error. Detecting the intercept
+    // here and throwing a retryable ScrapeError lets the retry loop in
+    // extractPrice() take another pass (usually with a different user
+    // agent, since the context is recreated per attempt), which
+    // frequently clears the intercept.
+    if (isBotCheckPage(html, response?.url() ?? url)) {
+      throw new ScrapeError(`Bot check / captcha page detected for ${url}`, true);
+    }
+
+    return html;
   } finally {
     await context.close();
   }
+}
+
+/**
+ * Heuristic bot-check detection. Tuned to minimize false positives: we
+ * only flag pages whose title OR final URL strongly suggests an intercept,
+ * not anything that merely contains the word "robot" somewhere in product
+ * copy. The final URL check catches Amazon's /errors/validateCaptcha
+ * redirects even when the rendered page body looks normal.
+ */
+function isBotCheckPage(html: string, finalUrl: string): boolean {
+  // URL-based signals are the most reliable
+  if (/\/errors\/validateCaptcha/i.test(finalUrl)) return true;
+  if (/\/ap\/cvf\/request/i.test(finalUrl)) return true;
+
+  // Title-based signals. Amazon's bot-check title is literally
+  // "Amazon.com" with a short body like "Enter the characters you see
+  // below". Extract the title and check for known intercept phrases.
+  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  const title = titleMatch ? titleMatch[1] : '';
+  if (/robot check/i.test(title)) return true;
+  if (/sorry,?\s*we just need to make sure/i.test(html.slice(0, 5000))) return true;
+  if (/enter the characters you see below/i.test(html.slice(0, 5000))) return true;
+  if (/to discuss automated access to amazon data/i.test(html.slice(0, 10000))) return true;
+
+  // Suspiciously short HTML (under ~3KB) from a known retailer domain is
+  // almost always a bot intercept or error page, not a real product listing.
+  try {
+    const host = new URL(finalUrl).hostname;
+    if (/(amazon|walmart|target|bestbuy|newegg)\./i.test(host) && html.length < 3000) {
+      return true;
+    }
+  } catch {
+    // invalid URL, don't block on it
+  }
+
+  return false;
 }
 
 export async function closeBrowser(): Promise<void> {
