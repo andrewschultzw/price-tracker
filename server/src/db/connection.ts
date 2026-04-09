@@ -21,3 +21,16 @@ export function closeDb(): void {
     db = null;
   }
 }
+
+/**
+ * Test-only: replace the singleton DB handle. Pass a fresh
+ * `new Database(':memory:')` instance in a beforeEach hook to give each
+ * test a clean database, then call `_setDbForTesting(null)` in afterEach
+ * to close it. Production code path is untouched.
+ */
+export function _setDbForTesting(testDb: Database.Database | null): void {
+  if (db && db !== testDb) {
+    try { db.close(); } catch { /* ignore — already closed */ }
+  }
+  db = testDb;
+}
