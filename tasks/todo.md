@@ -1,50 +1,112 @@
 # Price Tracker — Todo
 
 ## Current Status
-Deployed and live at prices.schultzsolutions.tech (CT 302, 192.168.1.166:3100). GitHub: andrewschultzw/price-tracker (private). DB persists through deploys with automatic backups.
+
+Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100`). GitHub: `andrewschultzw/price-tracker` (private). DB persists through deploys with automatic backups. Proxmox snapshot taken 2026-04-09.
+
+**Scale:** ~20 trackers across multiple retailers, multi-seller support live.
+
+**Notification channels configured:** Discord, self-hosted ntfy (CT 115 at `ntfy.schultzsolutions.tech`), generic webhook.
+
+**Test coverage:** 184 tests total (123 server + 61 client) across scrape pipeline, notification channels, crypto, retry logic, dashboard sort, tier celebrations.
+
+---
+
+## Open items
+
+### Priority: actually worth doing
+
+- [ ] **Test debt from multi-seller session.** Core invariants that could silently break and show wrong data on the dashboard.
+  - [ ] Unit tests for `refreshTrackerAggregates` — rules: `last_price = MIN` across sellers, `status = 'error'` only if all errored / `'paused'` only if all paused / else `'active'`, `last_error = first non-null`, `consecutive_failures = MAX`.
+  - [ ] Per-seller cooldown integration test in `cron.ts` — core invariant: one seller hitting cooldown does NOT silence a later alert from a different seller on the same tracker. Needs in-memory DB fixture and faked time.
+  - [ ] `deleteTrackerUrl` primary-promotion test — when position=0 is deleted, next-lowest is promoted AND `trackers.url` is synced.
+  - [ ] Migration v4 backfill idempotency test — re-runs skip already-backfilled rows via the LEFT JOIN guard, child-table backfill only touches NULL `tracker_url_id` rows.
+
+- [ ] **Email notification channel.** Fourth channel reusing the existing Cloudflare+Gmail relay (same one Paperless uses at `docs@schultzsolutions.tech`). Most accessible channel for non-technical users — no app install, no webhook setup, just paste an email address.
+
+- [ ] **Test with 10+ real product URLs.** Integration sanity sweep across Amazon, Newegg, Best Buy, Walmart, Target to catch strategy drift before it causes silent data quality issues. Would have caught the Amazon split-price bug ~2 weeks earlier.
+
+### Priority: polish
+
+- [ ] **Bundle code-splitting.** Vite is warning at ~650 KB bundle. Split `PriceChart` and the Admin page into dynamic imports — should cut ~150 KB off the initial load, meaningful on mobile first-paint.
+
+- [ ] **Active stat card clickable.** 3 of the 4 stat cards are clickable now (Below Target → deals view, Errors → errors view, Potential Savings → tiered celebration). Active is still a plain number. Low value since "all active" is basically the main dashboard view, but worth considering for consistency. Defer unless you want it.
+
+### Priority: only when it bites
+
+- [ ] **Per-channel cooldowns.** Current cooldown is per-`(tracker, seller)` shared across all channels. Would matter if you wanted mixed-frequency notifications like "ntfy instant, webhook hourly". Skip unless you actually want this.
+
+- [ ] **Scheduler jitter.** If you pass ~30-50 trackers with identical `check_interval_minutes`, they all fire in the same minute and could trip retailer rate limits. Fine at current scale. Add small random offset per tracker at creation time if/when this becomes a problem.
+
+- [ ] **CT 302 UniFi DHCP reservation** — MAC `BC:24:11:6D:45:11`, current IP `192.168.1.166`. Static in `pct config` but belt-and-suspenders reservation recommended. (Cross-referenced in `/root/homelabmisc/tasks/todo.md`.)
+
+- [ ] **CT 115 ntfy UniFi DHCP reservation** — same as above. MAC TBD (`ssh root@192.168.1.10 'pct config 115 | grep hwaddr'`), current IP `192.168.1.34`. (Cross-referenced in `/root/homelabmisc/tasks/todo.md`.)
+
+### Priority: future / separate session
+
+- [ ] **OpenClaw integration.** Discord bot skill that accepts a product link + threshold, calls the Price Tracker API to create a tracker automatically. Cross-project work.
+
+- [ ] **Better CAPTCHA / block detection for non-Amazon retailers.** The bot-check retry logic in `browser.ts` (added 2026-04-09) handles Amazon's `/errors/validateCaptcha` redirects and known intercept phrases, but there's more we could do for Walmart, Best Buy, Target.
+
+---
 
 ## Done
+
+### 2026-04-09 — Celebrations, ntfy hosting, scrape fixes
+
+- [x] **Self-hosted ntfy on CT 115.** Debian 12, 1 vCPU / 512MB / 4GB. ntfy 2.14.0 from official Debian repo. `auth-default-access: deny-all` — every user needs an account and explicit ACL grant. Web push with auto-generated VAPID keys. Reachable at `https://ntfy.schultzsolutions.tech` via Cloudflare Tunnel + NPM (proxy_host #13 with websocket upgrade + 3600s read timeout for long-poll /subscribe). Admin user `andrew`, price-tracker access token generated. Full onboarding walkthrough published as [docs/services/ntfy-add-friend](https://docs.schultzsolutions.tech/docs/services/ntfy-add-friend/) on the Jekyll docs site.
+
+- [x] **Price Tracker ntfy auth token support.** New optional `ntfy_token` setting (encrypted at rest alongside `ntfy_url`). Backend sends `Authorization: Bearer <token>` when present. Settings page has a password-style token input under the ntfy URL field. Works with both public ntfy.sh (no token) and self-hosted deny-all (token required).
+
+- [x] **Clickable Potential Savings stat card with tier celebrations.** 6 tiers ($1-10, $10-25, $25-50, $50-100, $100-250, $250+) each with 5 rotating sayings and progressively more ridiculous visual effects via `canvas-confetti`. Strict superset escalation — tier 6 plays everything from tiers 1-5 plus a massive cannon, gold border pulse, screen shake, backdrop blur. Respects `prefers-reduced-motion`. 29 new tier tests. Hold duration 7s (tiers 1-5) / 9s (tier 6).
+
+- [x] **Amazon split-price bug fixed.** `css-patterns` strategy was matching `.a-price-whole` and returning the dollar portion only (e.g. `$53` instead of `$53.99`). Added dedicated `AMAZON_OFFSCREEN_RE` that matches `<span class="a-offscreen">` for Amazon's accessibility full-price span (always contains the complete price text). Removed `.a-price-whole` and the broken compound selector `.a-price .a-offscreen` from COMMON_SELECTORS. Also fixed the class-name boundary regex to require real whitespace/quote boundaries so `.price` stops falsely matching `price-characteristic`. 13 new tests.
+
+- [x] **Bot-check retry for transient Amazon intercepts.** New `isBotCheckPage()` helper in `browser.ts` detects Amazon's `/errors/validateCaptcha` and `/ap/cvf/request` redirects, "Robot Check" title, known intercept phrases, and suspiciously small HTML from known retailer domains. Throws retryable `ScrapeError` so the existing retry loop takes another attempt with a rotated user agent.
+
+- [x] **Manual-check cooldown bypass + info-level cooldown logging.** Clicking "Check Now" or "Check All Now" or adding a new seller URL now bypasses the per-seller cooldown — those are explicit user requests, not scheduler ticks. Cooldown-suppressed alerts log at `info` level (was `debug`) with tracker name, seller URL, last sent timestamp, and minutes until ready.
+
+- [x] **Global git identity set.** Commits now authored as `andrewschultzw <andrewschultzw@users.noreply.github.com>` instead of `root`.
+
+- [x] **Proxmox snapshot taken** after confirmed working state.
+
+### 2026-04-08 — Multi-seller, test scaffolding, security hardening
+
+- [x] **Multi-seller tracker support.** New `tracker_urls` table with per-seller state (`last_price`, `last_checked_at`, `last_error`, `consecutive_failures`, `status`, `position`). Migration v4 backfilled 20 existing trackers into primary seller rows and attributed 845 historical price_history rows + 1 notification. Scheduler walks per-seller rows, aggregates back to the tracker via `refreshTrackerAggregates()`. Per-`(tracker, seller)` cooldown — Amazon dropping doesn't silence a later Newegg drop. Dashboard card shows lowest across sellers with "lowest @ host" indicator and "N sellers" badge. TrackerDetail has a full Sellers section with add/remove controls. API: `GET/POST/DELETE /trackers/:id/urls`. CSV export gains `seller_url` column.
+
+- [x] **Dashboard virtual category pages.**
+  - `/below-target` — clickable Below Target stat card opens a live deals view sorted by biggest savings first. Header shows total potential savings.
+  - `/errors` — clickable Errors stat card opens a view of every errored tracker (uses shared `isErrored()` helper). "Check All Now" button fans out `POST /trackers/:id/check` in parallel via `Promise.allSettled`.
+
+- [x] **Notification history view.** New `/notifications` page with colour-coded channel badges (discord blue, ntfy green, webhook orange, unknown grey). Migration v2 added nullable `channel` column; `cron.ts` records one notification row per successful channel. TrackerDetail has a "Recent Alerts" card scoped to that tracker.
+
+- [x] **CSV/JSON export of price history.** `GET /api/trackers/:id/export?format={csv|json}` with RFC 4180 CSV, `seller_url` column, filename slug from tracker name. Export buttons on TrackerDetail. 15 util tests.
+
+- [x] **Lowest-ever price indicator.** `/api/trackers/stats` returns per-tracker sparkline + all-time low with timestamp. TrackerCard shows "Low: $X" plus "at low" pill when current matches historical minimum. TrackerDetail has an "All-Time Low" stat tile (not range-scoped).
+
+- [x] **Admin users page — tracker count column.** `getAllUsersForAdmin()` joins users and trackers with LEFT JOIN + COUNT so users with zero trackers still appear. Right-aligned column with `tabular-nums` for aligned digits.
+
+- [x] **Scrape retry/backoff.** New `scraper/retry.ts` with `withRetry()` + `ScrapeError`. Default: 2 retries, 1s → 3s exponential backoff. Retries transient failures (network errors, timeouts, 5xx, unknown error types) and fails fast on deterministic ones (4xx). Configurable via `SCRAPE_MAX_RETRIES` and `SCRAPE_RETRY_BASE_MS` env. 11 tests.
+
+- [x] **Webhook URLs encrypted at rest.** AES-256-GCM authenticated encryption via `crypto/settings-crypto.ts`. Per-value random IV, `v1:` prefix for future rotation. Key from `SETTINGS_ENCRYPTION_KEY` env (fail-fast in production). Migration v3 encrypted existing rows in place. Transparent to callers via `getSetting`/`setSetting`. 19 tests covering round-trip, GCM tamper detection, key derivation, cross-instance isolation.
+
+- [x] **Favicon privacy leak fixed.** Public `GET /api/favicon?domain=...` route proxies DuckDuckGo's icons service with 24h in-memory cache and 10min negative cache. Strict hostname validation (rejects IPv4 literals, protocol prefixes, paths, CRLF injection) as SSRF guards. 25 validator tests.
+
+- [x] **Test scaffolding set up.** vitest in both workspaces, wired into `rebuild.sh` so failing tests block deploys. Initial suites: `parsePrice`, `jsonld` strategy, Discord notification payload shape, `canonicalDomain`, `buildDashboardLayout` (extracted to pure module from Dashboard.tsx during this refactor).
+
+- [x] **ntfy + generic webhook notification channels** (before self-hosting — this was the initial multi-channel rollout). Three channels available; real error messages surface in the Settings UI instead of silent "Failed".
+
+- [x] **Domain alias grouping.** Short-links and regional variants roll up to a canonical brand key (a.co, amzn.to, amazon.co.uk → amazon.com). Category collapse at >10 trackers per domain.
+
+- [x] **Mobile UX pass.** Hamburger menu below md breakpoint, responsive TrackerDetail action row, responsive Settings card padding, Notifications page mobile fix.
+
+### Pre-review (initial build phases)
+
 - [x] Phase 1: Project scaffold, Express server, SQLite schema, CRUD routes
 - [x] Phase 2: Playwright browser pool, 6 extraction strategies, price parser
 - [x] Phase 3: Scheduler (node-cron + p-queue), Discord webhook notifications
 - [x] Phase 4: React + Vite + Tailwind frontend (Dashboard, Add, Detail, Settings)
 - [x] Phase 5: CT 302 deploy, systemd service, NPM proxy, SSH key
 - [x] UI polish: stat cards, sparklines, favicon, retailer logos, page titles
-- [x] DB persistence: deploy.sh excludes data/, rebuild.sh backs up DB before changes
+- [x] DB persistence: `deploy.sh` excludes `data/`, `rebuild.sh` backs up DB before changes
 - [x] GitHub repo pushed (private)
-
-## Future
-- [ ] OpenClaw integration — Discord bot skill that accepts a product link + threshold, calls the Price Tracker API to create a tracker automatically
-- [ ] CAPTCHA/block detection (graceful skip)
-- [ ] Test with 10+ real product URLs
-- [ ] Proxmox snapshot after confirmed working
-
-## Improvements (from 2026-04-08 review)
-
-### Real problems
-- [x] **Zero test coverage.** ~~CLAUDE.md demands tests and none exist.~~ **Done 2026-04-08:** vitest scaffolding in both workspaces, 68 tests across scrape pipeline (`parsePrice`, `jsonld` strategy), notifications (`discord`), and client pure functions (`canonicalDomain`, `buildDashboardLayout`). Wired into `rebuild.sh` so failing tests block deploys. Dashboard sort extracted to `lib/dashboard-sort.ts` as a pure module. Still to cover: the other 5 scrape strategies (`css-patterns`, `opengraph`, `microdata`, `regex`, `css-selector`), ntfy/webhook channels, and cron threshold/cooldown/fanout integration tests.
-- [x] **Webhook URLs stored plaintext in sqlite.** ~~`settings` table holds Discord/ntfy/generic webhook URLs as raw strings~~ **Done 2026-04-08:** AES-256-GCM authenticated encryption at rest via new `crypto/settings-crypto.ts` module. Per-value random IV, `v1:` version prefix for future key rotation. Key from `SETTINGS_ENCRYPTION_KEY` env var (fail-fast in production like JWT_SECRET). Migration v3 encrypted existing rows in place (idempotent). Transparent to callers via `getSetting`/`setSetting`. 19 unit tests covering round-trip, tamper detection via GCM auth tag, key derivation, cross-instance isolation.
-- [x] **Favicon privacy leak.** ~~`TrackerCard` and `CategoryCard` fetch favicons from `www.google.com/s2/favicons`~~ **Done 2026-04-08:** new public `GET /api/favicon?domain=...` route proxies DuckDuckGo's icons service with a 24h in-memory cache and 10min negative cache. Strict hostname validation rejects IPv4 literals, protocol prefixes, paths, and CRLF injection as SSRF guards. 5-second upstream timeout. Soft LRU cap at 500 entries. 25 unit tests on the validator.
-
-### Test debt from multi-seller session (2026-04-08)
-- [ ] **Unit tests for `refreshTrackerAggregates`.** Rules: `last_price = MIN` across sellers, `status = 'error'` only if all sellers errored / `'paused'` only if all paused / else `'active'`, `last_error = first non-null`, `consecutive_failures = MAX`. Easy to mis-remember and would silently show wrong data on the dashboard if broken.
-- [ ] **Per-seller cooldown integration test in `cron.ts`.** Core invariant of multi-seller: one seller hitting cooldown does NOT silence a later alert from a different seller on the same tracker. Needs an in-memory DB fixture and faked time.
-- [ ] **`deleteTrackerUrl` primary-promotion test.** When the primary (position=0) seller is deleted, the next-lowest position is promoted AND `trackers.url` is updated to match. Either half silently breaking = category grouping goes wrong.
-- [ ] **Migration v4 backfill test.** Idempotency (re-running skips already-backfilled rows via the LEFT JOIN guard), child-table backfill touches only NULL `tracker_url_id` rows, primary rows copy all seller state correctly.
-
-### Dashboard stat cards — make them interactive
-- [ ] **Make the 4 stat cards at the top of the dashboard actionable.** Currently `Active`, `Below Target`, `Errors`, and `Potential Savings` (`client/src/components/StatCards.tsx`) are purely informational. Ideas to explore once you decide what you want: click a card to filter the tracker grid below (e.g., clicking "Errors" shows only errored trackers, clicking "Below Target" shows only deals); click "Potential Savings" to sort the grid by savings descending; hover tooltips showing the calculation breakdown; tapping twice to clear the filter. You'll give input on which behaviours you actually want before I build.
-
-### Features
-- [x] **Lowest-ever indicator on TrackerCard.** ~~Show the all-time low next to current price~~ **Done 2026-04-08:** `/api/trackers/stats` returns per-tracker sparkline + all-time low with timestamp. TrackerCard shows a "Low: $X" line plus an "at low" pill when current price matches the historical minimum. TrackerDetail gets a new "All-Time Low" stat tile (not range-scoped).
-- [x] **Notification history view.** ~~We have three channels + cooldowns tracked in the `notifications` table but no UI to see what got sent.~~ **Done 2026-04-08:** new `/notifications` page in the nav with colour-coded channel badges. Added `channel` column via migration v2. cron.ts now records one notification row per successful channel. TrackerDetail has a "Recent Alerts" card scoped to that tracker.
-- [x] **CSV/JSON export of price history.** ~~Button on TrackerDetail that dumps full `price_history` to CSV.~~ **Done 2026-04-08:** new `GET /api/trackers/:id/export?format={csv|json}` route, RFC 4180 CSV with quote-doubling escape, JSON wraps history with tracker metadata + exported_at. TrackerDetail has CSV and JSON download buttons next to the range picker. Shared `util/csv.ts` with `toCsv()` and `slugify()`, 15 unit tests.
-- [ ] **Email notification channel.** Fourth channel using the existing Cloudflare+Gmail relay already set up for Paperless (`docs@schultzsolutions.tech`). Most accessible channel for non-technical users — no app install, no webhook setup, just paste an email address.
-
-### Polish
-- [ ] **Bundle code-splitting.** Vite is warning about the 632 kB bundle. Split `PriceChart` and the Admin page into dynamic imports — should cut ~150 kB off the initial bundle and help mobile first-load.
-- [ ] **Per-channel cooldowns.** Current cooldown is per-tracker, locking all channels together. Only worth doing if someone actually wants mixed-frequency notifications (e.g., ntfy immediately, webhook hourly).
-
-### Worth investigating before claiming it's broken
-- [x] **Scrape retry/backoff.** ~~Read `scraper/browser.ts`~~ **Investigated + fixed 2026-04-08:** confirmed zero retries existed anywhere in the scrape path. Added `scraper/retry.ts` with `withRetry()` + `ScrapeError` class. Default policy: 2 retries with 1s → 3s exponential backoff (3 attempts total). Classifier retries transient failures (network errors, timeouts, 5xx, unknown error types like browser crashes) and fails fast on deterministic ones (4xx). Configurable via `SCRAPE_MAX_RETRIES` and `SCRAPE_RETRY_BASE_MS` env vars. Worst-case scrape time per tracker grows from ~32s to ~95s, still well within PQueue capacity. 11 unit tests covering the retry helper.
-- [ ] **Scheduler jitter.** If trackers all share `check_interval_minutes`, they hit their sources in the same minute. Fine at current scale; add a small random offset per tracker at creation time if you pass ~30-50 trackers or start hitting rate limits.
