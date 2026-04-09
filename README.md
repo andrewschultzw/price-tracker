@@ -4,8 +4,7 @@
 
 [![tests](https://img.shields.io/badge/tests-206%20passing-success)](./server) [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE) [![typescript](https://img.shields.io/badge/typescript-5.9-blue)](https://www.typescriptlang.org/)
 
-<!-- Screenshot placeholder — drop a dashboard.png in /docs/ and uncomment: -->
-<!-- ![Dashboard](./docs/dashboard.png) -->
+![Dashboard](./docs/screenshots/dashboard.png)
 
 ## What it is
 
@@ -15,12 +14,16 @@ Built as a homelab project, designed to be portable. Runs in a single Node proce
 
 ## Features
 
+![Tracker detail with multi-seller chart](./docs/screenshots/tracker-detail.png)
+
 ### Tracking
 - **Any retailer** — six cascading extraction strategies (JSON-LD, Microdata, OpenGraph, CSS patterns, regex, user CSS selector) handle most e-commerce sites without per-site code
 - **Multi-seller per product** — track the same product across Amazon, Newegg, B&H, etc. with per-seller price history and one color-coded chart per seller
 - **Amazon-direct preference** — when multiple sellers compete for the Amazon buy box, prefer Amazon.com's retail offer over cheaper third-party sellers (matches what you see in your browser)
 - **All-time low indicator** — see at a glance whether the current price is a real historical deal or just slightly below your arbitrary threshold
 - **CSV / JSON export** of full price history per tracker
+
+![Notification channel settings](./docs/screenshots/settings.png)
 
 ### Notifications
 - **Three channels**, each optional and configurable per user:
