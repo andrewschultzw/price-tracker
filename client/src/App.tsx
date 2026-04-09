@@ -1,21 +1,40 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { BarChart3, Plus, Settings as SettingsIcon, Shield, LogOut, Menu, X, Inbox } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
+
+// Dashboard is the landing page — loaded eagerly so first paint is
+// as fast as possible and the hero content doesn't briefly flash a
+// loading state. Everything else is lazy-loaded so its dependencies
+// (recharts for TrackerDetail, canvas-confetti for the celebration
+// inside Dashboard's StatCards, etc.) don't inflate the initial bundle.
 import Dashboard from './pages/Dashboard'
-import AddTracker from './pages/AddTracker'
-import TrackerDetail from './pages/TrackerDetail'
-import Category from './pages/Category'
-import BelowTarget from './pages/BelowTarget'
-import Errors from './pages/Errors'
-import Notifications from './pages/Notifications'
-import SettingsPage from './pages/Settings'
+
+// Login/Register/Setup are the pre-auth pages. They're small and
+// users hit them before anything else, so eager loading avoids a
+// flash during the initial login flow.
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Setup from './pages/Setup'
-import Admin from './pages/Admin'
+
+// Everything else is lazy. Each of these becomes its own chunk that
+// the browser only fetches when the user actually navigates there.
+const AddTracker = lazy(() => import('./pages/AddTracker'))
+const TrackerDetail = lazy(() => import('./pages/TrackerDetail'))
+const Category = lazy(() => import('./pages/Category'))
+const BelowTarget = lazy(() => import('./pages/BelowTarget'))
+const Errors = lazy(() => import('./pages/Errors'))
+const Notifications = lazy(() => import('./pages/Notifications'))
+const SettingsPage = lazy(() => import('./pages/Settings'))
+const Admin = lazy(() => import('./pages/Admin'))
+
+// Shared loading fallback for lazy routes. Matches the inline "Loading..."
+// style the pages themselves use so the transition is visually smooth.
+function RouteFallback() {
+  return <div className="flex items-center justify-center h-64 text-text-muted">Loading...</div>
+}
 
 function App() {
   const location = useLocation()
@@ -116,17 +135,19 @@ function App() {
         )}
       </nav>
       <main className="max-w-6xl mx-auto px-4 py-6">
-        <Routes>
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/add" element={<ProtectedRoute><AddTracker /></ProtectedRoute>} />
-          <Route path="/tracker/:id" element={<ProtectedRoute><TrackerDetail /></ProtectedRoute>} />
-          <Route path="/category/:domain" element={<ProtectedRoute><Category /></ProtectedRoute>} />
-          <Route path="/below-target" element={<ProtectedRoute><BelowTarget /></ProtectedRoute>} />
-          <Route path="/errors" element={<ProtectedRoute><Errors /></ProtectedRoute>} />
-          <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/add" element={<ProtectedRoute><AddTracker /></ProtectedRoute>} />
+            <Route path="/tracker/:id" element={<ProtectedRoute><TrackerDetail /></ProtectedRoute>} />
+            <Route path="/category/:domain" element={<ProtectedRoute><Category /></ProtectedRoute>} />
+            <Route path="/below-target" element={<ProtectedRoute><BelowTarget /></ProtectedRoute>} />
+            <Route path="/errors" element={<ProtectedRoute><Errors /></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />
+          </Routes>
+        </Suspense>
       </main>
     </div>
   )

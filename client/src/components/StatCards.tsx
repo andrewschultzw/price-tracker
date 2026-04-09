@@ -1,10 +1,14 @@
-import { useState, useCallback, useRef } from 'react'
+import { lazy, Suspense, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, TrendingDown, AlertCircle, DollarSign } from 'lucide-react'
 import type { Tracker } from '../types'
 import { isErrored } from '../lib/dashboard-sort'
 import { getTier, pickSaying, type SavingsTier } from '../lib/savings-tiers'
-import SavingsCelebration from './SavingsCelebration'
+
+// SavingsCelebration pulls in canvas-confetti (~4 KB gzipped but bigger
+// raw). Lazy load so the Dashboard's initial render doesn't pay the cost
+// — the celebration only fires on an explicit user click anyway.
+const SavingsCelebration = lazy(() => import('./SavingsCelebration'))
 
 interface Props {
   trackers: Tracker[]
@@ -142,12 +146,19 @@ export default function StatCards({ trackers }: Props) {
       </div>
 
       {celebration && (
-        <SavingsCelebration
-          tier={celebration.tier}
-          saying={celebration.saying}
-          savingsAmount={celebration.amount}
-          onDismiss={() => setCelebration(null)}
-        />
+        // No visible fallback — the celebration is conditional and
+        // already async from the user's click, so a flash of loading
+        // text would be jarring. An empty fragment means the overlay
+        // simply appears ~1 frame later if canvas-confetti isn't
+        // cached yet.
+        <Suspense fallback={null}>
+          <SavingsCelebration
+            tier={celebration.tier}
+            saying={celebration.saying}
+            savingsAmount={celebration.amount}
+            onDismiss={() => setCelebration(null)}
+          />
+        </Suspense>
       )}
     </>
   )

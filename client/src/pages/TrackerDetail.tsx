@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Download, Plus, X, Store } from 'lucide-react'
 import {
@@ -9,8 +9,12 @@ import {
 import type { NotificationHistoryRow } from '../api'
 import type { Tracker, TrackerUrl, PriceRecord } from '../types'
 import StatusBadge from '../components/StatusBadge'
-import PriceChart from '../components/PriceChart'
 import useTitle from '../useTitle'
+
+// PriceChart pulls in recharts (~180 KB). Lazy load it so the initial
+// TrackerDetail render can paint everything else while recharts streams
+// in. The chart area shows a brief loading state during that window.
+const PriceChart = lazy(() => import('../components/PriceChart'))
 
 export default function TrackerDetail() {
   const { id } = useParams<{ id: string }>()
@@ -411,7 +415,9 @@ export default function TrackerDetail() {
             ))}
           </div>
         </div>
-        <PriceChart data={prices} threshold={tracker.threshold_price} />
+        <Suspense fallback={<div className="flex items-center justify-center h-64 text-text-muted text-sm">Loading chart...</div>}>
+          <PriceChart data={prices} threshold={tracker.threshold_price} />
+        </Suspense>
 
         {prices.length > 0 && (
           <div className="mt-4 overflow-auto max-h-64">
