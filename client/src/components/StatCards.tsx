@@ -1,7 +1,10 @@
+import { useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, TrendingDown, AlertCircle, DollarSign } from 'lucide-react'
 import type { Tracker } from '../types'
 import { isErrored } from '../lib/dashboard-sort'
+import { getTier, pickSaying, type SavingsTier } from '../lib/savings-tiers'
+import SavingsCelebration from './SavingsCelebration'
 
 interface Props {
   trackers: Tracker[]
@@ -22,6 +25,28 @@ export default function StatCards({ trackers }: Props) {
     (sum, t) => sum + (t.threshold_price! - t.last_price!), 0
   )
 
+  // Celebration state for the Potential Savings card. Null = no
+  // celebration currently playing. Throttled so spam-clicking can't stack
+  // multiple overlapping effects.
+  const [celebration, setCelebration] = useState<{ tier: SavingsTier; saying: string; amount: number } | null>(null)
+  const lastClickRef = useRef(0)
+
+  const handleSavingsClick = useCallback(() => {
+    const tier = getTier(totalSavings)
+    if (!tier) return
+    // Throttle: one celebration every 2 seconds max
+    const now = Date.now()
+    if (now - lastClickRef.current < 2000) return
+    lastClickRef.current = now
+    setCelebration({
+      tier,
+      saying: pickSaying(tier),
+      amount: totalSavings,
+    })
+  }, [totalSavings])
+
+  const savingsClickable = getTier(totalSavings) !== null
+
   interface StatCard {
     label: string
     value: string | number
@@ -29,6 +54,7 @@ export default function StatCards({ trackers }: Props) {
     color: string
     bg: string
     href?: string
+    onClick?: () => void
   }
 
   const stats: StatCard[] = [
@@ -45,8 +71,6 @@ export default function StatCards({ trackers }: Props) {
       icon: TrendingDown,
       color: 'text-success',
       bg: 'bg-success/10',
-      // Clickable only when there's something to show. Opens a virtual
-      // category of every tracker currently at/below its target price.
       href: belowThreshold > 0 ? '/below-target' : undefined,
     },
     {
@@ -55,8 +79,6 @@ export default function StatCards({ trackers }: Props) {
       icon: AlertCircle,
       color: errors > 0 ? 'text-danger' : 'text-text-muted',
       bg: errors > 0 ? 'bg-danger/10' : 'bg-surface-hover',
-      // Clickable only when there's something to show. Opens the errors
-      // view with a Check All Now button.
       href: errors > 0 ? '/errors' : undefined,
     },
     {
@@ -65,41 +87,68 @@ export default function StatCards({ trackers }: Props) {
       icon: DollarSign,
       color: 'text-warning',
       bg: 'bg-warning/10',
+      onClick: savingsClickable ? handleSavingsClick : undefined,
     },
   ]
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-      {stats.map(s => {
-        const clickable = !!s.href
-        const cardClass = `bg-surface border border-border rounded-xl p-4 flex items-center gap-3 h-full transition-colors ${
-          clickable ? 'hover:border-primary/50 hover:bg-surface-hover cursor-pointer' : ''
-        }`
-        const body = (
-          <div className={cardClass}>
-            <div className={`${s.bg} ${s.color} rounded-lg p-2.5`}>
-              <s.icon className="w-5 h-5" />
+    <>
+      {/* stat-cards-grid is a hook for the celebration CSS animations
+        * (celebration-shake / celebration-bounce target its children). */}
+      <div className="stat-cards-grid grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        {stats.map(s => {
+          const clickable = !!s.href || !!s.onClick
+          const cardClass = `bg-surface border border-border rounded-xl p-4 flex items-center gap-3 h-full transition-colors ${
+            clickable ? 'hover:border-primary/50 hover:bg-surface-hover cursor-pointer' : ''
+          }`
+          const body = (
+            <div className={cardClass}>
+              <div className={`${s.bg} ${s.color} rounded-lg p-2.5`}>
+                <s.icon className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xl font-bold">{s.value}</div>
+                <div className="text-xs text-text-muted">{s.label}</div>
+              </div>
             </div>
-            <div>
-              <div className="text-xl font-bold">{s.value}</div>
-              <div className="text-xs text-text-muted">{s.label}</div>
-            </div>
-          </div>
-        )
-        if (s.href) {
-          return (
-            <Link
-              key={s.label}
-              to={s.href}
-              className="no-underline block"
-              title={`View all ${s.label.toLowerCase()} items`}
-            >
-              {body}
-            </Link>
           )
-        }
-        return <div key={s.label}>{body}</div>
-      })}
-    </div>
+          if (s.href) {
+            return (
+              <Link
+                key={s.label}
+                to={s.href}
+                className="no-underline block"
+                title={`View all ${s.label.toLowerCase()} items`}
+              >
+                {body}
+              </Link>
+            )
+          }
+          if (s.onClick) {
+            return (
+              <button
+                key={s.label}
+                type="button"
+                onClick={s.onClick}
+                className="text-left w-full p-0 bg-transparent border-0 block"
+                title="Celebrate your savings"
+              >
+                {body}
+              </button>
+            )
+          }
+          return <div key={s.label}>{body}</div>
+        })}
+      </div>
+
+      {celebration && (
+        <SavingsCelebration
+          tier={celebration.tier}
+          saying={celebration.saying}
+          savingsAmount={celebration.amount}
+          onDismiss={() => setCelebration(null)}
+        />
+      )}
+    </>
   )
 }
