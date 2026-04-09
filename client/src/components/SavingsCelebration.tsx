@@ -32,7 +32,10 @@ export default function SavingsCelebration({ tier, saying, savingsAmount, onDism
       runTierEffects(tier)
     }
 
-    const holdMs = tier >= 6 ? 7000 : 5000
+    // Base 7s for tiers 1-5, 9s for tier 6 so the bigger effects (second
+    // confetti cannon at 1.5s, gold border pulse, screen shake) have room
+    // to breathe. Bumped from 5s/7s at user request for more immersion.
+    const holdMs = tier >= 6 ? 9000 : 7000
     const timer = setTimeout(onDismiss, holdMs)
     return () => {
       clearTimeout(timer)
@@ -154,7 +157,9 @@ function runTierEffects(tier: number): void {
   // --- Tier 6: the works ---
   if (tier >= 6) {
     document.body.classList.add('celebration-tier-6')
-    setTimeout(() => document.body.classList.remove('celebration-tier-6'), 7000)
+    // Matches the 9s tier-6 display duration in the component so the gold
+    // border pulse runs for the full celebration, not just the first 7s.
+    setTimeout(() => document.body.classList.remove('celebration-tier-6'), 9000)
 
     // Massive cannon from bottom
     setTimeout(() => {
