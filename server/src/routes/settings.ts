@@ -6,7 +6,12 @@ import { testGenericWebhook } from '../notifications/webhook.js';
 
 const router = Router();
 
-const ALLOWED_SETTING_KEYS = new Set(['discord_webhook_url', 'ntfy_url', 'generic_webhook_url']);
+const ALLOWED_SETTING_KEYS = new Set([
+  'discord_webhook_url',
+  'ntfy_url',
+  'ntfy_token',
+  'generic_webhook_url',
+]);
 
 router.get('/', (req: Request, res: Response) => {
   const settings = getAllSettings(req.user!.userId);
@@ -35,12 +40,13 @@ router.post('/test-webhook', async (req: Request, res: Response) => {
 });
 
 router.post('/test-ntfy', async (req: Request, res: Response) => {
-  const { url } = req.body;
+  const { url, token } = req.body;
   if (!url || typeof url !== 'string') {
     res.status(400).json({ error: 'ntfy URL is required' });
     return;
   }
-  const result = await testNtfyWebhook(url);
+  const tokenArg = typeof token === 'string' && token.length > 0 ? token : undefined;
+  const result = await testNtfyWebhook(url, tokenArg);
   res.json({ success: result.ok, error: result.error });
 });
 

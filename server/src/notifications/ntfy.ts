@@ -54,11 +54,21 @@ interface NtfyPayload {
   click?: string;
 }
 
-async function publish(base: string, payload: NtfyPayload): Promise<{ ok: true } | { ok: false; error: string }> {
+async function publish(
+  base: string,
+  payload: NtfyPayload,
+  token?: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    // Optional Bearer auth for self-hosted ntfy instances with
+    // auth-default-access=deny-all (our schultzsolutions.tech deployment).
+    // Public ntfy.sh with an unguessable topic works without a token, so
+    // we only send the header when a token is actually provided.
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const response = await fetch(base, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -76,6 +86,7 @@ export async function sendNtfyPriceAlert(
   tracker: Tracker,
   currentPrice: number,
   ntfyUrl: string,
+  ntfyToken?: string,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
@@ -95,7 +106,7 @@ export async function sendNtfyPriceAlert(
     priority: 4,
     tags: ['tada', 'money_with_wings'],
     click: tracker.url,
-  });
+  }, ntfyToken);
 
   if (!result.ok) {
     logger.error({ error: result.error, trackerId: tracker.id }, 'ntfy price alert failed');
@@ -109,6 +120,7 @@ export async function sendNtfyErrorAlert(
   tracker: Tracker,
   error: string,
   ntfyUrl: string,
+  ntfyToken?: string,
 ): Promise<boolean> {
   let target: NtfyTarget;
   try {
@@ -125,7 +137,7 @@ export async function sendNtfyErrorAlert(
     priority: 3,
     tags: ['warning'],
     click: tracker.url,
-  });
+  }, ntfyToken);
 
   if (!result.ok) {
     logger.error({ error: result.error, trackerId: tracker.id }, 'ntfy error alert failed');
@@ -138,7 +150,10 @@ export async function sendNtfyErrorAlert(
  * Unlike the price/error alerts, the test function returns the actual error
  * string so the Settings page can display it instead of a bare "Failed".
  */
-export async function testNtfyWebhook(ntfyUrl: string): Promise<{ ok: boolean; error?: string }> {
+export async function testNtfyWebhook(
+  ntfyUrl: string,
+  ntfyToken?: string,
+): Promise<{ ok: boolean; error?: string }> {
   let target: NtfyTarget;
   try {
     target = parseNtfyUrl(ntfyUrl);
@@ -153,7 +168,7 @@ export async function testNtfyWebhook(ntfyUrl: string): Promise<{ ok: boolean; e
     message: 'ntfy is wired up and working correctly.',
     priority: 3,
     tags: ['white_check_mark'],
-  });
+  }, ntfyToken);
 
   if (!result.ok) return { ok: false, error: result.error };
   return { ok: true };

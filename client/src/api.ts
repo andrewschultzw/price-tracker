@@ -156,9 +156,9 @@ export const testWebhook = (url: string) =>
   request<ChannelTestResult>('/settings/test-webhook', {
     method: 'POST', body: JSON.stringify({ url }),
   });
-export const testNtfy = (url: string) =>
+export const testNtfy = (url: string, token?: string) =>
   request<ChannelTestResult>('/settings/test-ntfy', {
-    method: 'POST', body: JSON.stringify({ url }),
+    method: 'POST', body: JSON.stringify({ url, token }),
   });
 export const testGenericWebhook = (url: string) =>
   request<ChannelTestResult>('/settings/test-generic-webhook', {

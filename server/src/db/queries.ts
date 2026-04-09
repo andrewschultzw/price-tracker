@@ -573,10 +573,15 @@ export function getLastNotificationForSeller(
 
 import { encrypt, decrypt, isEncrypted } from '../crypto/settings-crypto.js';
 
-// Only these three keys are encrypted at rest. Any other setting key would
-// be stored plaintext as before — add to this set if you introduce another
+// Only these keys are encrypted at rest. Any other setting key would be
+// stored plaintext as before — add to this set if you introduce another
 // credential-like setting.
-const ENCRYPTED_KEYS = new Set(['discord_webhook_url', 'ntfy_url', 'generic_webhook_url']);
+const ENCRYPTED_KEYS = new Set([
+  'discord_webhook_url',
+  'ntfy_url',
+  'ntfy_token',
+  'generic_webhook_url',
+]);
 
 function maybeDecrypt(key: string, value: string): string {
   if (!ENCRYPTED_KEYS.has(key)) return value;

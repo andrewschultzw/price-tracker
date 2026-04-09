@@ -12,7 +12,7 @@ interface ChannelConfig {
   title: string
   description: React.ReactNode
   placeholder: string
-  test: (url: string) => Promise<{ success: boolean; error?: string }>
+  test: (url: string, token?: string) => Promise<{ success: boolean; error?: string }>
 }
 
 const CHANNELS: ChannelConfig[] = [
@@ -67,6 +67,9 @@ const CHANNELS: ChannelConfig[] = [
 export default function SettingsPage() {
   useTitle('Settings')
   const [values, setValues] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '' })
+  // ntfy has an optional second input — the Bearer token, for self-hosted
+  // instances with auth-default-access=deny-all. Empty string = no auth.
+  const [ntfyToken, setNtfyToken] = useState('')
   const [savingKey, setSavingKey] = useState<ChannelKey | null>(null)
   const [savedKey, setSavedKey] = useState<ChannelKey | null>(null)
   const [testingKey, setTestingKey] = useState<ChannelKey | null>(null)
@@ -79,6 +82,7 @@ export default function SettingsPage() {
         ntfy: s.ntfy_url || '',
         webhook: s.generic_webhook_url || '',
       })
+      setNtfyToken(s.ntfy_token || '')
     })
   }, [])
 
@@ -86,7 +90,12 @@ export default function SettingsPage() {
     setSavingKey(ch.key)
     setSavedKey(null)
     try {
-      await updateSettings({ [ch.settingKey]: values[ch.key] })
+      if (ch.key === 'ntfy') {
+        // Save URL and token together so the UI state stays consistent.
+        await updateSettings({ ntfy_url: values.ntfy, ntfy_token: ntfyToken })
+      } else {
+        await updateSettings({ [ch.settingKey]: values[ch.key] })
+      }
       setSavedKey(ch.key)
       setTimeout(() => setSavedKey(k => (k === ch.key ? null : k)), 3000)
     } finally {
@@ -99,7 +108,9 @@ export default function SettingsPage() {
     setTestingKey(ch.key)
     setTestResult(null)
     try {
-      const result = await ch.test(values[ch.key])
+      const result = ch.key === 'ntfy'
+        ? await ch.test(values.ntfy, ntfyToken || undefined)
+        : await ch.test(values[ch.key])
       setTestResult({ key: ch.key, ok: result.success, error: result.error })
     } catch (err) {
       setTestResult({ key: ch.key, ok: false, error: err instanceof Error ? err.message : String(err) })
@@ -141,6 +152,22 @@ export default function SettingsPage() {
                 placeholder={ch.placeholder}
                 className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary mb-4"
               />
+
+              {ch.key === 'ntfy' && (
+                <>
+                  <label className="block text-sm font-medium text-text-muted mb-1.5">
+                    Access token <span className="text-text-muted/60 font-normal">(optional — for self-hosted instances with auth)</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={ntfyToken}
+                    onChange={e => setNtfyToken(e.target.value)}
+                    placeholder="tk_..."
+                    className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary mb-4 font-mono text-sm"
+                    autoComplete="off"
+                  />
+                </>
+              )}
 
               <div className="flex flex-wrap items-center gap-3">
                 <button

@@ -25,6 +25,9 @@ let task: cron.ScheduledTask | null = null;
 interface EnabledChannels {
   discord?: string;
   ntfy?: string;
+  // Optional Bearer token for self-hosted ntfy instances with
+  // deny-all auth. Only meaningful when ntfy is also set.
+  ntfyToken?: string;
   webhook?: string;
 }
 
@@ -33,6 +36,7 @@ function getEnabledChannels(userId: number | null | undefined): EnabledChannels 
   return {
     discord: getSetting('discord_webhook_url', userId) || undefined,
     ntfy: getSetting('ntfy_url', userId) || undefined,
+    ntfyToken: getSetting('ntfy_token', userId) || undefined,
     webhook: getSetting('generic_webhook_url', userId) || undefined,
   };
 }
@@ -67,7 +71,7 @@ async function firePriceAlerts(
 ): Promise<string[]> {
   const attempts: { name: string; promise: Promise<boolean> }[] = [];
   if (channels.discord) attempts.push({ name: 'discord', promise: sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord) });
-  if (channels.ntfy) attempts.push({ name: 'ntfy', promise: sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy) });
+  if (channels.ntfy) attempts.push({ name: 'ntfy', promise: sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy, channels.ntfyToken) });
   if (channels.webhook) attempts.push({ name: 'webhook', promise: sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook) });
   const results = await Promise.all(attempts.map(a => a.promise));
   return attempts.filter((_, i) => results[i]).map(a => a.name);
@@ -80,7 +84,7 @@ async function fireErrorAlerts(
 ): Promise<void> {
   const senders: Promise<boolean>[] = [];
   if (channels.discord) senders.push(sendDiscordErrorAlert(alertTracker, error, channels.discord));
-  if (channels.ntfy) senders.push(sendNtfyErrorAlert(alertTracker, error, channels.ntfy));
+  if (channels.ntfy) senders.push(sendNtfyErrorAlert(alertTracker, error, channels.ntfy, channels.ntfyToken));
   if (channels.webhook) senders.push(sendGenericErrorAlert(alertTracker, error, channels.webhook));
   await Promise.all(senders);
 }
