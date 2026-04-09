@@ -38,6 +38,11 @@ export interface TrackerUrl {
 export interface PriceRecord {
   id: number;
   tracker_id: number;
+  // Nullable for legacy pre-multi-seller rows; populated for all new scrapes.
+  tracker_url_id?: number | null;
+  // The URL of the seller that produced this price. Nullable for pre-migration
+  // rows. Used by the PriceChart to color-code per-seller lines.
+  seller_url?: string | null;
   price: number;
   currency: string;
   scraped_at: string;

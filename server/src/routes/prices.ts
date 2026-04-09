@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getPriceHistory, getPriceHistoryWithSeller, getTrackerById } from '../db/queries.js';
+import { getPriceHistoryWithSeller, getTrackerById } from '../db/queries.js';
 import { toCsv, slugify } from '../util/csv.js';
 
 const router = Router();
@@ -11,7 +11,10 @@ router.get('/:id/prices', (req: Request, res: Response) => {
     return;
   }
   const range = req.query.range as string | undefined;
-  const prices = getPriceHistory(tracker.id, range);
+  // Use the WithSeller variant so the client chart can draw per-seller
+  // lines. Additive to the response shape — existing callers that ignore
+  // seller_url keep working unchanged.
+  const prices = getPriceHistoryWithSeller(tracker.id, range);
   res.json(prices);
 });
 
