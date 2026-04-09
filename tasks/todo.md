@@ -48,6 +48,25 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [ ] **Better CAPTCHA / block detection for non-Amazon retailers.** The bot-check retry logic in `browser.ts` (added 2026-04-09) handles Amazon's `/errors/validateCaptcha` redirects and known intercept phrases, but there's more we could do for Walmart, Best Buy, Target.
 
+- [ ] **Cross-user tracker overlap flag.** When user A adds a URL that user B already tracks, surface a visual indicator on both users' trackers ("N others track this" or similar). Low priority since it probably won't happen often in practice, but a nice social/collaborative touch for a multi-user homelab app.
+
+  **Design questions to resolve first:**
+  - **Matching strategy.** Exact URL match is easy but misses reality — `a.co/d/xyz`, `amazon.com/dp/ABC`, and `smile.amazon.com/dp/ABC` might all be the same product. Options: (a) exact URL match only (simple, misses cases), (b) canonical URL normalization (strip query params, follow short-link redirects at add time), (c) product identity matching (extract the ASIN or SKU from known retailers and match on that — most accurate, requires per-retailer parsers).
+  - **Privacy model.** Do users see *who* else tracks it, or just an anonymous count? Anonymous count is less invasive and still useful ("3 others track this"). Showing names requires opt-in. Default to anonymous count.
+  - **What's shared vs what stays private.** The URL overlap is shared context — but threshold prices, notification settings, alert history, and per-user price history MUST stay private. Only the "this product is tracked by N users" fact crosses the user boundary. Consider: could share a community all-time low across matching trackers without leaking any individual's data (min across all users is anonymous aggregate).
+  - **Surface.** Where does the indicator appear? Options: (a) badge on TrackerCard — passive, always visible, (b) toast on the Add Tracker flow — proactive: "Hey, 2 others already track this. Want to see the community low?", (c) TrackerDetail card section showing overlap count + optional community low, (d) all of the above.
+  - **Scale concern.** The match-existing-URLs check runs on every tracker creation. At current scale (<100 total trackers) a full-table scan is fine; at higher scale might want an index on a normalized URL column. Probably not worth worrying about until 1000+ trackers.
+
+  **Scope when we build it:**
+  - New `normalized_url` column on `trackers` populated on create/update via a shared canonicalization helper (same canonical domain logic as categories, plus path normalization and query-param stripping).
+  - Migration to backfill `normalized_url` for existing rows.
+  - Index on `normalized_url` for fast overlap lookups.
+  - New `GET /api/trackers/:id/overlap` returning `{ count: number }` — anonymous, no user info leaked.
+  - Dashboard/Detail UI pill "Also tracked by N others" when count > 0.
+  - Optional stretch: "community low" aggregate if users opt in.
+
+  **Brainstorm this properly at the start of that session** — the matching strategy decision especially is non-trivial and will shape the schema.
+
 ---
 
 ## Done
