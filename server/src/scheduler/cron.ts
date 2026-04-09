@@ -94,8 +94,17 @@ async function fireErrorAlerts(
  * per-tracker checkTracker(). After updating the seller's own state, we
  * re-aggregate the parent tracker's denormalized fields so the dashboard
  * keeps showing the lowest-across-sellers price.
+ *
+ * `bypassCooldown` is true for manual actions ("Check Now" button, adding
+ * a new seller URL) — the user is explicitly asking for a fresh result
+ * and silently suppressing a ready-to-send alert because of an arbitrary
+ * 6-hour timer is surprising. The scheduler's automatic tick always passes
+ * false so spam protection still works for unattended scraping.
  */
-export async function checkTrackerUrl(trackerUrlId: number): Promise<void> {
+export async function checkTrackerUrl(
+  trackerUrlId: number,
+  bypassCooldown: boolean = false,
+): Promise<void> {
   try {
     const seller = getTrackerUrlById(trackerUrlId);
     if (!seller) return;
@@ -148,16 +157,31 @@ export async function checkTrackerUrl(trackerUrlId: number): Promise<void> {
         } else {
           // Cooldown is per-(tracker, seller): "don't spam about the same
           // seller" — but Amazon dropping doesn't silence a subsequent
-          // Newegg drop, which is the whole point of multi-seller.
-          const lastNotif = getLastNotificationForSeller(tracker.id, seller.id);
+          // Newegg drop, which is the whole point of multi-seller. Manual
+          // actions (Check Now button, adding a new seller) bypass cooldown
+          // entirely because the user is explicitly asking for a result.
+          const lastNotif = bypassCooldown ? null : getLastNotificationForSeller(tracker.id, seller.id);
           const cooldownMs = config.notificationCooldownHours * 60 * 60 * 1000;
           const inCooldown =
-            lastNotif && Date.now() - new Date(lastNotif.sent_at + 'Z').getTime() < cooldownMs;
+            !!lastNotif && Date.now() - new Date(lastNotif.sent_at + 'Z').getTime() < cooldownMs;
 
           if (inCooldown) {
-            logger.debug(
-              { trackerId: tracker.id, trackerUrlId: seller.id },
-              'Per-seller notification cooldown active, skipping',
+            // Logged at info (not debug) so the user can see why an
+            // expected alert didn't fire without enabling verbose logging.
+            // The earlier "silent skip" bug in the no-webhook case proved
+            // the cost of hiding suppression at debug level.
+            const sentAtMs = new Date(lastNotif!.sent_at + 'Z').getTime();
+            const minutesUntilReady = Math.ceil((cooldownMs - (Date.now() - sentAtMs)) / 60000);
+            logger.info(
+              {
+                trackerId: tracker.id,
+                trackerUrlId: seller.id,
+                trackerName: tracker.name,
+                sellerUrl: seller.url,
+                lastSentAt: lastNotif!.sent_at,
+                minutesUntilReady,
+              },
+              `Cooldown active for this seller — alert suppressed for ${minutesUntilReady} more minute(s)`,
             );
           } else {
             const alertTracker = buildAlertTracker(tracker, seller, result.price);
@@ -209,14 +233,20 @@ export async function checkTrackerUrl(trackerUrlId: number): Promise<void> {
 }
 
 /**
- * Legacy entry point retained for the manual "Check Now" button on
- * TrackerDetail. Fans the request out to every seller for the tracker so
- * the user sees all their seller prices refresh.
+ * Entry point for the manual "Check Now" button on TrackerDetail and the
+ * "Check All Now" button on the /errors page. Fans the request out to
+ * every seller for the tracker. Manual invocations bypass the per-seller
+ * cooldown by default since the user is explicitly asking for a fresh
+ * result — callers can pass bypassCooldown=false to opt into cooldown
+ * behavior (the scheduler tick does that via checkTrackerUrl directly).
  */
-export async function checkTracker(trackerId: number): Promise<void> {
+export async function checkTracker(
+  trackerId: number,
+  bypassCooldown: boolean = true,
+): Promise<void> {
   const { getTrackerUrlsForTracker } = await import('../db/queries.js');
   const sellers = getTrackerUrlsForTracker(trackerId);
-  await Promise.all(sellers.map(s => checkTrackerUrl(s.id)));
+  await Promise.all(sellers.map(s => checkTrackerUrl(s.id, bypassCooldown)));
 }
 
 function tick(): void {

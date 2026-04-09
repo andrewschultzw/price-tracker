@@ -132,10 +132,11 @@ router.post('/:id/urls', async (req: Request, res: Response) => {
   const newSeller = addTrackerUrl(tracker.id, parsed.data.url);
 
   // Scrape immediately so the user sees a price right away instead of
-  // waiting for the next cron tick. Fire-and-forget on failure — the
-  // scheduler will retry on its normal cadence.
+  // waiting for the next cron tick. bypassCooldown=true because this is
+  // a manual action and suppressing a below-threshold alert for a seller
+  // the user just added would be surprising.
   try {
-    await checkTrackerUrl(newSeller.id);
+    await checkTrackerUrl(newSeller.id, true);
   } catch (err) {
     // Don't fail the request — the seller is created, just unpopulated.
     // The scheduler will pick it up.
