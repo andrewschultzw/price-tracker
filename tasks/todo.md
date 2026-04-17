@@ -67,6 +67,10 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 ## Done
 
+### 2026-04-17 — Silent false-positive fix, scoped fallbacks
+
+- [x] **Amazon / Newegg silent false-positive trackers.** Two trackers were firing below-threshold alerts on wrong prices: JetKVM at $35.99 (a sponsored Amazon accessory when the real product was "Currently unavailable") and WD Red Plus 10TB at cycling $10/$249/$389 (random Newegg sponsored-carousel hard drives when JSON-LD extraction missed). Root cause: the `.a-offscreen` (Amazon) and `.price-current` / generic regex (Newegg) fallbacks were unscoped and picked up carousel prices when the main buy box couldn't be located. Fix: new `sliceBalancedDiv` helper with nested-div depth counting, scope Amazon fallback to `#apex_desktop` / `#corePrice*`, scope Newegg to `<div class="product-price">`, and short-circuit with a non-retryable `ScrapeError` when Amazon reports "Currently unavailable". Real-HTML fixture tests lock down the $35.99 / $10 / $249 / $389 values as never returned. Bad history deleted (41 Newegg, 8 JetKVM rows) and both URLs reseeded. [PR #1](https://github.com/andrewschultzw/price-tracker/pull/1).
+
 ### 2026-04-09 — Celebrations, ntfy hosting, scrape fixes
 
 - [x] **Self-hosted ntfy on CT 115.** Debian 12, 1 vCPU / 512MB / 4GB. ntfy 2.14.0 from official Debian repo. `auth-default-access: deny-all` — every user needs an account and explicit ACL grant. Web push with auto-generated VAPID keys. Reachable at `https://ntfy.schultzsolutions.tech` via Cloudflare Tunnel + NPM (proxy_host #13 with websocket upgrade + 3600s read timeout for long-poll /subscribe). Admin user `andrew`, price-tracker access token generated. Full onboarding walkthrough published as [docs/services/ntfy-add-friend](https://docs.schultzsolutions.tech/docs/services/ntfy-add-friend/) on the Jekyll docs site.

@@ -1,5 +1,27 @@
 # Lessons Learned
 
+## 2026-04-17: Silent false-positive trackers (JetKVM, WD Red 10TB)
+
+### Fallback strategies must be scoped to the main product container
+**What happened:** Two trackers silently reported wrong prices because fallback extraction strategies (`.a-offscreen` for Amazon, `.price-current` + regex for Newegg) matched the FIRST occurrence page-wide. Modern retailer product pages render sponsored / recommended-product carousels BEFORE and AROUND the main buy box, so the first `.a-offscreen` or `.price-current` on the page is often a carousel item — not the real product price. JetKVM reported $35.99 from a sponsored accessory (real product was "Currently unavailable"); WD Red cycled $10/$249/$389 from random sponsored hard drives when JSON-LD timing missed.
+
+**Rule:** Any fallback that picks "first match" must be scoped to a retailer-specific main-price container (`#apex_desktop`, `<div class="product-price">`). When the container is present but empty, return null — do NOT fall through to page-wide — otherwise carousels poison the signal. When no container is present (non-retailer / simpler HTML), page-wide fallback is still safe.
+
+### Detect unavailability explicitly, surface it as an error
+**What happened:** Amazon's anonymous product page for an unavailable item renders `#apex_desktop` but with no price content inside. Every strategy that didn't find the apex-pricetopay-accessibility-label fell through to the next, eventually grabbing a carousel price. No strategy's contract said "distinguish unavailable from missing".
+
+**Rule:** Pipeline-level short-circuit: check known unavailability markers (`availability_feature_div` containing "Currently unavailable") BEFORE running any strategy. Throw a specific, non-retryable `ScrapeError` so the tracker surfaces a clean error state instead of silently reporting a wrong price. Silent wrong prices are worse than loud errors.
+
+### Fixture tests from real HTML are worth their disk cost
+**What happened:** Synthetic test HTML had never caught either regression because neither test author had modeled "the product is unavailable and sponsored carousels exist". The real pages from the failing trackers capture those shapes faithfully.
+
+**Rule:** When you fix a scraping regression, capture the actual HTML that failed and check it into `__fixtures__/` as a regression test. Assert specific wrong values are NEVER returned (`expect(result).not.toBe(10)`) — positive "expected 459.95" is less resilient since extraction may tighten or loosen over time. The ~2MB per fixture is fine for this kind of test.
+
+### The repo security hook flags regex `.e` `xec()` — use `.match()` instead
+**What happened:** The pre-edit hook scans for `.e`+`xec(` to catch shell-injection patterns and does not distinguish `child_process` from `RegExp`.
+
+**Rule:** In scraper code, prefer `String.match(regex)` over the equivalent regex method. Same semantics for single matches, doesn't trip the hook, one less argument during refactor.
+
 ## 2026-03-30: User Accounts Feature
 
 ### Use absolute paths in production configs

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractFromCssPatterns } from './css-patterns.js';
+import { extractFromCssPatterns, isAmazonCurrentlyUnavailable } from './css-patterns.js';
 
 describe('extractFromCssPatterns', () => {
   describe('Amazon-direct seller preference (highest priority)', () => {
@@ -235,6 +235,125 @@ describe('extractFromCssPatterns', () => {
 
     it('returns null on empty string', () => {
       expect(extractFromCssPatterns('')).toBeNull();
+    });
+  });
+
+  describe('Amazon main-price scoping (the JetKVM regression)', () => {
+    // Reproduces the live bug: an Amazon product page for an
+    // "Currently unavailable" item has `#apex_desktop` rendered but
+    // empty of prices, no accessibility label, and the first page-wide
+    // `.a-offscreen` belongs to a sponsored-carousel accessory. Before
+    // the scoping fix this returned the accessory price ($35.99); now
+    // it returns null so the pipeline's unavailability detector can
+    // throw a clear error instead.
+    it('returns null when apex_desktop is present but has no a-offscreen inside', () => {
+      const html = `
+        <div id="apex_desktop" class="celwidget">
+          <!-- apex_desktop is rendered but the product has no buy box -->
+        </div>
+        <!-- later on the page: sponsored carousel with a cheap accessory -->
+        <div class="sponsored-carousel">
+          <span class="a-offscreen">$35.99</span>
+        </div>
+      `;
+      expect(extractFromCssPatterns(html)).toBeNull();
+    });
+
+    it('extracts the a-offscreen inside apex_desktop even when other offscreen spans exist outside', () => {
+      // In-stock product: main price inside apex_desktop should win
+      // over any sponsored-carousel offscreen span elsewhere.
+      const html = `
+        <div class="sponsored-carousel">
+          <span class="a-offscreen">$9.99</span>
+        </div>
+        <div id="apex_desktop" class="celwidget">
+          <span class="a-price">
+            <span class="a-offscreen">$72.00</span>
+          </span>
+        </div>
+      `;
+      expect(extractFromCssPatterns(html)).toBe(72);
+    });
+
+    it('accepts corePriceDisplay_desktop_feature_div as the main-price container', () => {
+      const html = `
+        <span class="a-offscreen">$9.99</span>
+        <div id="corePriceDisplay_desktop_feature_div">
+          <span class="a-offscreen">$42.00</span>
+        </div>
+      `;
+      expect(extractFromCssPatterns(html)).toBe(42);
+    });
+  });
+
+  describe('isAmazonCurrentlyUnavailable', () => {
+    it('returns true when availability_feature_div contains "Currently unavailable"', () => {
+      const html = `
+        <div id="availability_feature_div" data-feature-name="availability">
+          <span>Currently unavailable.</span>
+        </div>
+      `;
+      expect(isAmazonCurrentlyUnavailable(html)).toBe(true);
+    });
+
+    it('returns false when availability_feature_div says the product is in stock', () => {
+      const html = `
+        <div id="availability_feature_div">
+          <span class="a-size-medium a-color-success">In Stock</span>
+        </div>
+      `;
+      expect(isAmazonCurrentlyUnavailable(html)).toBe(false);
+    });
+
+    it('returns false when the page has no availability_feature_div', () => {
+      // Non-Amazon pages or older layouts — don't claim unavailability.
+      expect(isAmazonCurrentlyUnavailable('<html><body>Currently unavailable</body></html>')).toBe(false);
+    });
+
+    it('does not match "Currently unavailable" text far from the availability div', () => {
+      // Guards against false positives from "Currently unavailable"
+      // mentions in unrelated parts of the page (reviews, Q&A, third-
+      // party seller tooltips). The detector only looks within 5000
+      // chars of the availability opener.
+      const filler = 'x'.repeat(6000);
+      const html = `
+        <div id="availability_feature_div">In Stock</div>
+        ${filler}
+        <span>Currently unavailable</span>
+      `;
+      expect(isAmazonCurrentlyUnavailable(html)).toBe(false);
+    });
+  });
+
+  describe('Newegg main-price scoping (the WD Red 10TB regression)', () => {
+    it('ignores price-current elements outside the product-price container', () => {
+      // Simulates Newegg's real shape: recommendation carousels with
+      // `.price-current` precede the main product-price div. Before
+      // scoping, the first carousel price would leak as "the current
+      // price". Now we should return the main price.
+      const html = `
+        <ul class="recommendation-carousel">
+          <li class="price-current">$<strong>249</strong><sup>.99</sup></li>
+        </ul>
+        <div class="product-price">
+          <ul class="price">
+            <li class="price-current">$<strong>459</strong><sup>.95</sup></li>
+          </ul>
+        </div>
+        <ul class="another-carousel">
+          <li class="price-current">$<strong>10</strong><sup>.00</sup></li>
+        </ul>
+      `;
+      // css-patterns can't extract the <strong>459</strong> format
+      // directly (the class-match helper expects leaf text), but the
+      // scoping guarantees it doesn't incorrectly return a carousel
+      // price either. The real extraction on Newegg happens via
+      // json-ld; this test locks down that css-patterns at worst
+      // returns null, never a carousel price.
+      const result = extractFromCssPatterns(html);
+      expect(result === null || result === 459).toBe(true);
+      expect(result).not.toBe(249);
+      expect(result).not.toBe(10);
     });
   });
 });
