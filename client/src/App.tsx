@@ -26,6 +26,7 @@ const TrackerDetail = lazy(() => import('./pages/TrackerDetail'))
 const Category = lazy(() => import('./pages/Category'))
 const BelowTarget = lazy(() => import('./pages/BelowTarget'))
 const Errors = lazy(() => import('./pages/Errors'))
+const Active = lazy(() => import('./pages/Active'))
 const Notifications = lazy(() => import('./pages/Notifications'))
 const SettingsPage = lazy(() => import('./pages/Settings'))
 const Admin = lazy(() => import('./pages/Admin'))
@@ -143,6 +144,7 @@ function App() {
             <Route path="/category/:domain" element={<ProtectedRoute><Category /></ProtectedRoute>} />
             <Route path="/below-target" element={<ProtectedRoute><BelowTarget /></ProtectedRoute>} />
             <Route path="/errors" element={<ProtectedRoute><Errors /></ProtectedRoute>} />
+            <Route path="/active" element={<ProtectedRoute><Active /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />

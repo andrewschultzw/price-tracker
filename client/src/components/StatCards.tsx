@@ -68,6 +68,7 @@ export default function StatCards({ trackers }: Props) {
       icon: Activity,
       color: 'text-primary',
       bg: 'bg-primary/10',
+      href: active > 0 ? '/active' : undefined,
     },
     {
       label: 'Below Target',

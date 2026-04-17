@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Tracker } from '../types'
-import { buildDashboardLayout, CATEGORY_COLLAPSE_THRESHOLD } from './dashboard-sort'
+import { buildDashboardLayout, CATEGORY_COLLAPSE_THRESHOLD, sortByLastCheckedDesc } from './dashboard-sort'
 
 function makeTracker({ id, url, ...rest }: Partial<Tracker> & { id: number; url: string }): Tracker {
   return {
@@ -179,5 +179,39 @@ describe('buildDashboardLayout', () => {
       expect(totalErrored).toBe(0)
       expect(totalActive).toBe(0)
     })
+  })
+})
+
+describe('sortByLastCheckedDesc', () => {
+  it('puts most-recently-checked first', () => {
+    const trackers = [
+      makeTracker({ id: 1, url: 'https://a.example.com/1', last_checked_at: '2026-04-17 10:00:00' }),
+      makeTracker({ id: 2, url: 'https://b.example.com/1', last_checked_at: '2026-04-17 12:00:00' }),
+      makeTracker({ id: 3, url: 'https://c.example.com/1', last_checked_at: '2026-04-16 23:59:59' }),
+    ]
+    expect(sortByLastCheckedDesc(trackers).map(t => t.id)).toEqual([2, 1, 3])
+  })
+
+  it('puts never-checked trackers at the bottom', () => {
+    const trackers = [
+      makeTracker({ id: 1, url: 'https://a.example.com/1', last_checked_at: null }),
+      makeTracker({ id: 2, url: 'https://b.example.com/1', last_checked_at: '2026-04-17 12:00:00' }),
+      makeTracker({ id: 3, url: 'https://c.example.com/1', last_checked_at: '2026-04-15 00:00:00' }),
+    ]
+    expect(sortByLastCheckedDesc(trackers).map(t => t.id)).toEqual([2, 3, 1])
+  })
+
+  it('does not mutate the input array', () => {
+    const original = [
+      makeTracker({ id: 1, url: 'https://a.example.com/1', last_checked_at: '2026-04-17 10:00:00' }),
+      makeTracker({ id: 2, url: 'https://b.example.com/1', last_checked_at: '2026-04-17 12:00:00' }),
+    ]
+    const snapshot = original.map(t => t.id)
+    sortByLastCheckedDesc(original)
+    expect(original.map(t => t.id)).toEqual(snapshot)
+  })
+
+  it('handles an empty array', () => {
+    expect(sortByLastCheckedDesc([])).toEqual([])
   })
 })
