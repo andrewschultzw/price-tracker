@@ -129,15 +129,113 @@ const AMAZON_PRICETOPAY_ACCESSIBILITY_RE =
  * Fallback regex for Amazon's generic "offscreen" price span. Used when
  * the accessibility label isn't present (older Amazon layouts, search
  * result cards, non-product pages, short-link preview pages). This
- * matches the FIRST `.a-offscreen` span on the page, which is correct
- * for the majority of Amazon pages with a single buy option but can
- * pick up a non-main price on multi-seller accordion layouts — hence
- * the accessibility-label-first strategy above.
+ * matches the FIRST `.a-offscreen` span in the provided HTML, which on
+ * an Amazon product page SHOULD be the main price. On unavailable or
+ * multi-seller accordion pages the first page-wide `.a-offscreen` can
+ * be a sponsored-carousel item, so this regex is run against a scoped
+ * main-price container when one is detected — see
+ * `extractAmazonMainPriceScope` below.
  *
  * Example markup:
  *   <span class="a-offscreen">$53.99</span>
  */
 const AMAZON_OFFSCREEN_RE = /<span[^>]*class=["']a-offscreen["'][^>]*>([^<]+)<\/span>/i;
+
+/**
+ * Amazon main-price container openers, in priority order. These are
+ * all `<div>`s (not leaf spans like `#priceblock_ourprice`, which are
+ * the price text itself — handled by the generic selector loop). When
+ * any of these divs is present we restrict the `.a-offscreen` fallback
+ * to the substring between the opener and its matching `</div>` — so
+ * sponsored-carousel `.a-offscreen` spans elsewhere on the page don't
+ * leak in when the main buy box is missing (the JetKVM regression
+ * where `apex_desktop` rendered empty and we were grabbing $35.99 from
+ * a sponsored accessory).
+ */
+const AMAZON_MAIN_PRICE_OPENERS: RegExp[] = [
+  /<div[^>]*id=["']corePriceDisplay_desktop_feature_div["'][^>]*>/i,
+  /<div[^>]*id=["']corePrice_feature_div["'][^>]*>/i,
+  /<div[^>]*id=["']apex_desktop["'][^>]*>/i,
+];
+
+/**
+ * Slice a balanced <div>…</div> block starting at the given opening
+ * tag match. Counts nested <div> depth so the returned slice ends at
+ * the MATCHING </div>, not the first </div> encountered. Returns null
+ * on malformed markup (missing close). Used to scope main-price
+ * matching to a single container without bleeding into adjacent
+ * content — a regex with a fixed window can't do this reliably because
+ * price containers vary wildly in size.
+ */
+export function sliceBalancedDiv(html: string, openerMatch: RegExpMatchArray): string | null {
+  if (openerMatch.index === undefined) return null;
+  const start = openerMatch.index;
+  let depth = 1;
+  let i = start + openerMatch[0].length;
+  while (i < html.length && depth > 0) {
+    const nextOpen = html.indexOf('<div', i);
+    const nextClose = html.indexOf('</div>', i);
+    if (nextClose === -1) return null;
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth++;
+      i = nextOpen + 4;
+    } else {
+      depth--;
+      i = nextClose + 6;
+      if (depth === 0) return html.slice(start, i);
+    }
+  }
+  return null;
+}
+
+/**
+ * Return the HTML of the first Amazon main-price container as a
+ * balanced <div>…</div> slice, or null if no known container exists.
+ * Callers use this to scope `.a-offscreen` matching so sponsored /
+ * related-product carousels outside the container can't contaminate
+ * the fallback.
+ */
+function extractAmazonMainPriceScope(html: string): string | null {
+  for (const opener of AMAZON_MAIN_PRICE_OPENERS) {
+    const match = html.match(opener);
+    if (match) {
+      const slice = sliceBalancedDiv(html, match);
+      if (slice !== null) return slice;
+    }
+  }
+  return null;
+}
+
+/**
+ * Amazon's `availability_feature_div` is the canonical container for
+ * the stock-status message. When the product is unavailable, it
+ * contains "Currently unavailable" — return true so the caller can
+ * skip extraction and let the pipeline surface a clean "unavailable"
+ * error instead of silently scraping a sponsored carousel price.
+ *
+ * Window is bounded to 5000 chars after the opener to avoid matching
+ * "Currently unavailable" text that appears elsewhere on the page
+ * (used listings, third-party-only offers, etc.).
+ */
+export function isAmazonCurrentlyUnavailable(html: string): boolean {
+  const match = html.match(/<div[^>]*id=["']availability_feature_div["'][^>]*>/i);
+  if (!match || match.index === undefined) return false;
+  const scope = html.slice(match.index, match.index + 5000);
+  return /Currently unavailable/i.test(scope);
+}
+
+/**
+ * Newegg's `<div class="product-price">` wraps the main buy box. The
+ * rest of the page has many other `.price-current` elements in
+ * recommended-product and sponsored-item carousels — scoping to this
+ * container prevents the 10TB-HDD regression where random carousel
+ * prices ($10, $249, $389) were reported as the product price.
+ */
+function extractNeweggMainPriceScope(html: string): string | null {
+  const match = html.match(/<div[^>]*class=["'][^"']*\bproduct-price\b[^"']*["'][^>]*>/i);
+  if (!match) return null;
+  return sliceBalancedDiv(html, match);
+}
 
 export function extractFromCssPatterns(html: string): number | null {
   // Amazon: prefer the Amazon-direct offer when multiple sellers compete
@@ -151,18 +249,32 @@ export function extractFromCssPatterns(html: string): number | null {
   // label. This is Amazon's singleton screen-reader marker for the
   // current buy box winner — used when there's no Amazon-direct offer
   // on the page (e.g., the product is only sold by third parties).
-  const priceToPayMatch = AMAZON_PRICETOPAY_ACCESSIBILITY_RE.exec(html);
+  const priceToPayMatch = html.match(AMAZON_PRICETOPAY_ACCESSIBILITY_RE);
   if (priceToPayMatch) {
     const parsed = parsePrice(priceToPayMatch[1]);
     if (parsed !== null) return parsed;
   }
 
-  // Amazon fallback: the generic offscreen span. Covers older page
-  // layouts and non-product pages that lack the accessibility label.
-  const amazonMatch = AMAZON_OFFSCREEN_RE.exec(html);
+  // Amazon fallback: the generic offscreen span. When a known
+  // main-price container is on the page, restrict matching to it —
+  // otherwise we'd grab a sponsored-carousel `.a-offscreen` on
+  // unavailable-product pages (the JetKVM regression). When no known
+  // container is on the page we fall back to the page-wide first
+  // match, which is the correct main price on older layouts and
+  // non-product pages.
+  const amazonScope = extractAmazonMainPriceScope(html);
+  const amazonHaystack = amazonScope ?? html;
+  const amazonMatch = amazonHaystack.match(AMAZON_OFFSCREEN_RE);
   if (amazonMatch) {
     const parsed = parsePrice(amazonMatch[1]);
     if (parsed !== null) return parsed;
+  } else if (amazonScope !== null) {
+    // A main-price container exists but has no `.a-offscreen` inside.
+    // That's the signal the product has no buy box price (unavailable,
+    // deprecated listing, etc). Do NOT fall through to the generic
+    // selectors below — they'd pick up a sponsored-carousel price
+    // elsewhere on the page. Let the pipeline try the next strategy.
+    return null;
   }
 
   // Look for data-price attributes next (usually the cleanest non-Amazon source)
@@ -173,9 +285,14 @@ export function extractFromCssPatterns(html: string): number | null {
     if (!isNaN(parsed) && parsed > 0) return parsed;
   }
 
-  // Look for common class/id patterns with price content
+  // Newegg: when the main product-price container is present, scope
+  // generic selector matching to it. Newegg pages render many other
+  // `.price-current` carousels (recommended items, sponsored displays)
+  // that would otherwise poison the page-wide match.
+  const neweggScope = extractNeweggMainPriceScope(html);
+  const selectorHaystack = neweggScope ?? html;
   for (const selector of COMMON_SELECTORS) {
-    const price = matchSelectorInHtml(html, selector);
+    const price = matchSelectorInHtml(selectorHaystack, selector);
     if (price !== null) return price;
   }
 

@@ -2,7 +2,7 @@ import { fetchPageContent } from './browser.js';
 import { extractFromJsonLd } from './strategies/jsonld.js';
 import { extractFromMicrodata } from './strategies/microdata.js';
 import { extractFromOpenGraph } from './strategies/opengraph.js';
-import { extractFromCssPatterns } from './strategies/css-patterns.js';
+import { extractFromCssPatterns, isAmazonCurrentlyUnavailable } from './strategies/css-patterns.js';
 import { extractFromRegex } from './strategies/regex.js';
 import { extractWithCssSelector } from './strategies/css-selector.js';
 import { withRetry, ScrapeError } from './retry.js';
@@ -81,6 +81,18 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
       },
     },
   );
+
+  // Short-circuit on Amazon "Currently unavailable" pages. Without this,
+  // the strategy pipeline falls through to page-wide regex/css fallbacks
+  // that grab a sponsored-carousel price and report it as the product
+  // price (the JetKVM regression: reported $35.99 for an unavailable
+  // product because the first `.a-offscreen` on the page was an
+  // accessory). Non-retryable because the page state is deterministic
+  // — retrying won't un-unavailable the product.
+  if (isAmazonCurrentlyUnavailable(html)) {
+    logger.info({ url }, 'Amazon lists product as Currently unavailable');
+    throw new ScrapeError('Product is currently unavailable on Amazon', false);
+  }
 
   const strategies: { name: string; fn: () => number | null }[] = [
     { name: 'json-ld', fn: () => extractFromJsonLd(html) },
