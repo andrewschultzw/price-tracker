@@ -1,9 +1,11 @@
 import { getDb } from './connection.js';
+import { normalizeTrackerUrl } from '../lib/normalize-url.js';
 
 export interface Tracker {
   id: number;
   name: string;
   url: string;
+  normalized_url: string | null;
   threshold_price: number | null;
   check_interval_minutes: number;
   // Fixed per-tracker random offset (minutes) added to check_interval when
@@ -153,11 +155,12 @@ export function createTracker(data: {
   const interval = data.check_interval_minutes ?? 360;
   return db.transaction(() => {
     const result = db.prepare(`
-      INSERT INTO trackers (name, url, threshold_price, check_interval_minutes, jitter_minutes, css_selector, user_id)
-      VALUES (@name, @url, @threshold_price, @check_interval_minutes, @jitter_minutes, @css_selector, @user_id)
+      INSERT INTO trackers (name, url, normalized_url, threshold_price, check_interval_minutes, jitter_minutes, css_selector, user_id)
+      VALUES (@name, @url, @normalized_url, @threshold_price, @check_interval_minutes, @jitter_minutes, @css_selector, @user_id)
     `).run({
       name: data.name,
       url: data.url,
+      normalized_url: normalizeTrackerUrl(data.url),
       threshold_price: data.threshold_price ?? null,
       check_interval_minutes: interval,
       jitter_minutes: computeJitterMinutes(interval),
@@ -165,9 +168,7 @@ export function createTracker(data: {
       user_id: data.user_id,
     });
     const trackerId = Number(result.lastInsertRowid);
-    db.prepare(`
-      INSERT INTO tracker_urls (tracker_id, url, position) VALUES (?, ?, 0)
-    `).run(trackerId, data.url);
+    db.prepare(`INSERT INTO tracker_urls (tracker_id, url, position) VALUES (?, ?, 0)`).run(trackerId, data.url);
     return getTrackerById(trackerId, data.user_id)!;
   })();
 }
