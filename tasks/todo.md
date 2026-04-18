@@ -20,7 +20,7 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [x] **Email notification channel.** ~~Fourth channel reusing Cloudflare+Gmail relay.~~ **Done 2026-04-18:** Gmail SMTP via `alerts@schultzsolutions.tech` Send-As alias (Cloudflare Email Routing + Gmail Send-As, Treat-as-alias mode), nodemailer transport, multipart HTML + plaintext bodies, encrypted `email_recipient` per user, new `POST /api/settings/test-email` endpoint, Settings card with "Send test email" button. 5 new tests in `email.test.ts`. Spec: `docs/superpowers/specs/2026-04-18-email-notification-channel-design.md`. Plan: `docs/superpowers/plans/2026-04-18-email-notification-channel.md`. [PR #3](https://github.com/andrewschultzw/price-tracker/pull/3).
 
-- [ ] **Test with 10+ real product URLs.** Integration sanity sweep across Amazon, Newegg, Best Buy, Walmart, Target to catch strategy drift before it causes silent data quality issues. Would have caught the Amazon split-price bug ~2 weeks earlier.
+- [x] **Test with 10+ real product URLs.** ~~Integration sanity sweep across retailers.~~ **Done 2026-04-18:** new `npm run canary` dev tool (`server/src/scripts/canary-sweep.ts`) — pulls every active `tracker_urls` row from the prod DB via SSH, runs every extraction strategy against each URL, classifies outcomes as `ok` / `unavailable` / `bot_check` / `no_price` / `fetch_error`, saves intercept HTMLs to `tmp/canary/` (gitignored) for post-mortem. First run covered 25 URLs across amazon / newegg / a.co / amzn.to / ikoolcore / wisdpi / worldwidestereo / walmart. Discovered Walmart uses PerimeterX "Robot or human?" intercept.
 
 ### Priority: polish
 
@@ -42,7 +42,7 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [ ] **OpenClaw integration.** Discord bot skill that accepts a product link + threshold, calls the Price Tracker API to create a tracker automatically. Cross-project work.
 
-- [ ] **Better CAPTCHA / block detection for non-Amazon retailers.** The bot-check retry logic in `browser.ts` (added 2026-04-09) handles Amazon's `/errors/validateCaptcha` redirects and known intercept phrases, but there's more we could do for Walmart, Best Buy, Target.
+- [x] **Better CAPTCHA / block detection for non-Amazon retailers.** ~~Extend bot-check detection beyond Amazon.~~ **Done 2026-04-18 (partial):** captured Walmart's PerimeterX intercept page (title `<title>Robot or human?</title>`) via the canary sweep. Added title match `^\s*robot or human\??\s*$` to `isBotCheckPage` in `browser.ts`. Fixture test at `server/src/scraper/strategies/__fixtures__/walmart-bot-check.html` plus a false-positive guard test (benign "Robot Vacuum" product page stays clean). Best Buy / Target patterns deferred — we haven't seen their intercept pages in any real scrape (no trackers yet; canary run was clean across our current URL set).
 
 - [ ] **Cross-user tracker overlap flag.** When user A adds a URL that user B already tracks, surface a visual indicator on both users' trackers ("N others track this" or similar). Low priority since it probably won't happen often in practice, but a nice social/collaborative touch for a multi-user homelab app.
 
