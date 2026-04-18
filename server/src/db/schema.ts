@@ -14,6 +14,12 @@ export function initializeSchema(): void {
       url TEXT NOT NULL,
       threshold_price REAL,
       check_interval_minutes INTEGER NOT NULL DEFAULT 360,
+      -- Fixed per-tracker random offset added to check_interval_minutes when
+      -- deciding if a seller is due. Prevents ~30-50 trackers with identical
+      -- intervals from all firing in the same minute and tripping retailer
+      -- rate limits. Populated at creation (see queries.ts#createTracker);
+      -- never mutated afterward so "check every N min" stays stable per tracker.
+      jitter_minutes INTEGER NOT NULL DEFAULT 0,
       css_selector TEXT,
       -- last_price / last_checked_at / last_error / status / consecutive_failures
       -- are aggregates of the per-seller rows in tracker_urls, updated by the
