@@ -13,6 +13,7 @@ const ALLOWED_SETTING_KEYS = new Set([
   'ntfy_token',
   'generic_webhook_url',
   'email_recipient',
+  'share_display_name',
 ]);
 
 // Basic email shape check. Not RFC 5322 strict — SMTP will reject

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Clock, RefreshCw, BellOff, TrendingDown, Store } from 'lucide-react'
+import { ExternalLink, Clock, RefreshCw, BellOff, TrendingDown, Store, Users } from 'lucide-react'
 import type { Tracker } from '../types'
 import StatusBadge from './StatusBadge'
 import Sparkline from './Sparkline'
@@ -33,9 +33,10 @@ interface Props {
   minPrice?: number | null
   onUpdate: () => void
   notificationsConfigured?: boolean
+  overlapCount?: number
 }
 
-export default function TrackerCard({ tracker, sparklineData, minPrice = null, onUpdate, notificationsConfigured = true }: Props) {
+export default function TrackerCard({ tracker, sparklineData, minPrice = null, onUpdate, notificationsConfigured = true, overlapCount }: Props) {
   const [checking, setChecking] = useState(false)
 
   const handleCheck = async (e: React.MouseEvent) => {
@@ -72,6 +73,12 @@ export default function TrackerCard({ tracker, sparklineData, minPrice = null, o
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <h3 className="text-text font-semibold text-base truncate">{tracker.name}</h3>
+          {overlapCount !== undefined && overlapCount > 0 && (
+            <div className="inline-flex items-center gap-1 text-xs text-text-muted bg-surface-hover rounded-full px-2 py-0.5 mt-1">
+              <Users className="w-3 h-3" />
+              Also tracked by {overlapCount}
+            </div>
+          )}
           <a
             href={tracker.url}
             target="_blank"

@@ -85,6 +85,7 @@ describe('cron.ts per-seller cooldown', () => {
       price: 40,
       currency: 'USD',
       strategy: 'mock',
+      finalUrl: 'https://amazon.com/dp/A',
     });
   });
 
@@ -253,7 +254,7 @@ describe('cron.ts per-seller cooldown', () => {
 
       // Scrape returns $75, above the $50 threshold
       vi.mocked(extractPrice).mockResolvedValueOnce({
-        price: 75, currency: 'USD', strategy: 'mock',
+        price: 75, currency: 'USD', strategy: 'mock', finalUrl: 'https://amazon.com/dp/A',
       });
 
       await checkTrackerUrl(seller.id);

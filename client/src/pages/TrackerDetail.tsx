@@ -1,13 +1,13 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Download, Plus, X, Store } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Download, Plus, X, Store, Users, TrendingDown } from 'lucide-react'
 import {
   getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker,
   getTrackerStats, getNotificationHistory,
-  getTrackerUrls, addTrackerUrl, deleteTrackerUrl,
+  getTrackerUrls, addTrackerUrl, deleteTrackerUrl, getOverlap,
 } from '../api'
 import type { NotificationHistoryRow } from '../api'
-import type { Tracker, TrackerUrl, PriceRecord } from '../types'
+import type { Tracker, TrackerUrl, PriceRecord, Overlap } from '../types'
 import StatusBadge from '../components/StatusBadge'
 import useTitle from '../useTitle'
 
@@ -34,23 +34,26 @@ export default function TrackerDetail() {
   const [editName, setEditName] = useState('')
   const [editThreshold, setEditThreshold] = useState('')
   const [editInterval, setEditInterval] = useState('')
+  const [overlap, setOverlap] = useState<Overlap | null>(null)
 
   const trackerId = Number(id)
   useTitle(tracker?.name || 'Tracker')
 
   const load = async () => {
     try {
-      const [t, p, stats, notifs, sellerRows] = await Promise.all([
+      const [t, p, stats, notifs, sellerRows, overlapData] = await Promise.all([
         getTracker(trackerId),
         getPriceHistory(trackerId, range),
         getTrackerStats(),
         getNotificationHistory(trackerId, 10),
         getTrackerUrls(trackerId),
+        getOverlap(trackerId),
       ])
       setTracker(t)
       setPrices(p)
       setAlerts(notifs)
       setSellers(sellerRows)
+      setOverlap(overlapData)
       const stat = stats[trackerId]
       if (stat?.min_price != null && stat?.min_price_at != null) {
         setAllTimeLow({ price: stat.min_price, at: stat.min_price_at })
@@ -381,6 +384,31 @@ export default function TrackerDetail() {
           </div>
         )}
       </div>
+
+      {overlap && overlap.count > 0 && (
+        <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold">Community</h2>
+          </div>
+          <p className="text-text-muted text-sm">
+            Also tracked by {overlap.count} {overlap.count === 1 ? 'other user' : 'others'}
+            {overlap.names.length > 0 && (
+              <> — shared by <span className="text-text font-medium">{overlap.names.join(', ')}</span></>
+            )}
+            .
+          </p>
+          {overlap.communityLow !== null
+            && tracker?.last_price !== null
+            && tracker?.last_price !== undefined
+            && overlap.communityLow < tracker.last_price && (
+              <div className="inline-flex items-center gap-1 text-sm text-success bg-success/10 rounded-full px-2.5 py-1 mt-3">
+                <TrendingDown className="w-4 h-4" />
+                Community low: ${overlap.communityLow.toFixed(2)}
+              </div>
+            )}
+        </div>
+      )}
 
       <div className="bg-surface border border-border rounded-xl p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">

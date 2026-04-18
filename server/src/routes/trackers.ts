@@ -4,6 +4,7 @@ import {
   getAllTrackers, getTrackerById, createTracker, updateTracker, deleteTracker,
   getRecentPricesForAllTrackers, getTrackerStats,
   getTrackerUrlsForTracker, addTrackerUrl, deleteTrackerUrl, refreshTrackerAggregates,
+  getOverlapForTracker, getOverlapCountsForUser,
 } from '../db/queries.js';
 import { checkTracker, checkTrackerUrl } from '../scheduler/cron.js';
 import { extractPrice } from '../scraper/extractor.js';
@@ -40,6 +41,11 @@ router.get('/sparklines', (req: Request, res: Response) => {
 router.get('/stats', (req: Request, res: Response) => {
   const data = getTrackerStats(req.user!.userId, 10);
   res.json(data);
+});
+
+router.get('/overlap-counts', (req: Request, res: Response) => {
+  const counts = getOverlapCountsForUser(req.user!.userId);
+  res.json(counts);
 });
 
 router.post('/', (req: Request, res: Response) => {
@@ -99,6 +105,15 @@ router.post('/:id/check', async (req: Request, res: Response) => {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: msg });
   }
+});
+
+router.get('/:id/overlap', (req: Request, res: Response) => {
+  const overlap = getOverlapForTracker(Number(req.params.id), req.user!.userId);
+  if (overlap === null) {
+    res.status(404).json({ error: 'Tracker not found' });
+    return;
+  }
+  res.json(overlap);
 });
 
 // --- Seller URLs (tracker_urls) ---

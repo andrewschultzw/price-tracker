@@ -12,6 +12,11 @@ export function initializeSchema(): void {
       -- the trackers row so existing frontend code that reads tracker.url
       -- (category grouping, canonical domain) keeps working unchanged.
       url TEXT NOT NULL,
+      -- Canonical key used for cross-user overlap matching. Populated by
+      -- normalizeTrackerUrl() at create/scrape time. Nullable for legacy
+      -- rows or URLs that fail to normalize; nulls are excluded from
+      -- overlap queries.
+      normalized_url TEXT,
       threshold_price REAL,
       check_interval_minutes INTEGER NOT NULL DEFAULT 360,
       -- Fixed per-tracker random offset added to check_interval_minutes when
@@ -50,6 +55,10 @@ export function initializeSchema(): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_tracker_urls_tracker_id ON tracker_urls(tracker_id);
+    -- idx_trackers_normalized_url is created by migration v6, NOT here.
+    -- On existing DBs the normalized_url column doesn't exist until the
+    -- migration runs, and CREATE INDEX against a missing column throws
+    -- during schema init — before migrations get a chance to ALTER.
 
     CREATE TABLE IF NOT EXISTS price_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Save, Send, CheckCircle, XCircle, MessageSquare, Bell, Webhook, Mail } from 'lucide-react'
+import { Save, Send, CheckCircle, XCircle, MessageSquare, Bell, Webhook, Mail, Users } from 'lucide-react'
 import { getSettings, updateSettings, testWebhook, testNtfy, testGenericWebhook, testEmail } from '../api'
 import useTitle from '../useTitle'
 
@@ -86,6 +86,9 @@ export default function SettingsPage() {
   // ntfy has an optional second input — the Bearer token, for self-hosted
   // instances with auth-default-access=deny-all. Empty string = no auth.
   const [ntfyToken, setNtfyToken] = useState('')
+  const [shareDisplayName, setShareDisplayName] = useState(false)
+  const [savingCommunity, setSavingCommunity] = useState(false)
+  const [savedCommunity, setSavedCommunity] = useState(false)
   const [savingKey, setSavingKey] = useState<ChannelKey | null>(null)
   const [savedKey, setSavedKey] = useState<ChannelKey | null>(null)
   const [testingKey, setTestingKey] = useState<ChannelKey | null>(null)
@@ -100,6 +103,7 @@ export default function SettingsPage() {
         email: s.email_recipient || '',
       })
       setNtfyToken(s.ntfy_token || '')
+      setShareDisplayName(s.share_display_name === 'true')
     })
   }, [])
 
@@ -117,6 +121,18 @@ export default function SettingsPage() {
       setTimeout(() => setSavedKey(k => (k === ch.key ? null : k)), 3000)
     } finally {
       setSavingKey(null)
+    }
+  }
+
+  const handleCommunitySave = async () => {
+    setSavingCommunity(true)
+    setSavedCommunity(false)
+    try {
+      await updateSettings({ share_display_name: shareDisplayName ? 'true' : 'false' })
+      setSavedCommunity(true)
+      setTimeout(() => setSavedCommunity(false), 3000)
+    } finally {
+      setSavingCommunity(false)
     }
   }
 
@@ -223,6 +239,35 @@ export default function SettingsPage() {
             </div>
           )
         })}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mt-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Users className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">Community</h2>
+        </div>
+        <p className="text-text-muted text-sm mb-4">
+          When other users track the same products you do, the dashboard shows a small
+          "Also tracked by N" indicator. Turn this on to let those users see your
+          display name too; off keeps you anonymous.
+        </p>
+        <label className="flex items-center gap-2 cursor-pointer mb-4">
+          <input
+            type="checkbox"
+            checked={shareDisplayName}
+            onChange={e => setShareDisplayName(e.target.checked)}
+            className="rounded"
+          />
+          <span className="text-sm">Show my display name to other users on trackers we share</span>
+        </label>
+        <button
+          onClick={handleCommunitySave}
+          disabled={savingCommunity}
+          className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          {savedCommunity ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+          {savedCommunity ? 'Saved!' : savingCommunity ? 'Saving...' : 'Save'}
+        </button>
       </div>
     </div>
   )

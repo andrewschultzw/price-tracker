@@ -1,4 +1,4 @@
-import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus } from './types';
+import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap } from './types';
 
 const BASE = '/api';
 
@@ -101,6 +101,10 @@ export const testScrape = (url: string, css_selector?: string) =>
   request<ScrapeResult>('/trackers/test-scrape', {
     method: 'POST', body: JSON.stringify({ url, css_selector }),
   });
+export const getOverlap = (trackerId: number) =>
+  request<Overlap>(`/trackers/${trackerId}/overlap`);
+export const getOverlapCounts = () =>
+  request<Record<number, number>>('/trackers/overlap-counts');
 
 // Price history
 export const getPriceHistory = (id: number, range?: string) =>

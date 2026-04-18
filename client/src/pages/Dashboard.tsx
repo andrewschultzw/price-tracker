@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Package } from 'lucide-react'
-import { getTrackers, getTrackerStats, getSettings } from '../api'
+import { getTrackers, getTrackerStats, getSettings, getOverlapCounts } from '../api'
 import type { TrackerStat } from '../api'
 import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
@@ -14,17 +14,19 @@ export default function Dashboard() {
   const [trackers, setTrackers] = useState<Tracker[]>([])
   const [stats, setStats] = useState<Record<string, TrackerStat>>({})
   const [notificationsConfigured, setNotificationsConfigured] = useState(true)
+  const [overlapCounts, setOverlapCounts] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
   useTitle('Dashboard')
 
   const load = async () => {
     try {
-      const [data, trackerStats, settings] = await Promise.all([getTrackers(), getTrackerStats(), getSettings()])
+      const [data, trackerStats, settings, counts] = await Promise.all([getTrackers(), getTrackerStats(), getSettings(), getOverlapCounts()])
       setTrackers(data)
       setStats(trackerStats)
       setNotificationsConfigured(
         !!(settings.discord_webhook_url || settings.ntfy_url || settings.generic_webhook_url),
       )
+      setOverlapCounts(counts)
     } catch (err) {
       console.error('Failed to load trackers', err)
     } finally {
@@ -89,6 +91,7 @@ export default function Dashboard() {
               minPrice={stats[item.tracker.id]?.min_price ?? null}
               onUpdate={load}
               notificationsConfigured={notificationsConfigured}
+              overlapCount={overlapCounts[item.tracker.id] ?? 0}
             />
           ) : (
             <CategoryCard

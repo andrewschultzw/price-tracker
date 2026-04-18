@@ -13,6 +13,7 @@ export interface ExtractionResult {
   price: number;
   currency: string;
   strategy: string;
+  finalUrl: string;
 }
 
 /**
@@ -58,7 +59,7 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
     logger.debug({ url, strategy: 'css-selector' }, 'Trying user CSS selector');
     const price = await extractWithCssSelector(url, cssSelector);
     if (price !== null) {
-      return { price, currency: 'USD', strategy: 'css-selector' };
+      return { price, currency: 'USD', strategy: 'css-selector', finalUrl: url };
     }
     logger.debug({ url }, 'User CSS selector failed, falling back to pipeline');
   }
@@ -67,7 +68,7 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
   // classifier only retries ScrapeErrors marked retryable (network errors,
   // timeouts, 5xx) plus unknown error types (browser context crashes and
   // similar). Deterministic failures like 4xx fail fast.
-  const html = await withRetry(
+  const fetched = await withRetry(
     () => fetchPageContent(url),
     {
       maxRetries: config.scrapeMaxRetries,
@@ -81,6 +82,7 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
       },
     },
   );
+  const { html, finalUrl } = fetched;
 
   // Short-circuit on Amazon "Currently unavailable" pages. Without this,
   // the strategy pipeline falls through to page-wide regex/css fallbacks
@@ -112,7 +114,7 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
         logger.warn({ url, strategy: name, price }, 'Price outside sanity range, skipping');
         continue;
       }
-      return { price, currency: 'USD', strategy: name };
+      return { price, currency: 'USD', strategy: name, finalUrl };
     }
   }
 
