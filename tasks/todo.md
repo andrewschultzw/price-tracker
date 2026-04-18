@@ -26,7 +26,7 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [x] **Bundle code-splitting.** ~~Vite is warning at ~650 KB bundle.~~ **Done 2026-04-09:** converted all non-Dashboard pages to `React.lazy()` with a shared Suspense boundary. `PriceChart` (recharts, 347 KB) and `SavingsCelebration` (canvas-confetti, 14 KB) also lazy from their usage sites. Initial gzipped payload dropped 200 KB → 66.6 KB (-67%). Vite's chunk-size warning is gone.
 
-- [ ] **Active stat card clickable.** 3 of the 4 stat cards are clickable now (Below Target → deals view, Errors → errors view, Potential Savings → tiered celebration). Active is still a plain number. Low value since "all active" is basically the main dashboard view, but worth considering for consistency. Defer unless you want it.
+- [x] **Active stat card clickable.** ~~Plain number.~~ **Done 2026-04-17:** 4 of 4 stat cards now clickable. `/active` route shows flat grid of every `status='active'` tracker sorted by `last_checked_at` desc (no category collapse, unlike the main dashboard). 4 new unit tests for `sortByLastCheckedDesc`. [PR #2](https://github.com/andrewschultzw/price-tracker/pull/2).
 
 ### Priority: only when it bites
 
