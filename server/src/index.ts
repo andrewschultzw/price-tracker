@@ -7,6 +7,7 @@ import { config } from './config.js';
 import { initializeSchema } from './db/schema.js';
 import { closeDb } from './db/connection.js';
 import { authMiddleware, adminMiddleware } from './auth/middleware.js';
+import { apiKeyMiddleware } from './auth/apiKey.js';
 import authRoutes, { generateSetupToken } from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import trackerRoutes from './routes/trackers.js';
@@ -71,11 +72,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/favicon', faviconRouter);
 
 // Protected API routes
-app.use('/api/trackers', authMiddleware, trackerRoutes);
-app.use('/api/trackers', authMiddleware, priceRoutes);
-app.use('/api/settings', authMiddleware, settingsRoutes);
-app.use('/api/notifications', authMiddleware, notificationRoutes);
-app.use('/api/admin', authMiddleware, adminMiddleware, adminRoutes);
+app.use('/api/trackers', apiKeyMiddleware, authMiddleware, trackerRoutes);
+app.use('/api/trackers', apiKeyMiddleware, authMiddleware, priceRoutes);
+app.use('/api/settings', apiKeyMiddleware, authMiddleware, settingsRoutes);
+app.use('/api/notifications', apiKeyMiddleware, authMiddleware, notificationRoutes);
+app.use('/api/admin', apiKeyMiddleware, authMiddleware, adminMiddleware, adminRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

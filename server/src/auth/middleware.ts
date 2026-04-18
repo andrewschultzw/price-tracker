@@ -10,6 +10,13 @@ declare global {
 }
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+  // If an earlier middleware (e.g., apiKeyMiddleware) has already set
+  // req.user, skip the cookie check — the request is already authenticated.
+  if (req.user) {
+    next();
+    return;
+  }
+
   const token = req.cookies?.access_token;
 
   if (!token) {
