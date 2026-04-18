@@ -205,6 +205,28 @@ const migrations: Migration[] = [
       logger.info({ encryptedCount }, 'Encrypted existing webhook settings rows');
     },
   },
+  {
+    version: 5,
+    description: 'Add jitter_minutes to trackers to spread scheduled checks',
+    up: () => {
+      const db = getDb();
+      const cols = db.prepare("PRAGMA table_info(trackers)").all() as { name: string }[];
+      if (!cols.some(c => c.name === 'jitter_minutes')) {
+        db.prepare('ALTER TABLE trackers ADD COLUMN jitter_minutes INTEGER NOT NULL DEFAULT 0').run();
+      }
+      // Backfill: give every existing tracker a per-tracker offset so a DB
+      // imported mid-flight also gets spread. Formula matches createTracker
+      // in queries.ts — keep these in sync.
+      const rows = db.prepare('SELECT id, check_interval_minutes FROM trackers WHERE jitter_minutes = 0').all() as { id: number; check_interval_minutes: number }[];
+      const update = db.prepare('UPDATE trackers SET jitter_minutes = ? WHERE id = ?');
+      for (const r of rows) {
+        const cap = Math.min(Math.floor(r.check_interval_minutes / 6), 30);
+        const jitter = cap > 0 ? Math.floor(Math.random() * (cap + 1)) : 0;
+        update.run(jitter, r.id);
+      }
+      logger.info({ backfilled: rows.length }, 'Backfilled jitter_minutes for existing trackers');
+    },
+  },
 ];
 
 export function runMigrations(): void {

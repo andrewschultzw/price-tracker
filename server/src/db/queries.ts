@@ -6,6 +6,11 @@ export interface Tracker {
   url: string;
   threshold_price: number | null;
   check_interval_minutes: number;
+  // Fixed per-tracker random offset (minutes) added to check_interval when
+  // deciding if a seller is due. Populated at createTracker time; never
+  // mutated. Spreads scheduled checks so a batch of same-interval trackers
+  // doesn't all fire in the same minute.
+  jitter_minutes: number;
   css_selector: string | null;
   last_price: number | null;
   last_checked_at: string | null;
@@ -15,6 +20,21 @@ export interface Tracker {
   created_at: string;
   updated_at: string;
   user_id: number | null;
+}
+
+/**
+ * Compute a jitter offset for a tracker with the given check interval.
+ * Formula: uniform random integer in [0, min(floor(interval/6), 30)].
+ * Proportional at small intervals (10-min interval → 0-1 min jitter);
+ * capped at 30 min for long intervals so "check every 6h" doesn't become
+ * "check every 7h". Pure function so it's trivially testable.
+ *
+ * Kept in sync with the v5 migration backfill in migrations.ts.
+ */
+export function computeJitterMinutes(intervalMinutes: number): number {
+  const cap = Math.min(Math.floor(intervalMinutes / 6), 30);
+  if (cap <= 0) return 0;
+  return Math.floor(Math.random() * (cap + 1));
 }
 
 // Per-seller row. Each tracker has >= 1 tracker_urls rows; position=0 is
@@ -130,15 +150,17 @@ export function createTracker(data: {
   user_id: number;
 }): Tracker {
   const db = getDb();
+  const interval = data.check_interval_minutes ?? 360;
   return db.transaction(() => {
     const result = db.prepare(`
-      INSERT INTO trackers (name, url, threshold_price, check_interval_minutes, css_selector, user_id)
-      VALUES (@name, @url, @threshold_price, @check_interval_minutes, @css_selector, @user_id)
+      INSERT INTO trackers (name, url, threshold_price, check_interval_minutes, jitter_minutes, css_selector, user_id)
+      VALUES (@name, @url, @threshold_price, @check_interval_minutes, @jitter_minutes, @css_selector, @user_id)
     `).run({
       name: data.name,
       url: data.url,
       threshold_price: data.threshold_price ?? null,
-      check_interval_minutes: data.check_interval_minutes ?? 360,
+      check_interval_minutes: interval,
+      jitter_minutes: computeJitterMinutes(interval),
       css_selector: data.css_selector ?? null,
       user_id: data.user_id,
     });
@@ -197,7 +219,7 @@ export function getDueTrackers(): Tracker[] {
     WHERE status = 'active'
     AND (
       last_checked_at IS NULL
-      OR datetime(last_checked_at, '+' || check_interval_minutes || ' minutes') <= datetime('now')
+      OR datetime(last_checked_at, '+' || (check_interval_minutes + jitter_minutes) || ' minutes') <= datetime('now')
     )
   `).all() as Tracker[];
 }
@@ -227,7 +249,7 @@ export function getDueTrackerUrls(): DueTrackerUrl[] {
     WHERE t.status != 'paused' AND tu.status != 'paused'
     AND (
       tu.last_checked_at IS NULL
-      OR datetime(tu.last_checked_at, '+' || t.check_interval_minutes || ' minutes') <= datetime('now')
+      OR datetime(tu.last_checked_at, '+' || (t.check_interval_minutes + t.jitter_minutes) || ' minutes') <= datetime('now')
     )
   `).all() as DueTrackerUrl[];
 }

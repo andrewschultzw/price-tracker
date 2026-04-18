@@ -32,7 +32,7 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [ ] **Per-channel cooldowns.** Current cooldown is per-`(tracker, seller)` shared across all channels. Would matter if you wanted mixed-frequency notifications like "ntfy instant, webhook hourly". Skip unless you actually want this.
 
-- [ ] **Scheduler jitter.** If you pass ~30-50 trackers with identical `check_interval_minutes`, they all fire in the same minute and could trip retailer rate limits. Fine at current scale. Add small random offset per tracker at creation time if/when this becomes a problem.
+- [x] **Scheduler jitter.** ~~Same-minute firing risk at 30-50 trackers.~~ **Done 2026-04-18:** new `jitter_minutes` column on `trackers` with a fixed per-tracker random offset assigned at creation (formula: `randomInt(0, min(interval/6, 30))`). `getDueTrackerUrls` and `getDueTrackers` add jitter to `check_interval_minutes` when computing due time. Migration v5 backfilled all 22 existing trackers — confirmed spread across 15 distinct jitter values (2-29 min). 9 new tests in `jitter.test.ts`.
 
 - [ ] **CT 302 UniFi DHCP reservation** — MAC `BC:24:11:6D:45:11`, current IP `192.168.1.166`. Static in `pct config` but belt-and-suspenders reservation recommended. (Cross-referenced in `/root/homelabmisc/tasks/todo.md`.)
 
