@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { extractFromCssPatterns, isAmazonCurrentlyUnavailable } from './css-patterns.js';
 import { extractFromJsonLd } from './jsonld.js';
 import { extractFromRegex } from './regex.js';
+import { isBotCheckPage } from '../browser.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) =>
@@ -66,5 +67,28 @@ describe('fixture: newegg-wd-red-10tb.html (WD Red Plus 10TB HDD)', () => {
     expect(result).not.toBe(10);
     expect(result).not.toBe(249);
     expect(result).not.toBe(389);
+  });
+});
+
+describe('fixture: walmart-bot-check.html (Walmart "Robot or human?" intercept)', () => {
+  const html = fixture('walmart-bot-check.html');
+
+  it('is detected as a bot-check page', () => {
+    // Captured by the canary sweep on 2026-04-18 — Walmart's PerimeterX /
+    // press-and-hold challenge renders exactly `<title>Robot or human?</title>`
+    // with a ~16KB body. The old detection only matched "Robot Check" and
+    // missed this. Now flagged so the scraper throws a retryable
+    // ScrapeError instead of returning a wrong price.
+    expect(isBotCheckPage(html, 'https://www.walmart.com/ip/12345')).toBe(true);
+  });
+
+  it('does NOT false-positive on unrelated pages mentioning "robot" in copy', () => {
+    // Guard against a naive /robot/ regex creeping in. A product page
+    // that happens to sell a robot toy shouldn't trip the detector.
+    // Padded past 3000 chars so it doesn't hit the "suspiciously short
+    // retailer page" heuristic — we're testing the title regex only.
+    const benign = '<html><head><title>Cool Robot Vacuum - Walmart</title></head><body>'
+      + '<p>Buy this robot vacuum today.</p>'.repeat(100) + '</body></html>';
+    expect(isBotCheckPage(benign, 'https://www.walmart.com/ip/vacuum')).toBe(false);
   });
 });

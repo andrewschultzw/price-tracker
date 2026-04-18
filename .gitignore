@@ -6,3 +6,7 @@ data/
 *.db-journal
 .DS_Store
 .worktrees/
+
+# Local canary sweep intercept captures — retailer HTML snapshots for
+# drift review. Never committed.
+tmp/

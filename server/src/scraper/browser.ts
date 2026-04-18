@@ -107,7 +107,7 @@ export async function fetchPageContent(url: string): Promise<string> {
  * copy. The final URL check catches Amazon's /errors/validateCaptcha
  * redirects even when the rendered page body looks normal.
  */
-function isBotCheckPage(html: string, finalUrl: string): boolean {
+export function isBotCheckPage(html: string, finalUrl: string): boolean {
   // URL-based signals are the most reliable
   if (/\/errors\/validateCaptcha/i.test(finalUrl)) return true;
   if (/\/ap\/cvf\/request/i.test(finalUrl)) return true;
@@ -118,6 +118,10 @@ function isBotCheckPage(html: string, finalUrl: string): boolean {
   const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
   const title = titleMatch ? titleMatch[1] : '';
   if (/robot check/i.test(title)) return true;
+  // Walmart's press-and-hold / PerimeterX intercept renders a title of
+  // exactly "Robot or human?". Confirmed via canary sweep 2026-04-18 —
+  // see server/src/scraper/strategies/__fixtures__/walmart-bot-check.html.
+  if (/^\s*robot or human\??\s*$/i.test(title)) return true;
   if (/sorry,?\s*we just need to make sure/i.test(html.slice(0, 5000))) return true;
   if (/enter the characters you see below/i.test(html.slice(0, 5000))) return true;
   if (/to discuss automated access to amazon data/i.test(html.slice(0, 10000))) return true;
