@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react'
-import { getTrackers, getTrackerStats, getSettings, checkTracker } from '../api'
+import { getTrackers, getTrackerStats, getSettings, getOverlapCounts, checkTracker } from '../api'
 import type { TrackerStat } from '../api'
 import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
@@ -23,6 +23,7 @@ export default function Errors() {
   const [trackers, setTrackers] = useState<Tracker[]>([])
   const [stats, setStats] = useState<Record<string, TrackerStat>>({})
   const [notificationsConfigured, setNotificationsConfigured] = useState(true)
+  const [overlapCounts, setOverlapCounts] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
   const [checkingAll, setCheckingAll] = useState(false)
   const [checkError, setCheckError] = useState<string | null>(null)
@@ -30,16 +31,18 @@ export default function Errors() {
 
   const load = async () => {
     try {
-      const [data, trackerStats, settings] = await Promise.all([
+      const [data, trackerStats, settings, counts] = await Promise.all([
         getTrackers(),
         getTrackerStats(),
         getSettings(),
+        getOverlapCounts(),
       ])
       setTrackers(data.filter(isErrored))
       setStats(trackerStats)
       setNotificationsConfigured(
         !!(settings.discord_webhook_url || settings.ntfy_url || settings.generic_webhook_url),
       )
+      setOverlapCounts(counts)
     } catch (err) {
       console.error('Failed to load errored trackers', err)
     } finally {
@@ -126,6 +129,7 @@ export default function Errors() {
               minPrice={stats[tracker.id]?.min_price ?? null}
               onUpdate={load}
               notificationsConfigured={notificationsConfigured}
+              overlapCount={overlapCounts[tracker.id] ?? 0}
             />
           ))}
         </div>
