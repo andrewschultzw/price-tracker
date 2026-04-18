@@ -30,8 +30,14 @@ export async function createContext(): Promise<BrowserContext> {
   });
 }
 
+export interface FetchResult {
+  html: string;
+  finalUrl: string;
+}
+
 /**
- * Load a URL and return the rendered HTML. Throws a ScrapeError on failure:
+ * Load a URL and return the rendered HTML and final URL (after redirects).
+ * Throws a ScrapeError on failure:
  *   - Network errors / timeouts → retryable
  *   - HTTP 5xx                  → retryable
  *   - HTTP 4xx                  → NOT retryable (deterministic)
@@ -39,7 +45,7 @@ export async function createContext(): Promise<BrowserContext> {
  * Callers should wrap this in `withRetry()` to actually take advantage of
  * the retryable flag.
  */
-export async function fetchPageContent(url: string): Promise<string> {
+export async function fetchPageContent(url: string): Promise<FetchResult> {
   const context = await createContext();
   try {
     const page = await context.newPage();
@@ -93,8 +99,7 @@ export async function fetchPageContent(url: string): Promise<string> {
     if (isBotCheckPage(html, response?.url() ?? url)) {
       throw new ScrapeError(`Bot check / captcha page detected for ${url}`, true);
     }
-
-    return html;
+    return { html, finalUrl: response?.url() ?? url };
   } finally {
     await context.close();
   }
