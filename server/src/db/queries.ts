@@ -581,6 +581,7 @@ const ENCRYPTED_KEYS = new Set([
   'ntfy_url',
   'ntfy_token',
   'generic_webhook_url',
+  'email_recipient',
 ]);
 
 function maybeDecrypt(key: string, value: string): string {
