@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Save, Send, CheckCircle, XCircle, MessageSquare, Bell, Webhook } from 'lucide-react'
-import { getSettings, updateSettings, testWebhook, testNtfy, testGenericWebhook } from '../api'
+import { Save, Send, CheckCircle, XCircle, MessageSquare, Bell, Webhook, Mail } from 'lucide-react'
+import { getSettings, updateSettings, testWebhook, testNtfy, testGenericWebhook, testEmail } from '../api'
 import useTitle from '../useTitle'
 
-type ChannelKey = 'discord' | 'ntfy' | 'webhook'
+type ChannelKey = 'discord' | 'ntfy' | 'webhook' | 'email'
 
 interface ChannelConfig {
   key: ChannelKey
-  settingKey: 'discord_webhook_url' | 'ntfy_url' | 'generic_webhook_url'
+  settingKey: 'discord_webhook_url' | 'ntfy_url' | 'generic_webhook_url' | 'email_recipient'
   icon: React.ReactNode
   title: string
   description: React.ReactNode
   placeholder: string
+  inputType?: 'url' | 'email'
   test: (url: string, token?: string) => Promise<{ success: boolean; error?: string }>
 }
 
@@ -62,11 +63,26 @@ const CHANNELS: ChannelConfig[] = [
     placeholder: 'https://example.com/hooks/price-alerts',
     test: testGenericWebhook,
   },
+  {
+    key: 'email',
+    settingKey: 'email_recipient',
+    icon: <Mail className="w-5 h-5 text-primary" />,
+    title: 'Email',
+    description: (
+      <>
+        Get price alerts by email. Messages are sent from{' '}
+        <span className="text-text">alerts@schultzsolutions.tech</span>.
+      </>
+    ),
+    placeholder: 'you@example.com',
+    inputType: 'email',
+    test: testEmail,
+  },
 ]
 
 export default function SettingsPage() {
   useTitle('Settings')
-  const [values, setValues] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '' })
+  const [values, setValues] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '' })
   // ntfy has an optional second input — the Bearer token, for self-hosted
   // instances with auth-default-access=deny-all. Empty string = no auth.
   const [ntfyToken, setNtfyToken] = useState('')
@@ -81,6 +97,7 @@ export default function SettingsPage() {
         discord: s.discord_webhook_url || '',
         ntfy: s.ntfy_url || '',
         webhook: s.generic_webhook_url || '',
+        email: s.email_recipient || '',
       })
       setNtfyToken(s.ntfy_token || '')
     })
@@ -144,9 +161,9 @@ export default function SettingsPage() {
               </div>
               <p className="text-text-muted text-sm mb-4">{ch.description}</p>
 
-              <label className="block text-sm font-medium text-text-muted mb-1.5">URL</label>
+              <label className="block text-sm font-medium text-text-muted mb-1.5">{ch.inputType === 'email' ? 'Recipient' : 'URL'}</label>
               <input
-                type="url"
+                type={ch.inputType ?? 'url'}
                 value={val}
                 onChange={e => setValues(v => ({ ...v, [ch.key]: e.target.value }))}
                 placeholder={ch.placeholder}
