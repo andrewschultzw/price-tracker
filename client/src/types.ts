@@ -2,6 +2,7 @@ export interface Tracker {
   id: number;
   name: string;
   url: string;
+  normalized_url: string | null;
   threshold_price: number | null;
   check_interval_minutes: number;
   css_selector: string | null;
@@ -78,4 +79,10 @@ export interface InviteCode {
 export interface SetupStatus {
   needsSetup: boolean;
   hasSetupToken: boolean;
+}
+
+export interface Overlap {
+  count: number;
+  names: string[];
+  communityLow: number | null;
 }
