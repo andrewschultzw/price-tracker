@@ -22,12 +22,13 @@ Add email as the fourth notification channel for price alerts, alongside Discord
 
 ### New module: `server/src/notifications/email.ts`
 
-Exports two functions matching the shape used by the other three channels:
+Exports functions matching the shape used by the other three channels:
 
-- `sendEmailPriceAlert(tracker: AlertTracker, price: number, recipient: string): Promise<void>`
-- `sendEmailErrorAlert(tracker: AlertTracker, errorMsg: string, recipient: string): Promise<void>`
+- `sendEmailPriceAlert(tracker: Tracker, price: number, recipient: string): Promise<boolean>`
+- `sendEmailErrorAlert(tracker: Tracker, errorMsg: string, recipient: string): Promise<boolean>`
+- `testEmail(recipient: string): Promise<{ ok: boolean; error?: string }>` — backing for `POST /api/settings/test-email`.
 
-Creates a shared nodemailer transport on first use (module-level singleton, mirroring the browser singleton in `scraper/browser.ts`). Throws on SMTP failure so the cron-level catch records a `last_error` and increments `consecutive_failures` exactly like Discord/ntfy do.
+Creates a shared nodemailer transport on first use (module-level singleton, mirroring the browser singleton in `scraper/browser.ts`). Returns `false` on SMTP failure after logging — matches the `Promise<boolean>` shape of `sendDiscordPriceAlert`/`sendGenericPriceAlert` so the cron fan-out can treat every channel uniformly.
 
 ### Transport configuration
 
