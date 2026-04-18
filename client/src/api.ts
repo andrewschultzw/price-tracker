@@ -164,6 +164,10 @@ export const testGenericWebhook = (url: string) =>
   request<ChannelTestResult>('/settings/test-generic-webhook', {
     method: 'POST', body: JSON.stringify({ url }),
   });
+export const testEmail = (recipient: string) =>
+  request<ChannelTestResult>('/settings/test-email', {
+    method: 'POST', body: JSON.stringify({ recipient }),
+  });
 
 // Admin
 export const getUsers = () => request<User[]>('/admin/users');

@@ -18,7 +18,7 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [x] **Test debt from multi-seller session.** ~~Core invariants that could silently break~~ **Done 2026-04-09:** all 4 items closed. 38 new integration tests across `refresh-aggregates.test.ts` (14), `delete-tracker-url.test.ts` (9), `migration-v4.test.ts` (7), and `scheduler/cron-cooldown.test.ts` (8). New `_setDbForTesting()` helper in `connection.ts` lets tests spin up fresh in-memory sqlite instances with full migration runs. The cron-cooldown test is the most valuable — it locks down the defining multi-seller invariant that one seller hitting cooldown does NOT silence a later alert from a different seller on the same tracker. Server tests: 134 → 172.
 
-- [ ] **Email notification channel.** Fourth channel reusing the existing Cloudflare+Gmail relay (same one Paperless uses at `docs@schultzsolutions.tech`). Most accessible channel for non-technical users — no app install, no webhook setup, just paste an email address.
+- [x] **Email notification channel.** ~~Fourth channel reusing Cloudflare+Gmail relay.~~ **Done 2026-04-18:** Gmail SMTP via `alerts@schultzsolutions.tech` Send-As alias (Cloudflare Email Routing + Gmail Send-As, Treat-as-alias mode), nodemailer transport, multipart HTML + plaintext bodies, encrypted `email_recipient` per user, new `POST /api/settings/test-email` endpoint, Settings card with "Send test email" button. 5 new tests in `email.test.ts`. Spec: `docs/superpowers/specs/2026-04-18-email-notification-channel-design.md`. Plan: `docs/superpowers/plans/2026-04-18-email-notification-channel.md`. [PR #3](https://github.com/andrewschultzw/price-tracker/pull/3).
 
 - [ ] **Test with 10+ real product URLs.** Integration sanity sweep across Amazon, Newegg, Best Buy, Walmart, Target to catch strategy drift before it causes silent data quality issues. Would have caught the Amazon split-price bug ~2 weeks earlier.
 
@@ -26,7 +26,7 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [x] **Bundle code-splitting.** ~~Vite is warning at ~650 KB bundle.~~ **Done 2026-04-09:** converted all non-Dashboard pages to `React.lazy()` with a shared Suspense boundary. `PriceChart` (recharts, 347 KB) and `SavingsCelebration` (canvas-confetti, 14 KB) also lazy from their usage sites. Initial gzipped payload dropped 200 KB → 66.6 KB (-67%). Vite's chunk-size warning is gone.
 
-- [ ] **Active stat card clickable.** 3 of the 4 stat cards are clickable now (Below Target → deals view, Errors → errors view, Potential Savings → tiered celebration). Active is still a plain number. Low value since "all active" is basically the main dashboard view, but worth considering for consistency. Defer unless you want it.
+- [x] **Active stat card clickable.** ~~Plain number.~~ **Done 2026-04-17:** 4 of 4 stat cards now clickable. `/active` route shows flat grid of every `status='active'` tracker sorted by `last_checked_at` desc (no category collapse, unlike the main dashboard). 4 new unit tests for `sortByLastCheckedDesc`. [PR #2](https://github.com/andrewschultzw/price-tracker/pull/2).
 
 ### Priority: only when it bites
 

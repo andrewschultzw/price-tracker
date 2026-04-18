@@ -16,6 +16,7 @@ import { extractPrice } from '../scraper/extractor.js';
 import { sendDiscordPriceAlert, sendDiscordErrorAlert } from '../notifications/discord.js';
 import { sendNtfyPriceAlert, sendNtfyErrorAlert } from '../notifications/ntfy.js';
 import { sendGenericPriceAlert, sendGenericErrorAlert } from '../notifications/webhook.js';
+import { sendEmailPriceAlert, sendEmailErrorAlert } from '../notifications/email.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
@@ -29,6 +30,7 @@ interface EnabledChannels {
   // deny-all auth. Only meaningful when ntfy is also set.
   ntfyToken?: string;
   webhook?: string;
+  email?: string;
 }
 
 function getEnabledChannels(userId: number | null | undefined): EnabledChannels {
@@ -38,11 +40,12 @@ function getEnabledChannels(userId: number | null | undefined): EnabledChannels 
     ntfy: getSetting('ntfy_url', userId) || undefined,
     ntfyToken: getSetting('ntfy_token', userId) || undefined,
     webhook: getSetting('generic_webhook_url', userId) || undefined,
+    email: getSetting('email_recipient', userId) || undefined,
   };
 }
 
 function hasAnyChannel(channels: EnabledChannels): boolean {
-  return !!(channels.discord || channels.ntfy || channels.webhook);
+  return !!(channels.discord || channels.ntfy || channels.webhook || channels.email);
 }
 
 /**
@@ -73,6 +76,7 @@ async function firePriceAlerts(
   if (channels.discord) attempts.push({ name: 'discord', promise: sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord) });
   if (channels.ntfy) attempts.push({ name: 'ntfy', promise: sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy, channels.ntfyToken) });
   if (channels.webhook) attempts.push({ name: 'webhook', promise: sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook) });
+  if (channels.email) attempts.push({ name: 'email', promise: sendEmailPriceAlert(alertTracker, currentPrice, channels.email) });
   const results = await Promise.all(attempts.map(a => a.promise));
   return attempts.filter((_, i) => results[i]).map(a => a.name);
 }
@@ -86,6 +90,7 @@ async function fireErrorAlerts(
   if (channels.discord) senders.push(sendDiscordErrorAlert(alertTracker, error, channels.discord));
   if (channels.ntfy) senders.push(sendNtfyErrorAlert(alertTracker, error, channels.ntfy, channels.ntfyToken));
   if (channels.webhook) senders.push(sendGenericErrorAlert(alertTracker, error, channels.webhook));
+  if (channels.email) senders.push(sendEmailErrorAlert(alertTracker, error, channels.email));
   await Promise.all(senders);
 }
 

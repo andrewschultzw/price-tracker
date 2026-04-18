@@ -1,5 +1,17 @@
 # Lessons Learned
 
+## 2026-04-18: Email notification channel
+
+### `.env` values containing shell metacharacters need quoting
+**What happened:** `SMTP_FROM=Price Tracker <alerts@schultzsolutions.tech>` was written unquoted. Systemd's `EnvironmentFile=` parser tolerates this but a shell `. /opt/price-tracker/.env` throws `syntax error near unexpected token '<'` because the unquoted `<` is interpreted as an input redirection. Our smoke-test script sourced the env through the shell and got a partial environment — `isEmailConfigured()` returned false and the test failed misleadingly.
+
+**Rule:** When a `.env` value contains `<`, `>`, `|`, `&`, `(`, `)`, `"`, `'`, `` ` ``, `$`, `;`, or spaces in a way that could confuse a POSIX shell, wrap the value in double quotes: `SMTP_FROM="Price Tracker <alerts@schultzsolutions.tech>"`. Both systemd and shell sourcing accept quoted values. Quote defensively any time you're not sure — the cost is one character pair; the benefit is portability across env consumers.
+
+### Gmail Send-As "Treat as alias" is the right mode for app SMTP sending
+**What happened:** Setting up `alerts@schultzsolutions.tech` as a Send-As alias on `homelab.schultz@gmail.com`. Gmail offers two paths: (1) Treat as alias (uses Google's outbound infrastructure; DKIM is gmail.com's), or (2) Send through another SMTP relay (requires running an SMTP server for the alias domain).
+
+**Rule:** For homelab / small-volume sending where the alias is a Cloudflare Email Routing forward back to the same Gmail account, "Treat as alias" is the right choice. Outbound traffic goes through smtp.gmail.com with the app password; the `From:` header shows the alias. Deliverability is fine for personal-use volumes. If the `schultzsolutions.tech` domain ever gets flagged by a strict receiver, the escape hatch is a transactional service (Resend/Postmark) with proper DKIM — but that's only worth doing when it bites.
+
 ## 2026-04-17: Silent false-positive trackers (JetKVM, WD Red 10TB)
 
 ### Fallback strategies must be scoped to the main product container
