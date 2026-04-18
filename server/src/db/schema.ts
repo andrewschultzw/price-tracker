@@ -55,7 +55,10 @@ export function initializeSchema(): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_tracker_urls_tracker_id ON tracker_urls(tracker_id);
-    CREATE INDEX IF NOT EXISTS idx_trackers_normalized_url ON trackers(normalized_url);
+    -- idx_trackers_normalized_url is created by migration v6, NOT here.
+    -- On existing DBs the normalized_url column doesn't exist until the
+    -- migration runs, and CREATE INDEX against a missing column throws
+    -- during schema init — before migrations get a chance to ALTER.
 
     CREATE TABLE IF NOT EXISTS price_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
