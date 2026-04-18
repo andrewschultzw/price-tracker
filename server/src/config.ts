@@ -28,6 +28,12 @@ export const config = {
   smtpUser: process.env.SMTP_USER || '',
   smtpPass: process.env.SMTP_PASS || '',
   smtpFrom: process.env.SMTP_FROM || '',
+  // OpenClaw / programmatic API key. Single shared key in this env;
+  // any request presenting it on X-API-Key acts as user N
+  // (PRICE_TRACKER_API_KEY_USER_ID). Empty string disables the auth
+  // path — the server still accepts JWT cookies as before.
+  priceTrackerApiKey: process.env.PRICE_TRACKER_API_KEY || '',
+  priceTrackerApiKeyUserId: parseInt(process.env.PRICE_TRACKER_API_KEY_USER_ID || '0', 10),
   isProduction: process.env.NODE_ENV === 'production',
 };
 
@@ -43,4 +49,14 @@ if (config.isProduction && !process.env.JWT_SECRET) {
  */
 export function isEmailConfigured(): boolean {
   return !!(config.smtpHost && config.smtpPort && config.smtpUser && config.smtpPass && config.smtpFrom);
+}
+
+/**
+ * True when both the API key and its mapped user ID are set. Used by
+ * the X-API-Key middleware to decide whether to enforce the header or
+ * fall through. When false, the middleware treats a missing header as
+ * "use JWT" and a present header as "misconfigured" (401).
+ */
+export function isApiKeyConfigured(): boolean {
+  return !!(config.priceTrackerApiKey && config.priceTrackerApiKeyUserId > 0);
 }
