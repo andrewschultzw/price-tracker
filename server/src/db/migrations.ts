@@ -1,6 +1,7 @@
 import { getDb } from './connection.js';
 import { logger } from '../logger.js';
 import { encrypt, isEncrypted } from '../crypto/settings-crypto.js';
+import { normalizeTrackerUrl } from '../lib/normalize-url.js';
 
 interface Migration {
   version: number;
@@ -225,6 +226,28 @@ const migrations: Migration[] = [
         update.run(jitter, r.id);
       }
       logger.info({ backfilled: rows.length }, 'Backfilled jitter_minutes for existing trackers');
+    },
+  },
+  {
+    version: 6,
+    description: 'Add normalized_url to trackers for cross-user overlap matching',
+    up: () => {
+      const db = getDb();
+      const cols = db.prepare("PRAGMA table_info(trackers)").all() as { name: string }[];
+      if (!cols.some(c => c.name === 'normalized_url')) {
+        db.prepare('ALTER TABLE trackers ADD COLUMN normalized_url TEXT').run();
+      }
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_trackers_normalized_url ON trackers(normalized_url)').run();
+
+      // Backfill every existing tracker. Migration-time normalization uses
+      // the stored url — short-link trackers won't resolve until their
+      // next successful scrape (see scheduler/cron.ts).
+      const rows = db.prepare('SELECT id, url FROM trackers WHERE normalized_url IS NULL').all() as { id: number; url: string }[];
+      const update = db.prepare('UPDATE trackers SET normalized_url = ? WHERE id = ?');
+      for (const r of rows) {
+        update.run(normalizeTrackerUrl(r.url), r.id);
+      }
+      logger.info({ backfilled: rows.length }, 'Backfilled normalized_url for existing trackers');
     },
   },
 ];
