@@ -344,6 +344,15 @@ export function updateTrackerUrl(id: number, data: Partial<{
 }
 
 /**
+ * Update just the normalized_url column. Called by the scheduler when
+ * a primary-seller scrape resolves a different final URL than what's
+ * stored (e.g., a.co short link redirects to amazon.com/dp/...).
+ */
+export function updateTrackerNormalizedUrl(trackerId: number, normalizedUrl: string | null): void {
+  getDb().prepare('UPDATE trackers SET normalized_url = ? WHERE id = ?').run(normalizedUrl, trackerId);
+}
+
+/**
  * Recompute the tracker-level aggregate fields from its seller rows.
  * Rules:
  *   - last_price    = MIN non-null across sellers

@@ -1,10 +1,12 @@
 import cron from 'node-cron';
 import PQueue from 'p-queue';
+import { normalizeTrackerUrl } from '../lib/normalize-url.js';
 import {
   getDueTrackerUrls,
   getTrackerUrlById,
   getTrackerById,
   updateTrackerUrl,
+  updateTrackerNormalizedUrl,
   refreshTrackerAggregates,
   addPriceRecord,
   getSetting,
@@ -135,6 +137,17 @@ export async function checkTrackerUrl(
         consecutive_failures: 0,
         status: 'active',
       });
+
+      // If this was the primary seller (position=0), re-normalize using
+      // the finalUrl Playwright resolved. Short links (a.co/d/xyz) now
+      // map to their actual product page so overlap matching works.
+      if (seller.position === 0) {
+        const normalized = normalizeTrackerUrl(result.finalUrl);
+        if (normalized !== tracker.normalized_url) {
+          updateTrackerNormalizedUrl(tracker.id, normalized);
+        }
+      }
+
       refreshTrackerAggregates(tracker.id);
 
       logger.info(
