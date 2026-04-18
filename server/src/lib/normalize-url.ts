@@ -8,13 +8,15 @@ import { canonicalDomain } from './domains.js';
 const TRACKING_PARAMS = new Set([
   'tag', 'ref', 'ref_', '_encoding', 'psc', 'srsltid',
   'cm_sp', 'cm_cat', 'cm_ite', 'cm_lm', 'cm_pla', 'cm_re',
-  '_gl', '_ga',
+  '_gl',
 ]);
 
 function isTrackingParam(key: string): boolean {
   if (TRACKING_PARAMS.has(key)) return true;
   if (key.startsWith('utm_')) return true;
-  if (key.startsWith('_ga')) return true;
+  // Known Google Analytics cookie names only. A broader `_ga*` prefix
+  // would match benign product params like `_gaffe`.
+  if (key === '_ga' || key === '_gat' || key === '_gid') return true;
   return false;
 }
 
