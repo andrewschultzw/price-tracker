@@ -655,3 +655,82 @@ export function getAllSettings(userId: number): Record<string, string> {
   const rows = getDb().prepare('SELECT key, value FROM settings WHERE user_id = ?').all(userId) as { key: string; value: string }[];
   return Object.fromEntries(rows.map(r => [r.key, maybeDecrypt(r.key, r.value)]));
 }
+
+export interface OverlapResult {
+  count: number;
+  names: string[];
+  communityLow: number | null;
+}
+
+/**
+ * Compute the overlap for a single tracker owned by `userId`.
+ * - count: number of OTHER users' trackers sharing the same normalized_url
+ *   (dedupes across a user who tracks the same product twice)
+ * - names: display names of those OTHER users who have
+ *   share_display_name = 'true'
+ * - communityLow: MIN(last_price) across ALL users' trackers with this
+ *   normalized_url (self INCLUDED), null if no prices yet
+ *
+ * Returns null when the tracker isn't owned by `userId` so the route
+ * layer can 404 without leaking other users' tracker IDs.
+ */
+export function getOverlapForTracker(trackerId: number, userId: number): OverlapResult | null {
+  const db = getDb();
+  const tracker = db.prepare('SELECT normalized_url FROM trackers WHERE id = ? AND user_id = ?')
+    .get(trackerId, userId) as { normalized_url: string | null } | undefined;
+  if (!tracker) return null;
+  if (!tracker.normalized_url) {
+    return { count: 0, names: [], communityLow: null };
+  }
+
+  const peers = db.prepare(`
+    SELECT t.user_id, u.display_name
+    FROM trackers t
+    JOIN users u ON u.id = t.user_id
+    WHERE t.normalized_url = ? AND t.user_id != ?
+  `).all(tracker.normalized_url, userId) as { user_id: number; display_name: string }[];
+
+  // Dedupe peers by user_id — a user tracking the same product twice
+  // shouldn't inflate the count.
+  const seen = new Set<number>();
+  const uniquePeers: { user_id: number; display_name: string }[] = [];
+  for (const p of peers) {
+    if (seen.has(p.user_id)) continue;
+    seen.add(p.user_id);
+    uniquePeers.push(p);
+  }
+
+  // Respect each peer's share_display_name setting. Missing or 'false' = hidden.
+  const shareRows = uniquePeers.length === 0 ? [] : db.prepare(
+    `SELECT user_id, value FROM settings WHERE key = 'share_display_name' AND user_id IN (${uniquePeers.map(() => '?').join(',')})`,
+  ).all(...uniquePeers.map(p => p.user_id)) as { user_id: number; value: string }[];
+  const optedIn = new Set(shareRows.filter(r => r.value === 'true').map(r => r.user_id));
+  const names = uniquePeers.filter(p => optedIn.has(p.user_id)).map(p => p.display_name);
+
+  const low = db.prepare(`
+    SELECT MIN(last_price) AS low
+    FROM trackers
+    WHERE normalized_url = ? AND last_price IS NOT NULL
+  `).get(tracker.normalized_url) as { low: number | null };
+
+  return { count: uniquePeers.length, names, communityLow: low.low ?? null };
+}
+
+/**
+ * Compute overlap counts for every tracker owned by `userId`. Single
+ * query so the dashboard doesn't fire one HTTP request per tracker.
+ */
+export function getOverlapCountsForUser(userId: number): Record<number, number> {
+  const rows = getDb().prepare(`
+    SELECT t.id AS tracker_id,
+           (SELECT COUNT(DISTINCT peer.user_id)
+            FROM trackers peer
+            WHERE peer.normalized_url = t.normalized_url
+              AND peer.user_id != t.user_id) AS count
+    FROM trackers t
+    WHERE t.user_id = ? AND t.normalized_url IS NOT NULL
+  `).all(userId) as { tracker_id: number; count: number }[];
+  const out: Record<number, number> = {};
+  for (const r of rows) out[r.tracker_id] = r.count;
+  return out;
+}
