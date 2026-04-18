@@ -25,6 +25,23 @@ export function isBelowTarget(t: Tracker): boolean {
   )
 }
 
+/**
+ * Sort trackers by `last_checked_at` descending — most-recently-checked
+ * first. Trackers with no last_checked_at (newly added, never scraped)
+ * fall to the bottom. Stable across equal timestamps. Used by the
+ * /active page so the user sees fresh data at the top.
+ */
+export function sortByLastCheckedDesc(trackers: Tracker[]): Tracker[] {
+  return [...trackers].sort((a, b) => {
+    const at = a.last_checked_at ?? ''
+    const bt = b.last_checked_at ?? ''
+    if (at === bt) return 0
+    if (!at) return 1
+    if (!bt) return -1
+    return bt.localeCompare(at)
+  })
+}
+
 export type DashboardItem =
   | { kind: 'tracker'; tracker: Tracker }
   | { kind: 'category'; hostname: string; trackers: Tracker[] }
