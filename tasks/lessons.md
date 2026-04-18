@@ -1,5 +1,22 @@
 # Lessons Learned
 
+## 2026-04-18: OpenClaw skill integration
+
+### OpenClaw skill files use `{{env.X}}` template substitution, not shell `$VAR`
+**What happened:** First SKILL.md draft used `$PRICE_TRACKER_URL` in example curl commands. OpenClaw's exec tool runs commands in a shell that does NOT inherit `openclaw.json`'s `env` section, so `$PRICE_TRACKER_URL` expanded to empty and curl hit `/api/trackers` (no host). Fix: replace with `{{env.PRICE_TRACKER_URL}}` — those placeholders get rendered into LITERAL values at skill-load time before the agent ever runs the command.
+
+**Rule:** In OpenClaw SKILL.md files, always use `{{env.VAR}}` substitution for values that live in `~/.openclaw/openclaw.json`'s `env` object. Shell-style `$VAR` will silently expand to empty in the exec tool. The existing paperless-docs / directus-cms skills follow this pattern — mirror it.
+
+### OpenClaw agent sessions cache their system prompt (including skill list)
+**What happened:** Deployed a new skill + restarted the gateway, but the first Discord DM after restart didn't see the new skill — the agent invented its own solution (created an internal cron job). The Discord session (`agent:main:discord:direct:<user-id>`) is long-lived and assembles its system prompt (with skill registry) at session creation. New skills added after that are invisible until the user `/reset`s the session.
+
+**Rule:** After deploying a new OpenClaw skill, ALWAYS instruct the user to run `/reset` in their Discord DM with the bot. Restarting the gateway is not enough — it keeps the existing session and its cached prompt. Document this in any OpenClaw-skill deploy runbook.
+
+### Give OpenClaw agents concrete shell one-liners, not HTTP descriptions
+**What happened:** First SKILL.md draft described the API as `POST /trackers with JSON body` + a schema table. The agent guessed and used `exec` with a Python helper (failed: `python` not in PATH on CT 301). Replacing with a literal `curl -sS -X POST "..." -H "..." -d '{...}'` example eliminated the guesswork — agent copied the pattern directly.
+
+**Rule:** When writing an OpenClaw skill that performs an HTTP call, include an explicit `curl` one-liner the agent can copy. Describing the API at the "verb + path + headers" level leaves the agent to invent a client implementation, which it's bad at. Pattern: show the full curl, mention "use `curl` via the `exec` tool — do NOT write a Python / Node helper", list concrete examples with real URLs.
+
 ## 2026-04-18: Email notification channel
 
 ### `.env` values containing shell metacharacters need quoting
