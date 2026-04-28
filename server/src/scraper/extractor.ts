@@ -17,6 +17,40 @@ export interface ExtractionResult {
 }
 
 /**
+ * Hosts where the page-wide regex fallback in strategies/regex.ts is unsafe.
+ *
+ * Amazon coupon, financing, and rewards copy ("Save $10 with coupon",
+ * "as low as $10/mo with Affirm", "$10 off your first order", "earn up to
+ * $10/month") reliably resolves to "$10" via the regex strategy's
+ * frequency-mode tiebreaker. When all structured strategies fail (bot
+ * challenge, sparse short-link preview, layout drift), the page-wide
+ * regex returns $10 and the system reports a phantom price drop. Five
+ * false Discord alerts fired this way on 2026-04-27 before this guard
+ * was added.
+ *
+ * Same philosophy as isAmazonCurrentlyUnavailable above — fail loud, do
+ * not guess. Non-Amazon retailers without structured data still depend
+ * on the regex fallback (Newegg has its own scoping in regex.ts), so the
+ * bypass is intentionally narrow.
+ *
+ * Matches:
+ *   - amazon.com / amazon.co.uk / amazon.de / smile.amazon.com / etc.
+ *   - a.co (short-link host before redirect resolves)
+ *   - amzn.to (short-link host before redirect resolves)
+ */
+export function isPageWideRegexUnsafeHost(host: string): boolean {
+  return /(?:^|\.)amazon\.[a-z.]+$|^a\.co$|^amzn\.to$/i.test(host);
+}
+
+function safeHostname(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Parse a price string like "$1,234.56" or "1234.56" into a number.
  */
 export function parsePrice(text: string): number | null {
@@ -96,13 +130,21 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
     throw new ScrapeError('Product is currently unavailable on Amazon', false);
   }
 
+  const onAmazonHost =
+    isPageWideRegexUnsafeHost(safeHostname(finalUrl)) ||
+    isPageWideRegexUnsafeHost(safeHostname(url));
+
   const strategies: { name: string; fn: () => number | null }[] = [
     { name: 'json-ld', fn: () => extractFromJsonLd(html) },
     { name: 'microdata', fn: () => extractFromMicrodata(html) },
     { name: 'opengraph', fn: () => extractFromOpenGraph(html) },
     { name: 'css-patterns', fn: () => extractFromCssPatterns(html) },
-    { name: 'regex', fn: () => extractFromRegex(html) },
   ];
+  // Page-wide regex fallback runs only on non-Amazon hosts. See
+  // isPageWideRegexUnsafeHost above for the rationale.
+  if (!onAmazonHost) {
+    strategies.push({ name: 'regex', fn: () => extractFromRegex(html) });
+  }
 
   for (const { name, fn } of strategies) {
     logger.debug({ url, strategy: name }, 'Trying extraction strategy');
@@ -118,5 +160,11 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
     }
   }
 
+  if (onAmazonHost) {
+    throw new ScrapeError(
+      `Amazon page rendered without a recognizable price block (${finalUrl}); page-wide regex fallback skipped to avoid coupon/financing copy false positives`,
+      false,
+    );
+  }
   throw new Error(`Could not extract price from ${url}`);
 }
