@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { isPlausibilityGuardSuspicious } from './plausibility-guard.js';
+import {
+  isPlausibilityGuardSuspicious,
+  computePlausibilityBaseline,
+} from './plausibility-guard.js';
 
 describe('isPlausibilityGuardSuspicious', () => {
   // The helper takes prices most-recent-first as the queries module
@@ -75,5 +78,26 @@ describe('isPlausibilityGuardSuspicious', () => {
       expect(isPlausibilityGuardSuspicious(70, [100, 100, 100, 100, 100], 0.75)).toBe(true);
       expect(isPlausibilityGuardSuspicious(80, [100, 100, 100, 100, 100], 0.75)).toBe(false);
     });
+  });
+});
+
+describe('computePlausibilityBaseline', () => {
+  it('returns null for empty history', () => {
+    expect(computePlausibilityBaseline([])).toBeNull();
+  });
+
+  it('returns the most recent price for cold-start (1-4 entries)', () => {
+    expect(computePlausibilityBaseline([42])).toBe(42);
+    expect(computePlausibilityBaseline([42, 50, 60, 70])).toBe(42);
+  });
+
+  it('returns the median for warm history (≥5 entries)', () => {
+    expect(computePlausibilityBaseline([100, 100, 100, 100, 100])).toBe(100);
+    expect(computePlausibilityBaseline([10, 600, 600, 600, 600])).toBe(600);
+  });
+
+  it('returns the average of two middle values for even-length warm history', () => {
+    // [10, 20, 30, 40, 50, 60] sorted, middle two are 30 and 40 → 35
+    expect(computePlausibilityBaseline([10, 20, 30, 40, 50, 60])).toBe(35);
   });
 });

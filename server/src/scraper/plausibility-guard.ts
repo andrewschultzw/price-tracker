@@ -45,6 +45,20 @@ export function isPlausibilityGuardSuspicious(
   return price < baseline * thresholdDropFraction;
 }
 
+/**
+ * Compute the baseline value the suspiciousness check compares against —
+ * median for warm history (≥5 entries), most-recent price for cold start
+ * (1–4 entries), null for empty history. Exposed so callers can include
+ * the actual baseline value in log/observability output without
+ * recomputing it independently (which would risk drift from the rules
+ * encoded in `isPlausibilityGuardSuspicious`).
+ */
+export function computePlausibilityBaseline(recentPrices: number[]): number | null {
+  if (recentPrices.length === 0) return null;
+  if (recentPrices.length >= COLD_START_CUTOFF) return median(recentPrices);
+  return recentPrices[0];
+}
+
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);

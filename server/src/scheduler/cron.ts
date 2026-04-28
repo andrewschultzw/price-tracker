@@ -17,7 +17,10 @@ import {
 } from '../db/queries.js';
 import type { Tracker, TrackerUrl } from '../db/queries.js';
 import { extractPrice } from '../scraper/extractor.js';
-import { isPlausibilityGuardSuspicious } from '../scraper/plausibility-guard.js';
+import {
+  isPlausibilityGuardSuspicious,
+  computePlausibilityBaseline,
+} from '../scraper/plausibility-guard.js';
 import { sendDiscordPriceAlert, sendDiscordErrorAlert } from '../notifications/discord.js';
 import { sendNtfyPriceAlert, sendNtfyErrorAlert } from '../notifications/ntfy.js';
 import { sendGenericPriceAlert, sendGenericErrorAlert } from '../notifications/webhook.js';
@@ -163,7 +166,19 @@ export async function checkTrackerUrl(
       // Per-seller threshold + cooldown + fanout. The threshold on the
       // tracker applies to every seller — any seller dropping below it is
       // news worth an alert.
-      if (tracker.threshold_price && result.price <= tracker.threshold_price) {
+      // Gate alerts on `result.price > 0`. A zero (or sub-cent) price
+      // never represents a real product offer — it's the signature of a
+      // page-parse glitch (e.g., a regex matching "$0" in promo copy).
+      // The plausibility guard below cannot defend against a 0 price
+      // alone because `getRecentSuccessfulPricesForSeller` filters
+      // `price > 0`, so the just-recorded zero row is absent and
+      // `recentPrices.slice(1)` would discard a real prior price. Block
+      // here instead.
+      if (
+        tracker.threshold_price &&
+        result.price > 0 &&
+        result.price <= tracker.threshold_price
+      ) {
         if (!hasAnyChannel(channels)) {
           logger.warn(
             {
@@ -215,6 +230,7 @@ export async function checkTrackerUrl(
             // the baseline so we compare the new price against PRIOR
             // observations, not against itself.
             const baselineHistory = recentPrices.slice(1);
+            const medianBaseline = computePlausibilityBaseline(baselineHistory);
             const suspicious = isPlausibilityGuardSuspicious(
               result.price,
               baselineHistory,
@@ -241,6 +257,7 @@ export async function checkTrackerUrl(
                   trackerUrlId: seller.id,
                   trackerName: tracker.name,
                   price: result.price,
+                  medianBaseline,
                   baselineSamples: baselineHistory.length,
                   threshold: config.plausibilityGuardDropThreshold,
                 },
@@ -302,7 +319,7 @@ export async function checkTrackerUrl(
           pending_confirmation_price: null,
           pending_confirmation_at: null,
         });
-        logger.info(
+        logger.warn(
           {
             trackerId: tracker.id,
             trackerUrlId: seller.id,

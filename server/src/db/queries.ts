@@ -280,7 +280,11 @@ export function getRecentSuccessfulPricesForSeller(
 ): number[] {
   const rows = getDb()
     .prepare(
-      'SELECT price FROM price_history WHERE tracker_url_id = ? AND price > 0 ORDER BY scraped_at DESC LIMIT ?',
+      // `id DESC` is a tiebreaker: scraped_at is second-precision and a
+      // manual "Check Now" colliding with a scheduled tick can produce
+      // ties. Without the tiebreaker the alert path's `recentPrices.slice(1)`
+      // baseline computation could non-deterministically discard the wrong row.
+      'SELECT price FROM price_history WHERE tracker_url_id = ? AND price > 0 ORDER BY scraped_at DESC, id DESC LIMIT ?',
     )
     .all(sellerId, limit) as { price: number }[];
   return rows.map(r => r.price);
