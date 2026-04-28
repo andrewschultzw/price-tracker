@@ -12,9 +12,12 @@ import {
   getSetting,
   getLastNotificationForSeller,
   addNotification,
+  getRecentSuccessfulPricesForSeller,
+  getSellersWithPendingConfirmation,
 } from '../db/queries.js';
 import type { Tracker, TrackerUrl } from '../db/queries.js';
 import { extractPrice } from '../scraper/extractor.js';
+import { isPlausibilityGuardSuspicious } from '../scraper/plausibility-guard.js';
 import { sendDiscordPriceAlert, sendDiscordErrorAlert } from '../notifications/discord.js';
 import { sendNtfyPriceAlert, sendNtfyErrorAlert } from '../notifications/ntfy.js';
 import { sendGenericPriceAlert, sendGenericErrorAlert } from '../notifications/webhook.js';
@@ -24,6 +27,8 @@ import { logger } from '../logger.js';
 
 const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
 let task: cron.ScheduledTask | null = null;
+
+const PLAUSIBILITY_GUARD_MEDIAN_WINDOW = 10;
 
 interface EnabledChannels {
   discord?: string;
@@ -202,13 +207,111 @@ export async function checkTrackerUrl(
               `Cooldown active for this seller — alert suppressed for ${minutesUntilReady} more minute(s)`,
             );
           } else {
-            const alertTracker = buildAlertTracker(tracker, seller, result.price);
-            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels);
-            for (const channel of sentChannels) {
-              addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
+            const recentPrices = getRecentSuccessfulPricesForSeller(
+              seller.id,
+              PLAUSIBILITY_GUARD_MEDIAN_WINDOW,
+            );
+            // The just-recorded scrape is in history now; drop it from
+            // the baseline so we compare the new price against PRIOR
+            // observations, not against itself.
+            const baselineHistory = recentPrices.slice(1);
+            const suspicious = isPlausibilityGuardSuspicious(
+              result.price,
+              baselineHistory,
+              config.plausibilityGuardDropThreshold,
+            );
+
+            const hadPending = seller.pending_confirmation_at !== null;
+
+            if (suspicious && !hadPending) {
+              // First time we've seen this — record pending state and
+              // suppress alert. Confirmation comes from the next
+              // successful scrape (timed re-scrape in Task 6, or the
+              // next regular cron tick as a fallback).
+              updateTrackerUrl(seller.id, {
+                pending_confirmation_price: result.price,
+                pending_confirmation_at: new Date()
+                  .toISOString()
+                  .replace('T', ' ')
+                  .slice(0, 19),
+              });
+              logger.info(
+                {
+                  trackerId: tracker.id,
+                  trackerUrlId: seller.id,
+                  trackerName: tracker.name,
+                  price: result.price,
+                  baselineSamples: baselineHistory.length,
+                  threshold: config.plausibilityGuardDropThreshold,
+                },
+                'Suspicious price detected, awaiting confirmation',
+              );
+            } else if (suspicious && hadPending) {
+              // Two suspicious-and-below-threshold reads in a row.
+              // Treat as confirmed; clear pending and fire alert.
+              updateTrackerUrl(seller.id, {
+                pending_confirmation_price: null,
+                pending_confirmation_at: null,
+              });
+              logger.info(
+                {
+                  trackerId: tracker.id,
+                  trackerUrlId: seller.id,
+                  firstPrice: seller.pending_confirmation_price,
+                  secondPrice: result.price,
+                },
+                'Confirmation matched, firing alert',
+              );
+              const alertTracker = buildAlertTracker(tracker, seller, result.price);
+              const sentChannels = await firePriceAlerts(alertTracker, result.price, channels);
+              for (const channel of sentChannels) {
+                addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
+              }
+            } else if (!suspicious && hadPending) {
+              // Pending was set, but the new read is plausible. Either
+              // (a) the new price is back to normal (transient anomaly,
+              // discard alert) or (b) the new price is also low but
+              // within plausibility (real drop, has been confirmed).
+              // The "below threshold" branch we're in already implies
+              // the price is alert-worthy, so this is case (b): fire.
+              updateTrackerUrl(seller.id, {
+                pending_confirmation_price: null,
+                pending_confirmation_at: null,
+              });
+              const alertTracker = buildAlertTracker(tracker, seller, result.price);
+              const sentChannels = await firePriceAlerts(alertTracker, result.price, channels);
+              for (const channel of sentChannels) {
+                addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
+              }
+            } else {
+              // Not suspicious, no pending — normal alert path.
+              const alertTracker = buildAlertTracker(tracker, seller, result.price);
+              const sentChannels = await firePriceAlerts(alertTracker, result.price, channels);
+              for (const channel of sentChannels) {
+                addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
+              }
             }
           }
         }
+      } else if (seller.pending_confirmation_at !== null) {
+        // Pending flag was set on a prior tick when price was below
+        // threshold; this scrape brought it back above threshold, so
+        // the prior observation was a transient anomaly. Clear the
+        // flag and log — no alert.
+        updateTrackerUrl(seller.id, {
+          pending_confirmation_price: null,
+          pending_confirmation_at: null,
+        });
+        logger.info(
+          {
+            trackerId: tracker.id,
+            trackerUrlId: seller.id,
+            firstPrice: seller.pending_confirmation_price,
+            secondPrice: result.price,
+            thresholdPrice: tracker.threshold_price,
+          },
+          'Confirmation diverged, alert suppressed',
+        );
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
