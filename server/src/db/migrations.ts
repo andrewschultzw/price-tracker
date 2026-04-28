@@ -250,6 +250,24 @@ const migrations: Migration[] = [
       logger.info({ backfilled: rows.length }, 'Backfilled normalized_url for existing trackers');
     },
   },
+  {
+    version: 7,
+    description: 'Add pending_confirmation_* columns to tracker_urls for plausibility guard',
+    up: () => {
+      const db = getDb();
+      const cols = db.prepare("PRAGMA table_info(tracker_urls)").all() as { name: string }[];
+      if (!cols.some(c => c.name === 'pending_confirmation_price')) {
+        db.prepare('ALTER TABLE tracker_urls ADD COLUMN pending_confirmation_price REAL').run();
+      }
+      if (!cols.some(c => c.name === 'pending_confirmation_at')) {
+        db.prepare('ALTER TABLE tracker_urls ADD COLUMN pending_confirmation_at TEXT').run();
+      }
+      // No backfill needed — NULL is the correct default for "no confirmation in flight."
+      db.prepare(
+        'CREATE INDEX IF NOT EXISTS idx_tracker_urls_pending_confirmation_at ON tracker_urls(pending_confirmation_at) WHERE pending_confirmation_at IS NOT NULL'
+      ).run();
+    },
+  },
 ];
 
 export function runMigrations(): void {
