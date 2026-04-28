@@ -50,6 +50,8 @@ export interface TrackerUrl {
   last_checked_at: string | null;
   last_error: string | null;
   consecutive_failures: number;
+  pending_confirmation_price: number | null;
+  pending_confirmation_at: string | null;
   status: 'active' | 'paused' | 'error';
   created_at: string;
   updated_at: string;
@@ -266,6 +268,42 @@ export function getTrackerUrlsForTracker(trackerId: number): TrackerUrl[] {
 }
 
 /**
+ * Return the last `limit` non-null prices recorded for a single seller,
+ * most-recent first. Used by the plausibility guard to compute a
+ * trailing median for the suspiciousness check. Excludes rows from
+ * other sellers on the same tracker — different sellers have different
+ * pricing baselines and shouldn't pollute each other's median.
+ */
+export function getRecentSuccessfulPricesForSeller(
+  sellerId: number,
+  limit: number,
+): number[] {
+  const rows = getDb()
+    .prepare(
+      // `id DESC` is a tiebreaker: scraped_at is second-precision and a
+      // manual "Check Now" colliding with a scheduled tick can produce
+      // ties. Without the tiebreaker the alert path's `recentPrices.slice(1)`
+      // baseline computation could non-deterministically discard the wrong row.
+      'SELECT price FROM price_history WHERE tracker_url_id = ? AND price > 0 ORDER BY scraped_at DESC, id DESC LIMIT ?',
+    )
+    .all(sellerId, limit) as { price: number }[];
+  return rows.map(r => r.price);
+}
+
+/**
+ * Return every seller currently flagged as awaiting a confirmation
+ * scrape. Called at scheduler start to re-enqueue confirmations whose
+ * in-process setTimeout was lost on restart.
+ */
+export function getSellersWithPendingConfirmation(): TrackerUrl[] {
+  return getDb()
+    .prepare(
+      'SELECT * FROM tracker_urls WHERE pending_confirmation_at IS NOT NULL',
+    )
+    .all() as TrackerUrl[];
+}
+
+/**
  * Add a new seller URL to an existing tracker. Assigned the next-highest
  * position number so ordering is stable and the primary (position=0) never
  * shifts. Caller must verify tracker ownership before calling.
@@ -328,6 +366,8 @@ export function updateTrackerUrl(id: number, data: Partial<{
   last_error: string | null;
   consecutive_failures: number;
   status: string;
+  pending_confirmation_price: number | null;
+  pending_confirmation_at: string | null;
 }>): TrackerUrl | undefined {
   const fields: string[] = [];
   const values: Record<string, unknown> = { id };

@@ -51,6 +51,12 @@ export function initializeSchema(): void {
       last_error TEXT,
       consecutive_failures INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'error')),
+      -- Plausibility guard state. Non-NULL means a previous scrape produced
+      -- a suspiciously low price that's below the alert threshold; the next
+      -- successful scrape for this seller acts as the confirmation read. See
+      -- docs/superpowers/specs/2026-04-27-plausibility-guard-design.md.
+      pending_confirmation_price REAL,
+      pending_confirmation_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );

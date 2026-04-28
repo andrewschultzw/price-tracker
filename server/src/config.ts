@@ -14,6 +14,15 @@ export const config = {
   // extraction failures). See server/src/scraper/retry.ts.
   scrapeMaxRetries: parseInt(process.env.SCRAPE_MAX_RETRIES || '2', 10),
   scrapeRetryBaseMs: parseInt(process.env.SCRAPE_RETRY_BASE_MS || '1000', 10),
+  // Plausibility guard. A scrape that would otherwise fire an alert is
+  // suppressed when its price is below this fraction of the seller's
+  // trailing median (warm) or last_price (cold-start). Confirmation
+  // re-scrape decides whether to fire the alert. Set to 0 to disable
+  // the guard entirely. See docs/superpowers/specs/2026-04-27-
+  // plausibility-guard-design.md.
+  plausibilityGuardDropThreshold: parseFloat(
+    process.env.PLAUSIBILITY_GUARD_DROP_THRESHOLD || '0.5',
+  ),
   // Auth
   jwtSecret: process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'dev-secret-do-not-use-in-prod'),
   jwtAccessExpirySeconds: 900,       // 15 minutes
