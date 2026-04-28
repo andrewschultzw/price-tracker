@@ -32,6 +32,9 @@ const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
 let task: cron.ScheduledTask | null = null;
 
 const PLAUSIBILITY_GUARD_MEDIAN_WINDOW = 10;
+const PLAUSIBILITY_CONFIRM_DELAY_BASE_MS = 90_000;
+const PLAUSIBILITY_CONFIRM_DELAY_JITTER_MS = 90_000;
+const PLAUSIBILITY_RESTART_STALE_AGE_MS = 600_000;
 
 interface EnabledChannels {
   discord?: string;
@@ -263,6 +266,7 @@ export async function checkTrackerUrl(
                 },
                 'Suspicious price detected, awaiting confirmation',
               );
+              scheduleConfirmationRescrape(seller.id);
             } else if (suspicious && hadPending) {
               // Two suspicious-and-below-threshold reads in a row.
               // Treat as confirmed; clear pending and fire alert.
@@ -396,6 +400,23 @@ function tick(): void {
   for (const seller of due) {
     queue.add(() => checkTrackerUrl(seller.id));
   }
+}
+
+/**
+ * Schedule a confirmation re-scrape of the given seller after a base
+ * delay plus jitter (default 90s + uniform 0-90s). Uses the existing
+ * p-queue so concurrency limits still apply. The setTimeout reference
+ * is intentionally not retained — confirmations are best-effort and
+ * the restart recovery path picks up any pending state if the timer
+ * is lost (process exit, hot reload, etc.).
+ */
+function scheduleConfirmationRescrape(sellerId: number): void {
+  const delayMs =
+    PLAUSIBILITY_CONFIRM_DELAY_BASE_MS +
+    Math.random() * PLAUSIBILITY_CONFIRM_DELAY_JITTER_MS;
+  setTimeout(() => {
+    queue.add(() => checkTrackerUrl(sellerId));
+  }, delayMs);
 }
 
 export function startScheduler(): void {
