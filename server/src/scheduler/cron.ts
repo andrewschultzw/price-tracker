@@ -419,7 +419,46 @@ function scheduleConfirmationRescrape(sellerId: number): void {
   }, delayMs);
 }
 
+/**
+ * On scheduler startup, scan for sellers whose pending_confirmation_at
+ * is stale (older than PLAUSIBILITY_RESTART_STALE_AGE_MS) and re-enqueue
+ * a check. Younger pending flags are left alone — the next regular cron
+ * tick (≤1 min away) acts as the confirmation. We don't try to
+ * reconstruct lost in-process setTimeouts because the cron tick is
+ * cheap and idempotent.
+ */
+function recoverPendingConfirmations(): void {
+  const pending = getSellersWithPendingConfirmation();
+  if (pending.length === 0) return;
+
+  const now = Date.now();
+  let recovered = 0;
+  for (const seller of pending) {
+    if (!seller.pending_confirmation_at) continue;
+    const pendingAtMs = new Date(seller.pending_confirmation_at + 'Z').getTime();
+    const ageMs = now - pendingAtMs;
+    if (ageMs >= PLAUSIBILITY_RESTART_STALE_AGE_MS) {
+      logger.info(
+        {
+          trackerId: seller.tracker_id,
+          trackerUrlId: seller.id,
+          pendingPrice: seller.pending_confirmation_price,
+          pendingAgeMs: ageMs,
+        },
+        'Re-enqueueing stale pending confirmation after restart',
+      );
+      queue.add(() => checkTrackerUrl(seller.id));
+      recovered++;
+    }
+  }
+
+  if (recovered > 0) {
+    logger.info({ recovered }, 'Pending confirmations recovered at startup');
+  }
+}
+
 export function startScheduler(): void {
+  recoverPendingConfirmations();
   task = cron.schedule('* * * * *', tick);
   logger.info('Scheduler started (checking every minute)');
 }
