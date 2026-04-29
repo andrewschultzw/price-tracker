@@ -8,6 +8,7 @@ type ChannelKey = 'discord' | 'ntfy' | 'webhook' | 'email'
 interface ChannelConfig {
   key: ChannelKey
   settingKey: 'discord_webhook_url' | 'ntfy_url' | 'generic_webhook_url' | 'email_recipient'
+  cooldownKey: 'discord_cooldown_hours' | 'ntfy_cooldown_hours' | 'webhook_cooldown_hours' | 'email_cooldown_hours'
   icon: React.ReactNode
   title: string
   description: React.ReactNode
@@ -20,6 +21,7 @@ const CHANNELS: ChannelConfig[] = [
   {
     key: 'discord',
     settingKey: 'discord_webhook_url',
+    cooldownKey: 'discord_cooldown_hours',
     icon: <MessageSquare className="w-5 h-5 text-primary" />,
     title: 'Discord',
     description: (
@@ -34,6 +36,7 @@ const CHANNELS: ChannelConfig[] = [
   {
     key: 'ntfy',
     settingKey: 'ntfy_url',
+    cooldownKey: 'ntfy_cooldown_hours',
     icon: <Bell className="w-5 h-5 text-primary" />,
     title: 'ntfy (push notifications)',
     description: (
@@ -51,6 +54,7 @@ const CHANNELS: ChannelConfig[] = [
   {
     key: 'webhook',
     settingKey: 'generic_webhook_url',
+    cooldownKey: 'webhook_cooldown_hours',
     icon: <Webhook className="w-5 h-5 text-primary" />,
     title: 'Custom Webhook',
     description: (
@@ -66,6 +70,7 @@ const CHANNELS: ChannelConfig[] = [
   {
     key: 'email',
     settingKey: 'email_recipient',
+    cooldownKey: 'email_cooldown_hours',
     icon: <Mail className="w-5 h-5 text-primary" />,
     title: 'Email',
     description: (
@@ -83,6 +88,9 @@ const CHANNELS: ChannelConfig[] = [
 export default function SettingsPage() {
   useTitle('Settings')
   const [values, setValues] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '' })
+  // Per-channel cooldown overrides. Empty string = use server default
+  // (config.notificationCooldownHours, currently 6h). "0" = no cooldown.
+  const [cooldowns, setCooldowns] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '' })
   // ntfy has an optional second input — the Bearer token, for self-hosted
   // instances with auth-default-access=deny-all. Empty string = no auth.
   const [ntfyToken, setNtfyToken] = useState('')
@@ -102,6 +110,12 @@ export default function SettingsPage() {
         webhook: s.generic_webhook_url || '',
         email: s.email_recipient || '',
       })
+      setCooldowns({
+        discord: s.discord_cooldown_hours || '',
+        ntfy: s.ntfy_cooldown_hours || '',
+        webhook: s.webhook_cooldown_hours || '',
+        email: s.email_cooldown_hours || '',
+      })
       setNtfyToken(s.ntfy_token || '')
       setShareDisplayName(s.share_display_name === 'true')
     })
@@ -111,12 +125,12 @@ export default function SettingsPage() {
     setSavingKey(ch.key)
     setSavedKey(null)
     try {
-      if (ch.key === 'ntfy') {
-        // Save URL and token together so the UI state stays consistent.
-        await updateSettings({ ntfy_url: values.ntfy, ntfy_token: ntfyToken })
-      } else {
-        await updateSettings({ [ch.settingKey]: values[ch.key] })
+      const payload: Record<string, string> = {
+        [ch.settingKey]: values[ch.key],
+        [ch.cooldownKey]: cooldowns[ch.key],
       }
+      if (ch.key === 'ntfy') payload.ntfy_token = ntfyToken
+      await updateSettings(payload)
       setSavedKey(ch.key)
       setTimeout(() => setSavedKey(k => (k === ch.key ? null : k)), 3000)
     } finally {
@@ -201,6 +215,19 @@ export default function SettingsPage() {
                   />
                 </>
               )}
+
+              <label className="block text-sm font-medium text-text-muted mb-1.5">
+                Cooldown <span className="text-text-muted/60 font-normal">(hours — blank = default 6h, 0 = no cooldown)</span>
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={cooldowns[ch.key]}
+                onChange={e => setCooldowns(c => ({ ...c, [ch.key]: e.target.value }))}
+                placeholder="6"
+                className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary mb-4"
+              />
 
               <div className="flex flex-wrap items-center gap-3">
                 <button
