@@ -14,6 +14,10 @@ const ALLOWED_SETTING_KEYS = new Set([
   'generic_webhook_url',
   'email_recipient',
   'share_display_name',
+  'discord_cooldown_hours',
+  'ntfy_cooldown_hours',
+  'webhook_cooldown_hours',
+  'email_cooldown_hours',
 ]);
 
 // Basic email shape check. Not RFC 5322 strict — SMTP will reject
@@ -37,6 +41,15 @@ router.put('/', (req: Request, res: Response) => {
     if (key === 'email_recipient' && value !== '' && !EMAIL_RE.test(value)) {
       res.status(400).json({ error: 'Invalid email address' });
       return;
+    }
+    // Cooldown values must be a non-negative integer string. Empty
+    // string clears the override and falls back to the global default.
+    if (key.endsWith('_cooldown_hours') && value !== '') {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+        res.status(400).json({ error: `Invalid cooldown for ${key} — must be a non-negative integer` });
+        return;
+      }
     }
     setSetting(key, value, req.user!.userId);
   }

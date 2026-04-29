@@ -30,7 +30,7 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 ### Priority: only when it bites
 
-- [ ] **Per-channel cooldowns.** Current cooldown is per-`(tracker, seller)` shared across all channels. Would matter if you wanted mixed-frequency notifications like "ntfy instant, webhook hourly". Skip unless you actually want this.
+- [x] **Per-channel cooldowns.** ~~Current cooldown is per-`(tracker, seller)` shared across all channels.~~ **Done 2026-04-29:** cooldown gate moved into the per-channel fanout in `firePriceAlerts`, now keyed off `(tracker, seller, channel)`. Each channel has its own user-configurable duration via new settings keys `{discord,ntfy,webhook,email}_cooldown_hours` (Settings UI exposes a number input per channel; blank uses the existing 6h default; `0` means "no cooldown" — the "ntfy instant" case). Plausibility guard placement unchanged. 6 new test cases on top of the existing 8 in `cron-cooldown.test.ts`. The unused `getLastNotificationForSeller` was removed since the refactor took its only caller. Spec: `docs/superpowers/specs/2026-04-29-per-channel-cooldowns-design.md`. Plan: `docs/superpowers/plans/2026-04-29-per-channel-cooldowns.md`.
 
 - [x] **Scheduler jitter.** ~~Same-minute firing risk at 30-50 trackers.~~ **Done 2026-04-18:** new `jitter_minutes` column on `trackers` with a fixed per-tracker random offset assigned at creation (formula: `randomInt(0, min(interval/6, 30))`). `getDueTrackerUrls` and `getDueTrackers` add jitter to `check_interval_minutes` when computing due time. Migration v5 backfilled all 22 existing trackers — confirmed spread across 15 distinct jitter values (2-29 min). 9 new tests in `jitter.test.ts`.
 

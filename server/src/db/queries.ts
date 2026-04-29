@@ -625,20 +625,21 @@ export function getNotificationHistory(
 }
 
 /**
- * Most recent notification for a specific seller on a tracker. Drives the
- * per-seller cooldown logic in the scheduler. The old tracker-level
- * variant was replaced because cooldown is now per-(tracker, seller).
+ * Most recent notification for a specific (seller, channel) pair. Drives
+ * the per-channel cooldown gate in the scheduler — Discord firing does
+ * not silence ntfy etc.
  */
-export function getLastNotificationForSeller(
+export function getLastNotificationForSellerChannel(
   trackerId: number,
   trackerUrlId: number,
+  channel: string,
 ): NotificationRecord | undefined {
   return getDb().prepare(`
     SELECT * FROM notifications
-    WHERE tracker_id = ? AND tracker_url_id = ?
+    WHERE tracker_id = ? AND tracker_url_id = ? AND channel = ?
     ORDER BY sent_at DESC
     LIMIT 1
-  `).get(trackerId, trackerUrlId) as NotificationRecord | undefined;
+  `).get(trackerId, trackerUrlId, channel) as NotificationRecord | undefined;
 }
 
 // --- Settings ---

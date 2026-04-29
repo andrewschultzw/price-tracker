@@ -10,7 +10,7 @@ import {
   refreshTrackerAggregates,
   addPriceRecord,
   getSetting,
-  getLastNotificationForSeller,
+  getLastNotificationForSellerChannel,
   addNotification,
   getRecentSuccessfulPricesForSeller,
   getSellersWithPendingConfirmation,
@@ -36,6 +36,10 @@ const PLAUSIBILITY_CONFIRM_DELAY_BASE_MS = 90_000;
 const PLAUSIBILITY_CONFIRM_DELAY_JITTER_MS = 90_000;
 const PLAUSIBILITY_RESTART_STALE_AGE_MS = 600_000;
 
+type ChannelName = 'discord' | 'ntfy' | 'webhook' | 'email';
+
+const CHANNEL_NAMES: readonly ChannelName[] = ['discord', 'ntfy', 'webhook', 'email'] as const;
+
 interface EnabledChannels {
   discord?: string;
   ntfy?: string;
@@ -44,6 +48,19 @@ interface EnabledChannels {
   ntfyToken?: string;
   webhook?: string;
   email?: string;
+}
+
+/**
+ * Resolve a channel's cooldown duration for a given user, falling back
+ * to `config.notificationCooldownHours` (6h) when unset, blank, non-
+ * numeric, or negative. Zero is a valid value and means "no cooldown".
+ */
+function getCooldownHoursForChannel(userId: number, channel: ChannelName): number {
+  const raw = getSetting(`${channel}_cooldown_hours`, userId);
+  if (raw === undefined || raw === '') return config.notificationCooldownHours;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return config.notificationCooldownHours;
+  return parsed;
 }
 
 function getEnabledChannels(userId: number | null | undefined): EnabledChannels {
@@ -80,18 +97,73 @@ function buildAlertTracker(tracker: Tracker, seller: TrackerUrl, currentPrice: n
   };
 }
 
+/**
+ * Fire price alerts for every enabled channel that isn't currently in
+ * cooldown for this (tracker, seller, channel). Cooldown duration is
+ * resolved per-channel from user settings, falling back to
+ * config.notificationCooldownHours when unset. `bypassCooldown=true`
+ * skips the gate entirely (manual "Check Now" path).
+ */
 async function firePriceAlerts(
   alertTracker: Tracker,
   currentPrice: number,
   channels: EnabledChannels,
+  seller: TrackerUrl,
+  bypassCooldown: boolean,
 ): Promise<string[]> {
-  const attempts: { name: string; promise: Promise<boolean> }[] = [];
-  if (channels.discord) attempts.push({ name: 'discord', promise: sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord) });
-  if (channels.ntfy) attempts.push({ name: 'ntfy', promise: sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy, channels.ntfyToken) });
-  if (channels.webhook) attempts.push({ name: 'webhook', promise: sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook) });
-  if (channels.email) attempts.push({ name: 'email', promise: sendEmailPriceAlert(alertTracker, currentPrice, channels.email) });
-  const results = await Promise.all(attempts.map(a => a.promise));
-  return attempts.filter((_, i) => results[i]).map(a => a.name);
+  const userId = alertTracker.user_id!;
+  const tasks: { name: ChannelName; promise: Promise<boolean> }[] = [];
+
+  for (const name of CHANNEL_NAMES) {
+    if (!channels[name]) continue;
+
+    if (!bypassCooldown) {
+      const cooldownHours = getCooldownHoursForChannel(userId, name);
+      if (cooldownHours > 0) {
+        const last = getLastNotificationForSellerChannel(alertTracker.id, seller.id, name);
+        if (last) {
+          const cooldownMs = cooldownHours * 60 * 60 * 1000;
+          const elapsed = Date.now() - new Date(last.sent_at + 'Z').getTime();
+          if (elapsed < cooldownMs) {
+            const minutesUntilReady = Math.ceil((cooldownMs - elapsed) / 60000);
+            logger.info(
+              {
+                trackerId: alertTracker.id,
+                trackerUrlId: seller.id,
+                trackerName: alertTracker.name,
+                channel: name,
+                cooldownHours,
+                lastSentAt: last.sent_at,
+                minutesUntilReady,
+              },
+              `Cooldown active for ${name} — alert suppressed for ${minutesUntilReady} more minute(s)`,
+            );
+            continue;
+          }
+        }
+      }
+    }
+
+    let promise: Promise<boolean>;
+    switch (name) {
+      case 'discord':
+        promise = sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord!);
+        break;
+      case 'ntfy':
+        promise = sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy!, channels.ntfyToken);
+        break;
+      case 'webhook':
+        promise = sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook!);
+        break;
+      case 'email':
+        promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!);
+        break;
+    }
+    tasks.push({ name, promise });
+  }
+
+  const results = await Promise.all(tasks.map(t => t.promise));
+  return tasks.filter((_, i) => results[i]).map(t => t.name);
 }
 
 async function fireErrorAlerts(
@@ -196,121 +268,98 @@ export async function checkTrackerUrl(
             'Seller price is at/below threshold but no notification channels are configured — alert skipped',
           );
         } else {
-          // Cooldown is per-(tracker, seller): "don't spam about the same
-          // seller" — but Amazon dropping doesn't silence a subsequent
-          // Newegg drop, which is the whole point of multi-seller. Manual
-          // actions (Check Now button, adding a new seller) bypass cooldown
-          // entirely because the user is explicitly asking for a result.
-          const lastNotif = bypassCooldown ? null : getLastNotificationForSeller(tracker.id, seller.id);
-          const cooldownMs = config.notificationCooldownHours * 60 * 60 * 1000;
-          const inCooldown =
-            !!lastNotif && Date.now() - new Date(lastNotif.sent_at + 'Z').getTime() < cooldownMs;
+          // Cooldown is per-(tracker, seller, channel): "don't spam the
+          // same seller on the same channel" — but Amazon dropping
+          // doesn't silence a subsequent Newegg drop, and Discord
+          // firing doesn't silence ntfy on the same seller. The
+          // per-channel gate runs inside firePriceAlerts. Manual
+          // actions (Check Now button, adding a new seller) pass
+          // bypassCooldown=true to ignore the gate entirely.
+          const recentPrices = getRecentSuccessfulPricesForSeller(
+            seller.id,
+            PLAUSIBILITY_GUARD_MEDIAN_WINDOW,
+          );
+          // The just-recorded scrape is in history now; drop it from
+          // the baseline so we compare the new price against PRIOR
+          // observations, not against itself.
+          const baselineHistory = recentPrices.slice(1);
+          const medianBaseline = computePlausibilityBaseline(baselineHistory);
+          const suspicious = isPlausibilityGuardSuspicious(
+            result.price,
+            baselineHistory,
+            config.plausibilityGuardDropThreshold,
+          );
 
-          if (inCooldown) {
-            // Logged at info (not debug) so the user can see why an
-            // expected alert didn't fire without enabling verbose logging.
-            // The earlier "silent skip" bug in the no-webhook case proved
-            // the cost of hiding suppression at debug level.
-            const sentAtMs = new Date(lastNotif!.sent_at + 'Z').getTime();
-            const minutesUntilReady = Math.ceil((cooldownMs - (Date.now() - sentAtMs)) / 60000);
+          const hadPending = seller.pending_confirmation_at !== null;
+
+          if (suspicious && !hadPending) {
+            // First time we've seen this — record pending state and
+            // suppress alert. Confirmation comes from the next
+            // successful scrape (timed re-scrape, or the next regular
+            // cron tick as a fallback).
+            updateTrackerUrl(seller.id, {
+              pending_confirmation_price: result.price,
+              pending_confirmation_at: new Date()
+                .toISOString()
+                .replace('T', ' ')
+                .slice(0, 19),
+            });
             logger.info(
               {
                 trackerId: tracker.id,
                 trackerUrlId: seller.id,
                 trackerName: tracker.name,
-                sellerUrl: seller.url,
-                lastSentAt: lastNotif!.sent_at,
-                minutesUntilReady,
+                price: result.price,
+                medianBaseline,
+                baselineSamples: baselineHistory.length,
+                threshold: config.plausibilityGuardDropThreshold,
               },
-              `Cooldown active for this seller — alert suppressed for ${minutesUntilReady} more minute(s)`,
+              'Suspicious price detected, awaiting confirmation',
             );
+            scheduleConfirmationRescrape(seller.id);
+          } else if (suspicious && hadPending) {
+            // Two suspicious-and-below-threshold reads in a row.
+            // Treat as confirmed; clear pending and fire alert.
+            updateTrackerUrl(seller.id, {
+              pending_confirmation_price: null,
+              pending_confirmation_at: null,
+            });
+            logger.info(
+              {
+                trackerId: tracker.id,
+                trackerUrlId: seller.id,
+                firstPrice: seller.pending_confirmation_price,
+                secondPrice: result.price,
+              },
+              'Confirmation matched, firing alert',
+            );
+            const alertTracker = buildAlertTracker(tracker, seller, result.price);
+            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels, seller, bypassCooldown);
+            for (const channel of sentChannels) {
+              addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
+            }
+          } else if (!suspicious && hadPending) {
+            // Pending was set, but the new read is plausible. Either
+            // (a) the new price is back to normal (transient anomaly,
+            // discard alert) or (b) the new price is also low but
+            // within plausibility (real drop, has been confirmed).
+            // The "below threshold" branch we're in already implies
+            // the price is alert-worthy, so this is case (b): fire.
+            updateTrackerUrl(seller.id, {
+              pending_confirmation_price: null,
+              pending_confirmation_at: null,
+            });
+            const alertTracker = buildAlertTracker(tracker, seller, result.price);
+            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels, seller, bypassCooldown);
+            for (const channel of sentChannels) {
+              addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
+            }
           } else {
-            const recentPrices = getRecentSuccessfulPricesForSeller(
-              seller.id,
-              PLAUSIBILITY_GUARD_MEDIAN_WINDOW,
-            );
-            // The just-recorded scrape is in history now; drop it from
-            // the baseline so we compare the new price against PRIOR
-            // observations, not against itself.
-            const baselineHistory = recentPrices.slice(1);
-            const medianBaseline = computePlausibilityBaseline(baselineHistory);
-            const suspicious = isPlausibilityGuardSuspicious(
-              result.price,
-              baselineHistory,
-              config.plausibilityGuardDropThreshold,
-            );
-
-            const hadPending = seller.pending_confirmation_at !== null;
-
-            if (suspicious && !hadPending) {
-              // First time we've seen this — record pending state and
-              // suppress alert. Confirmation comes from the next
-              // successful scrape (timed re-scrape in Task 6, or the
-              // next regular cron tick as a fallback).
-              updateTrackerUrl(seller.id, {
-                pending_confirmation_price: result.price,
-                pending_confirmation_at: new Date()
-                  .toISOString()
-                  .replace('T', ' ')
-                  .slice(0, 19),
-              });
-              logger.info(
-                {
-                  trackerId: tracker.id,
-                  trackerUrlId: seller.id,
-                  trackerName: tracker.name,
-                  price: result.price,
-                  medianBaseline,
-                  baselineSamples: baselineHistory.length,
-                  threshold: config.plausibilityGuardDropThreshold,
-                },
-                'Suspicious price detected, awaiting confirmation',
-              );
-              scheduleConfirmationRescrape(seller.id);
-            } else if (suspicious && hadPending) {
-              // Two suspicious-and-below-threshold reads in a row.
-              // Treat as confirmed; clear pending and fire alert.
-              updateTrackerUrl(seller.id, {
-                pending_confirmation_price: null,
-                pending_confirmation_at: null,
-              });
-              logger.info(
-                {
-                  trackerId: tracker.id,
-                  trackerUrlId: seller.id,
-                  firstPrice: seller.pending_confirmation_price,
-                  secondPrice: result.price,
-                },
-                'Confirmation matched, firing alert',
-              );
-              const alertTracker = buildAlertTracker(tracker, seller, result.price);
-              const sentChannels = await firePriceAlerts(alertTracker, result.price, channels);
-              for (const channel of sentChannels) {
-                addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
-              }
-            } else if (!suspicious && hadPending) {
-              // Pending was set, but the new read is plausible. Either
-              // (a) the new price is back to normal (transient anomaly,
-              // discard alert) or (b) the new price is also low but
-              // within plausibility (real drop, has been confirmed).
-              // The "below threshold" branch we're in already implies
-              // the price is alert-worthy, so this is case (b): fire.
-              updateTrackerUrl(seller.id, {
-                pending_confirmation_price: null,
-                pending_confirmation_at: null,
-              });
-              const alertTracker = buildAlertTracker(tracker, seller, result.price);
-              const sentChannels = await firePriceAlerts(alertTracker, result.price, channels);
-              for (const channel of sentChannels) {
-                addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
-              }
-            } else {
-              // Not suspicious, no pending — normal alert path.
-              const alertTracker = buildAlertTracker(tracker, seller, result.price);
-              const sentChannels = await firePriceAlerts(alertTracker, result.price, channels);
-              for (const channel of sentChannels) {
-                addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
-              }
+            // Not suspicious, no pending — normal alert path.
+            const alertTracker = buildAlertTracker(tracker, seller, result.price);
+            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels, seller, bypassCooldown);
+            for (const channel of sentChannels) {
+              addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
             }
           }
         }
