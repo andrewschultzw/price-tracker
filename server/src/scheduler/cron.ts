@@ -36,6 +36,10 @@ const PLAUSIBILITY_CONFIRM_DELAY_BASE_MS = 90_000;
 const PLAUSIBILITY_CONFIRM_DELAY_JITTER_MS = 90_000;
 const PLAUSIBILITY_RESTART_STALE_AGE_MS = 600_000;
 
+type ChannelName = 'discord' | 'ntfy' | 'webhook' | 'email';
+
+const CHANNEL_NAMES: readonly ChannelName[] = ['discord', 'ntfy', 'webhook', 'email'] as const;
+
 interface EnabledChannels {
   discord?: string;
   ntfy?: string;
@@ -44,6 +48,19 @@ interface EnabledChannels {
   ntfyToken?: string;
   webhook?: string;
   email?: string;
+}
+
+/**
+ * Resolve a channel's cooldown duration for a given user, falling back
+ * to `config.notificationCooldownHours` (6h) when unset, blank, non-
+ * numeric, or negative. Zero is a valid value and means "no cooldown".
+ */
+function getCooldownHoursForChannel(userId: number, channel: ChannelName): number {
+  const raw = getSetting(`${channel}_cooldown_hours`, userId);
+  if (raw === undefined || raw === '') return config.notificationCooldownHours;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return config.notificationCooldownHours;
+  return parsed;
 }
 
 function getEnabledChannels(userId: number | null | undefined): EnabledChannels {
