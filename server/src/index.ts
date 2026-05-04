@@ -16,6 +16,7 @@ import settingsRoutes from './routes/settings.js';
 import notificationRoutes from './routes/notifications.js';
 import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
+import { startBackfillCron, stopBackfillCron } from './ai/backfill-cron.js';
 import { closeBrowser } from './scraper/browser.js';
 import { getUserCount, deleteExpiredRefreshTokens } from './db/user-queries.js';
 import { initSettingsCrypto } from './crypto/settings-crypto.js';
@@ -92,6 +93,7 @@ app.get('*', (_req, res) => {
 const server = app.listen(config.port, () => {
   logger.info(`Price Tracker running on port ${config.port}`);
   startScheduler();
+  startBackfillCron();
 });
 
 // Periodic cleanup of expired refresh tokens (every hour)
@@ -103,6 +105,7 @@ const cleanupInterval = setInterval(() => {
 function shutdown() {
   logger.info('Shutting down...');
   stopScheduler();
+  stopBackfillCron();
   clearInterval(cleanupInterval);
   server.close(() => {
     closeBrowser().then(() => {
