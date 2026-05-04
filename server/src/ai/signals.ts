@@ -63,8 +63,15 @@ export function computeSignals(
   const vs_all_time_low = currentPrice / all_time_low;
   const vs_all_time_high = currentPrice / all_time_high;
 
-  // Recency: days since all-time low — use findLast so duplicate ATL prices report the most recent hit
-  const atlObs = sorted.findLast(o => o.price === all_time_low)!;
+  // Recency: days since all-time low — walk backwards so duplicate ATL prices report the most recent hit
+  // (manual reverse loop instead of Array.findLast to keep TS target at ES2022)
+  let atlObs = sorted[sorted.length - 1];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    if (sorted[i].price === all_time_low) {
+      atlObs = sorted[i];
+      break;
+    }
+  }
   // Math.round means a 12h-old low reports as 1 day; intentional — UI shows whole days
   const days_since_all_time_low = Math.round((now - atlObs.recorded_at) / MS_PER_DAY);
 
