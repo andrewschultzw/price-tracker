@@ -11,6 +11,7 @@
     "canary": "tsx src/scripts/canary-sweep.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.93.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^11.7.0",
     "cookie-parser": "^1.4.7",

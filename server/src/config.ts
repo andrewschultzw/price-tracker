@@ -44,6 +44,13 @@ export const config = {
   priceTrackerApiKey: process.env.PRICE_TRACKER_API_KEY || '',
   priceTrackerApiKeyUserId: parseInt(process.env.PRICE_TRACKER_API_KEY_USER_ID || '0', 10),
   isProduction: process.env.NODE_ENV === 'production',
+  // AI Buyer's Assistant (Claude API)
+  aiEnabled: process.env.AI_ENABLED === 'true',
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  aiModel: process.env.AI_MODEL || 'claude-haiku-4-5-20251001',
+  aiAlertCopyTimeoutMs: 3000,
+  aiSummaryStalenessDays: 7,
+  aiVerdictMinDataDays: 14,
 };
 
 if (config.isProduction && !process.env.JWT_SECRET) {
