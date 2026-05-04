@@ -2,6 +2,7 @@
 import type { PriceObservation, Signals } from './types.js';
 
 const MS_PER_DAY = 86_400_000;
+const TREND_CHANGE_THRESHOLD = 0.05; // 5% — minimum change in either direction to call a window 'rising' or 'falling'
 
 function lowInWindow(
   history: PriceObservation[],
@@ -18,12 +19,12 @@ function trendIn30d(
   now: number,
 ): 'falling' | 'flat' | 'rising' {
   const window = history.filter(o => o.recorded_at >= now - 30 * MS_PER_DAY);
-  if (window.length < 2) return 'flat';
   const first = window[0].price;
+  if (window.length < 2 || first === 0) return 'flat';
   const last = window[window.length - 1].price;
   const change = (last - first) / first;
-  if (change > 0.05) return 'rising';
-  if (change < -0.05) return 'falling';
+  if (change > TREND_CHANGE_THRESHOLD) return 'rising';
+  if (change < -TREND_CHANGE_THRESHOLD) return 'falling';
   return 'flat';
 }
 
@@ -62,8 +63,9 @@ export function computeSignals(
   const vs_all_time_low = currentPrice / all_time_low;
   const vs_all_time_high = currentPrice / all_time_high;
 
-  // Recency: days since all-time low
-  const atlObs = sorted.find(o => o.price === all_time_low)!;
+  // Recency: days since all-time low — use findLast so duplicate ATL prices report the most recent hit
+  const atlObs = sorted.findLast(o => o.price === all_time_low)!;
+  // Math.round means a 12h-old low reports as 1 day; intentional — UI shows whole days
   const days_since_all_time_low = Math.round((now - atlObs.recorded_at) / MS_PER_DAY);
 
   // Recency: consecutive at-or-below run from the latest observation backwards

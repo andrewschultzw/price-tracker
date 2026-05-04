@@ -40,7 +40,7 @@ export interface Signals {
   vs_all_time_high: number;
 
   // recency
-  days_since_all_time_low: number | null;
+  days_since_all_time_low: number; // always present because all_time_low is guaranteed to exist in the history
   days_at_current_or_lower: number;
 
   // dwell

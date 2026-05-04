@@ -96,6 +96,15 @@ describe('computeSignals — recency', () => {
     expect(computeSignals(h, 15, null, NOW)!.days_since_all_time_low).toBe(25);
   });
 
+  it('days_since_all_time_low uses the most recent ATL when price hit it multiple times', () => {
+    const h: PriceObservation[] = [
+      { price: 10, recorded_at: NOW - 50 * MS_PER_DAY },  // ATL, old
+      { price: 15, recorded_at: NOW - 30 * MS_PER_DAY },  // rebound
+      { price: 10, recorded_at: NOW - 5 * MS_PER_DAY },   // ATL again, recent
+    ];
+    expect(computeSignals(h, 10, null, NOW)!.days_since_all_time_low).toBe(5);
+  });
+
   it('days_at_current_or_lower spans the consecutive at-or-below run from latest', () => {
     const h: PriceObservation[] = [
       { price: 20, recorded_at: NOW - 60 * MS_PER_DAY },
