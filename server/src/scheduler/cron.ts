@@ -27,6 +27,7 @@ import { sendGenericPriceAlert, sendGenericErrorAlert } from '../notifications/w
 import { sendEmailPriceAlert, sendEmailErrorAlert } from '../notifications/email.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { generateVerdictForTracker } from '../ai/generators.js';
 
 const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
 let task: cron.ScheduledTask | null = null;
@@ -232,6 +233,14 @@ export async function checkTrackerUrl(
       }
 
       refreshTrackerAggregates(tracker.id);
+
+      // AI Buyer's Assistant: regenerate verdict on price change.
+      // Fire-and-forget — never await, never block the scrape pipeline.
+      // Generator catches all errors internally and increments
+      // ai_failure_count without throwing.
+      if (process.env.AI_ENABLED === 'true' && seller.last_price !== result.price) {
+        void generateVerdictForTracker(tracker.id).catch(() => { /* generator already logs */ });
+      }
 
       logger.info(
         { trackerId: tracker.id, trackerUrlId: seller.id, price: result.price, strategy: result.strategy },
