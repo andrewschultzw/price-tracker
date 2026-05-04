@@ -87,6 +87,7 @@ export async function sendNtfyPriceAlert(
   currentPrice: number,
   ntfyUrl: string,
   ntfyToken?: string,
+  aiCommentary?: string | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
@@ -99,10 +100,12 @@ export async function sendNtfyPriceAlert(
   }
 
   const savings = (tracker.threshold_price - currentPrice).toFixed(2);
+  const baseMessage = `Now $${currentPrice.toFixed(2)} (target $${tracker.threshold_price.toFixed(2)}, save $${savings})`;
+  const message = aiCommentary ? `${baseMessage}\n\n${aiCommentary}` : baseMessage;
   const result = await publish(target.base, {
     topic: target.topic,
     title: `Price Drop: ${tracker.name}`,
-    message: `Now $${currentPrice.toFixed(2)} (target $${tracker.threshold_price.toFixed(2)}, save $${savings})`,
+    message,
     priority: 4,
     tags: ['tada', 'money_with_wings'],
     click: tracker.url,

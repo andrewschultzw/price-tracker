@@ -89,6 +89,22 @@ describe('sendDiscordPriceAlert', () => {
     const ok = await sendDiscordPriceAlert(makeTracker(), 45, 'https://discord.com/api/webhooks/x');
     expect(ok).toBe(false);
   });
+
+  it('renders without ai_commentary when aiCommentary is null', async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 30, 'https://example/wh', null);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(JSON.stringify(body)).not.toContain('ai_commentary');
+    expect(body.embeds[0].description).toBeUndefined();
+  });
+
+  it('appends aiCommentary to embed description when provided', async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 30, 'https://example/wh', '12-month low.');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(JSON.stringify(body)).toContain('12-month low.');
+    expect(body.embeds[0].description).toBe('12-month low.');
+  });
 });
 
 describe('sendDiscordErrorAlert', () => {

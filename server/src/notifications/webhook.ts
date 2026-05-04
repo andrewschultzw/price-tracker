@@ -30,6 +30,7 @@ export async function sendGenericPriceAlert(
   tracker: Tracker,
   currentPrice: number,
   webhookUrl: string,
+  aiCommentary?: string | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
@@ -47,6 +48,7 @@ export async function sendGenericPriceAlert(
       savings: Number((tracker.threshold_price - currentPrice).toFixed(2)),
       error: null,
       consecutive_failures: null,
+      ai_commentary: aiCommentary || null,
       timestamp: new Date().toISOString(),
     };
 

@@ -117,15 +117,22 @@ export async function sendEmailPriceAlert(
   tracker: Tracker,
   currentPrice: number,
   recipient: string,
+  aiCommentary?: string | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
+  const baseText = priceAlertText(tracker, currentPrice);
+  const baseHtml = priceAlertHtml(tracker, currentPrice);
+  const text = aiCommentary ? `${baseText}\n\n${aiCommentary}` : baseText;
+  const html = aiCommentary
+    ? baseHtml.replace('</body>', `<p style="margin-top: 16px; color: #374151;">${escapeHtml(aiCommentary)}</p>\n</body>`)
+    : baseHtml;
   try {
     await getTransport().sendMail({
       from: config.smtpFrom,
       to: recipient,
       subject: `Price drop: ${tracker.name} is ${formatMoney(currentPrice)}`,
-      text: priceAlertText(tracker, currentPrice),
-      html: priceAlertHtml(tracker, currentPrice),
+      text,
+      html,
     });
     logger.info({ trackerId: tracker.id, price: currentPrice }, 'Email price alert sent');
     return true;

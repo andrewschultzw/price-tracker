@@ -88,6 +88,19 @@ describe('sendEmailPriceAlert', () => {
     expect(ok).toBe(false);
     expect(sentMessages).toHaveLength(0);
   });
+
+  it('renders without ai_commentary when aiCommentary is null', async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 30, 'user@example.com', null);
+    expect(sentMessages[0].text).not.toContain('AI');
+  });
+
+  it('appends aiCommentary to both HTML and plaintext bodies when provided', async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 30, 'user@example.com', '12-month low.');
+    expect(sentMessages[0].text).toContain('12-month low.');
+    expect(sentMessages[0].html).toContain('12-month low.');
+  });
 });
 
 describe('sendEmailErrorAlert', () => {

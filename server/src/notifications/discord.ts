@@ -9,12 +9,13 @@ export async function sendDiscordPriceAlert(
   tracker: Tracker,
   currentPrice: number,
   webhookUrl: string,
+  aiCommentary?: string | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
   const savings = (tracker.threshold_price - currentPrice).toFixed(2);
 
-  const embed = {
+  const embed: Record<string, unknown> = {
     title: `Price Drop Alert: ${tracker.name}`,
     color: 0x00c853,
     fields: [
@@ -26,6 +27,10 @@ export async function sendDiscordPriceAlert(
     timestamp: new Date().toISOString(),
     footer: { text: 'Price Tracker' },
   };
+
+  if (aiCommentary) {
+    embed.description = aiCommentary;
+  }
 
   try {
     const response = await fetch(webhookUrl, {
