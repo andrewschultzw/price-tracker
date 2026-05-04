@@ -43,9 +43,9 @@
 |---|---|
 | `server/package.json` | Add `@anthropic-ai/sdk` dependency |
 | `server/src/config.ts` | Add `aiEnabled`, `anthropicApiKey`, `aiModel` config |
-| `server/src/db/migrations.ts` | Append migration v7 — adds AI columns to `trackers` |
+| `server/src/db/migrations.ts` | Append migration v8 — adds AI columns to `trackers` |
 | `server/src/db/queries.ts` | Add AI read/write helpers; update `Tracker` type |
-| `server/src/db/migration-v7.test.ts` | New — migration up/idempotency test |
+| `server/src/db/migration-v8.test.ts` | New — migration up/idempotency test |
 | `server/src/scheduler/cron.ts` | Fire-and-forget verdict regeneration on price change; alert-copy generation with 3s timeout |
 | `server/src/scheduler/cron-ai.test.ts` | New — integration test for cron AI hooks |
 | `server/src/notifications/discord.ts` | Optional `aiCommentary` parameter, appended to embed description |
@@ -139,15 +139,15 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Migration v7 — AI columns on trackers
+## Task 2: Migration v8 — AI columns on trackers
 
 **Files:**
 - Modify: `server/src/db/migrations.ts`
-- Create: `server/src/db/migration-v7.test.ts`
+- Create: `server/src/db/migration-v8.test.ts`
 
 - [ ] **Step 1: Write the failing migration test**
 
-Create `server/src/db/migration-v7.test.ts`:
+Create `server/src/db/migration-v8.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -155,7 +155,7 @@ import { _setDbForTesting, getDb } from './connection.js';
 import { runMigrations } from './migrations.js';
 import Database from 'better-sqlite3';
 
-describe('migration v7 — AI columns on trackers', () => {
+describe('migration v8 — AI columns on trackers', () => {
   beforeEach(() => {
     const db = new Database(':memory:');
     _setDbForTesting(db);
@@ -195,7 +195,7 @@ describe('migration v7 — AI columns on trackers', () => {
     expect(col!.dflt_value).toBe('0');
   });
 
-  it('migration v7 is idempotent', () => {
+  it('migration v8 is idempotent', () => {
     runMigrations();
     runMigrations();
     const cols = getDb().prepare("PRAGMA table_info(trackers)").all() as { name: string }[];
@@ -208,12 +208,12 @@ describe('migration v7 — AI columns on trackers', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cd server && npm test -- migration-v7
+cd server && npm test -- migration-v8
 ```
 
 Expected: FAIL — `ai_verdict_tier` column not found.
 
-- [ ] **Step 3: Append migration v7 to `server/src/db/migrations.ts`**
+- [ ] **Step 3: Append migration v8 to `server/src/db/migrations.ts`**
 
 Inside the `migrations` array, after the v6 entry, add:
 
@@ -249,7 +249,7 @@ Inside the `migrations` array, after the v6 entry, add:
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cd server && npm test -- migration-v7
+cd server && npm test -- migration-v8
 ```
 
 Expected: PASS, all four cases.
@@ -265,8 +265,8 @@ Expected: all existing tests still pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add server/src/db/migrations.ts server/src/db/migration-v7.test.ts
-git commit -m "feat(ai): add migration v7 with AI columns on trackers
+git add server/src/db/migrations.ts server/src/db/migration-v8.test.ts
+git commit -m "feat(ai): add migration v8 with AI columns on trackers
 
 Eight new nullable columns to hold verdict tier, reason, reason key,
 update timestamp, signals snapshot, summary, summary timestamp, and
@@ -2741,7 +2741,7 @@ Architecture:
 - Inline async fire-and-forget on the scrape pipeline
 - AI is decoration, never infrastructure — alerts and dashboards work when Claude is unavailable
 
-Migration v7 adds eight AI columns to \`trackers\`. New env vars: \`AI_ENABLED\` (default false), \`ANTHROPIC_API_KEY\`, \`AI_MODEL\`.
+Migration v8 adds eight AI columns to \`trackers\`. New env vars: \`AI_ENABLED\` (default false), \`ANTHROPIC_API_KEY\`, \`AI_MODEL\`.
 
 ## Test plan
 - [ ] All server tests pass (\`cd server && npm test\`)
@@ -2771,7 +2771,7 @@ Migration v7 adds eight AI columns to \`trackers\`. New env vars: \`AI_ENABLED\`
 | Verdict states (3-tier) | Tasks 5, 15 |
 | Failure philosophy | Tasks 6, 9, 11 (timeout) |
 | Architecture (fire-and-forget) | Task 10 |
-| Migration v7 schema | Task 2 |
+| Migration v8 schema | Task 2 |
 | Signals shape (full struct) | Task 4 |
 | Verdict rules (full tree) | Task 5 |
 | Prompts (3 builders, cache markers, hallucination guard) | Task 7 |

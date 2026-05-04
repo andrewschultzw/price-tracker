@@ -45,7 +45,7 @@ The defining design principle is **rules judge, LLM narrates**. Deterministic co
   - Inside `firePriceAlerts`, after the cooldown gate, before per-channel fanout: `Promise.race(generateAlertCopy(ctx), 3sTimeout)` → result passed into each channel's payload builder.
   - Registers `backfill-cron.ts` to run nightly at 03:00.
 - `server/src/db/queries.ts` — read/write helpers for the new AI columns.
-- Migration v7 — adds the AI columns to `trackers`.
+- Migration v8 — adds the AI columns to `trackers`.
 - `server/src/routes/trackers.ts` — includes `ai_*` fields in tracker payloads.
 - `server/src/routes/health.ts` — exposes new admin-only AI observability fields.
 - Channel renderers (`notifications/discord.ts`, `notifications/ntfy.ts`, `notifications/email.ts`, `notifications/webhook.ts`) — accept optional `aiCommentary` and render conditionally.
@@ -89,7 +89,7 @@ scrape succeeds
 
 ## Data model
 
-### Migration v7 — new columns on `trackers`
+### Migration v8 — new columns on `trackers`
 
 | Column | Type | Default | Purpose |
 |---|---|---|---|
@@ -324,7 +324,7 @@ Target: **~85 new tests**. Server suite goes from 172 → ~257.
 
 ## Rollout
 
-1. **Migration v7** runs on deploy. All AI columns exist, all NULL. Zero behavior change.
+1. **Migration v8** runs on deploy. All AI columns exist, all NULL. Zero behavior change.
 2. **Code merged with `AI_ENABLED=false`** in `.env.production`. AI module exists but no calls happen, no UI surfaces render.
 3. **Flip flag on a single tracker first** (manual override during dev) — generate verdict + summary, eyeball the output for tone, accuracy, hallucination.
 4. **Flip global flag.** Verdicts populate naturally as price changes happen. Backfill cron fills summaries overnight.
