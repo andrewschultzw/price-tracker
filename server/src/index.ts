@@ -21,6 +21,8 @@ import { closeBrowser } from './scraper/browser.js';
 import { getUserCount, deleteExpiredRefreshTokens } from './db/user-queries.js';
 import { initSettingsCrypto } from './crypto/settings-crypto.js';
 import { logger } from './logger.js';
+import { verifyAccessToken } from './auth/tokens.js';
+import { getDb } from './db/connection.js';
 
 // Initialize crypto BEFORE the database so migration v3 (which encrypts
 // existing webhook settings rows) can use it during initializeSchema().
@@ -79,8 +81,46 @@ app.use('/api/settings', apiKeyMiddleware, authMiddleware, settingsRoutes);
 app.use('/api/notifications', apiKeyMiddleware, authMiddleware, notificationRoutes);
 app.use('/api/admin', apiKeyMiddleware, authMiddleware, adminMiddleware, adminRoutes);
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Helper: count cumulative AI failures across all trackers
+function countAIFailures(): number {
+  const result = getDb().prepare(`
+    SELECT COALESCE(SUM(ai_failure_count), 0) AS n FROM trackers
+  `).get() as { n: number };
+  return result.n ?? 0;
+}
+
+// Helper: soft-auth — try to decode JWT if present, return null if invalid/expired
+function tryDecodeAuth(req: express.Request) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) return null;
+  try {
+    return verifyAccessToken(auth.slice('Bearer '.length));
+  } catch {
+    return null;
+  }
+}
+
+app.get('/api/health', (req, res) => {
+  const baseFields = { status: 'ok', timestamp: new Date().toISOString() };
+
+  const user = tryDecodeAuth(req);
+  if (user?.role !== 'admin') {
+    return res.json(baseFields);
+  }
+
+  // Admin observability fields
+  const aiFields = {
+    ai_enabled: process.env.AI_ENABLED === 'true',
+    ai_verdict_failures_24h: countAIFailures(),
+    // TODO(debt): The four metrics below need accumulators we don't track yet.
+    // Landing as 0 placeholders; wire real values in a follow-up once
+    // volume justifies an in-memory counter or an ai_metrics table.
+    ai_summary_failures_24h: 0,
+    ai_alert_copy_timeouts_24h: 0,
+    ai_avg_latency_ms_24h: 0,
+    ai_cache_hit_rate_24h: 0,
+  };
+  res.json({ ...baseFields, ...aiFields });
 });
 
 // Serve frontend in production
