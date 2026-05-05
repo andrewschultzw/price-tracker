@@ -12,6 +12,7 @@ import { sendDiscordBasketAlert } from '../notifications/discord.js';
 import { sendNtfyBasketAlert } from '../notifications/ntfy.js';
 import { sendEmailBasketAlert } from '../notifications/email.js';
 import { sendGenericBasketAlert } from '../notifications/webhook.js';
+import { sendWebPushBasketAlert } from '../notifications/web-push.js';
 import { logger } from '../logger.js';
 import { config } from '../config.js';
 import { buildBasketAlertCopyPrompt } from '../ai/prompts.js';
@@ -74,7 +75,7 @@ export async function evaluateAndFireForProject(projectId: number): Promise<void
     if (basket.total === null) return;  // Type narrowing — eligible implies non-null total
 
     const channels = getEnabledChannels(project.user_id);
-    if (!channels.discord && !channels.ntfy && !channels.webhook && !channels.email) {
+    if (!channels.discord && !channels.ntfy && !channels.webhook && !channels.email && !channels.web_push) {
       logger.info({ project_id: projectId }, 'basket_alert_no_channels_enabled');
       return;
     }
@@ -113,6 +114,9 @@ export async function evaluateAndFireForProject(projectId: number): Promise<void
           break;
         case 'webhook':
           ok = await sendGenericBasketAlert(project, basket, members, channels.webhook!, aiCommentary);
+          break;
+        case 'web_push':
+          ok = await sendWebPushBasketAlert(project, basket, members, project.user_id, aiCommentary);
           break;
       }
       return { name, ok };

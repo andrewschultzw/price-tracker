@@ -24,6 +24,10 @@ vi.mock('../notifications/email.js', () => ({
   sendEmailErrorAlert: vi.fn().mockResolvedValue(true),
   sendEmailBasketAlert: vi.fn().mockResolvedValue(true),
 }));
+vi.mock('../notifications/web-push.js', () => ({
+  sendWebPushPriceAlert: vi.fn().mockResolvedValue(true),
+  sendWebPushBasketAlert: vi.fn().mockResolvedValue(true),
+}));
 
 import { _setDbForTesting, getDb } from '../db/connection.js';
 import { initializeSchema } from '../db/schema.js';
@@ -34,6 +38,7 @@ import { sendDiscordBasketAlert } from '../notifications/discord.js';
 import { sendNtfyBasketAlert } from '../notifications/ntfy.js';
 import { sendEmailBasketAlert } from '../notifications/email.js';
 import { sendGenericBasketAlert } from '../notifications/webhook.js';
+import { sendWebPushBasketAlert } from '../notifications/web-push.js';
 
 function seedUser(): number {
   return Number(getDb().prepare(
@@ -173,5 +178,45 @@ describe('evaluateAndFireForProject', () => {
     // Discord failure → no notification logged for it; ntfy/email/webhook all logged
     const notifs = getDb().prepare('SELECT channel FROM project_notifications WHERE project_id=?').all(p) as { channel: string }[];
     expect(notifs.map(n => n.channel).sort()).toEqual(['email', 'ntfy', 'webhook']);
+  });
+
+  it('fires sendWebPushBasketAlert when user has web push subscription', async () => {
+    const u = seedUser();
+    setupChannels(u);
+    // Add a web push subscription
+    getDb().prepare(
+      `INSERT INTO web_push_subscriptions (user_id, endpoint, p256dh_key, auth_key)
+       VALUES (?, 'https://fcm.googleapis.com/fcm/send/E', 'P', 'A')`
+    ).run(u);
+
+    const t1 = seedTracker(u, 'A', 30);
+    const p = createProject({ user_id: u, name: 'NAS', target_total: 100 });
+    addProjectTracker({ project_id: p, tracker_id: t1 });
+
+    await evaluateAndFireForProject(p);
+
+    expect(sendWebPushBasketAlert).toHaveBeenCalledTimes(1);
+    const notifs = getDb().prepare('SELECT channel FROM project_notifications WHERE project_id=?').all(p) as { channel: string }[];
+    expect(notifs.map(n => n.channel).sort()).toContain('web_push');
+  });
+
+  it('respects per-(project, web_push) cooldown', async () => {
+    const u = seedUser();
+    getDb().prepare(
+      `INSERT INTO web_push_subscriptions (user_id, endpoint, p256dh_key, auth_key)
+       VALUES (?, 'https://fcm.googleapis.com/fcm/send/E', 'P', 'A')`
+    ).run(u);
+    const t1 = seedTracker(u, 'A', 30);
+    const p = createProject({ user_id: u, name: 'NAS', target_total: 100 });
+    addProjectTracker({ project_id: p, tracker_id: t1 });
+
+    // Seed a recent web_push project notification (1 hour ago — within default 6h)
+    getDb().prepare(
+      `INSERT INTO project_notifications (project_id, channel, basket_total, target_total, sent_at)
+       VALUES (?, 'web_push', 30, 100, datetime('now', '-1 hour'))`
+    ).run(p);
+
+    await evaluateAndFireForProject(p);
+    expect(sendWebPushBasketAlert).not.toHaveBeenCalled();
   });
 });
