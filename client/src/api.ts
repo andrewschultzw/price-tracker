@@ -1,4 +1,4 @@
-import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap } from './types';
+import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail } from './types';
 
 const BASE = '/api';
 
@@ -190,3 +190,59 @@ export const createInvite = (expiresAt?: string) =>
 export const getInvites = () => request<InviteCode[]>('/admin/invites');
 export const deleteInvite = (id: number) =>
   request<void>(`/admin/invites/${id}`, { method: 'DELETE' });
+
+// Projects
+export function listProjects(status?: 'active' | 'archived'): Promise<Project[]> {
+  const path = status ? `/projects?status=${status}` : '/projects';
+  return request<Project[]>(path);
+}
+
+export function createProject(args: { name: string; target_total: number }): Promise<Project> {
+  return request<Project>('/projects', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+}
+
+export function getProject(id: number): Promise<ProjectDetail> {
+  return request<ProjectDetail>(`/projects/${id}`);
+}
+
+export function updateProject(
+  id: number,
+  args: { name?: string; target_total?: number; status?: 'active' | 'archived' },
+): Promise<Project> {
+  return request<Project>(`/projects/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(args),
+  });
+}
+
+export function deleteProject(id: number): Promise<void> {
+  return request<void>(`/projects/${id}`, { method: 'DELETE' });
+}
+
+export function addProjectTracker(
+  projectId: number,
+  args: { tracker_id: number; per_item_ceiling?: number | null; position?: number },
+): Promise<BasketMember[]> {
+  return request<BasketMember[]>(`/projects/${projectId}/trackers`, {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+}
+
+export function removeProjectTracker(projectId: number, trackerId: number): Promise<void> {
+  return request<void>(`/projects/${projectId}/trackers/${trackerId}`, { method: 'DELETE' });
+}
+
+export function updateProjectTracker(
+  projectId: number,
+  trackerId: number,
+  args: { per_item_ceiling?: number | null; position?: number },
+): Promise<BasketMember[]> {
+  return request<BasketMember[]>(`/projects/${projectId}/trackers/${trackerId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(args),
+  });
+}

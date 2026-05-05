@@ -97,3 +97,51 @@ export interface Overlap {
   names: string[];
   communityLow: number | null;
 }
+
+// === Bundle Tracker (server migration v9) ===
+
+export type IneligibleReason =
+  | 'no_items'
+  | 'item_missing_price'
+  | 'item_errored'
+  | 'over_target';
+
+export interface Project {
+  id: number;
+  user_id: number;
+  name: string;
+  target_total: number;
+  status: 'active' | 'archived';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BasketMember {
+  tracker_id: number;
+  tracker_name: string;
+  last_price: number | null;
+  tracker_status: 'active' | 'paused' | 'error';
+  per_item_ceiling: number | null;
+  position: number;
+  ai_verdict_tier: 'BUY' | 'WAIT' | 'HOLD' | null;
+  ai_verdict_reason: string | null;
+}
+
+export interface ProjectNotificationRecord {
+  id: number;
+  project_id: number;
+  channel: string;
+  basket_total: number;
+  target_total: number;
+  ai_commentary: string | null;
+  sent_at: string;
+}
+
+export interface ProjectDetail {
+  project: Project;
+  members: BasketMember[];
+  recent_notifications: ProjectNotificationRecord[];
+}
+
+/** Composite project verdict (deterministic, client-side derivation). */
+export type CompositeVerdictTier = 'BUY' | 'WAIT' | 'HOLD';
