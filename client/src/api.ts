@@ -1,4 +1,4 @@
-import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail } from './types';
+import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail, WebPushDevice, SubscribePayload } from './types';
 
 const BASE = '/api';
 
@@ -245,4 +245,21 @@ export function updateProjectTracker(
     method: 'PATCH',
     body: JSON.stringify(args),
   });
+}
+
+// === Web Push ===
+
+export function subscribeWebPush(payload: SubscribePayload): Promise<WebPushDevice> {
+  return request<WebPushDevice>('/web-push/subscribe', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listWebPushDevices(): Promise<WebPushDevice[]> {
+  return request<WebPushDevice[]>('/web-push/devices');
+}
+
+export function deleteWebPushDevice(id: number): Promise<void> {
+  return request<void>(`/web-push/subscriptions/${id}`, { method: 'DELETE' });
 }

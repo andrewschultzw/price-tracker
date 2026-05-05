@@ -145,3 +145,18 @@ export interface ProjectDetail {
 
 /** Composite project verdict (deterministic, client-side derivation). */
 export type CompositeVerdictTier = 'BUY' | 'WAIT' | 'HOLD';
+
+// === Web Push (PWA notifications) ===
+
+export interface WebPushDevice {
+  id: number;
+  device_label: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface SubscribePayload {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  device_label?: string;
+}
