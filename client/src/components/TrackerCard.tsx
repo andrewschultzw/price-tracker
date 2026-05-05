@@ -3,6 +3,7 @@ import { ExternalLink, Clock, RefreshCw, BellOff, TrendingDown, Store, Users } f
 import type { Tracker } from '../types'
 import StatusBadge from './StatusBadge'
 import Sparkline from './Sparkline'
+import { VerdictPill } from './VerdictPill'
 import { checkTracker } from '../api'
 import { useState } from 'react'
 
@@ -101,8 +102,11 @@ export default function TrackerCard({ tracker, sparklineData, minPrice = null, o
 
       <div className="flex items-end justify-between">
         <div className="min-w-0">
-          <div className={`text-3xl font-bold tracking-tight ${belowThreshold ? 'text-success' : 'text-text'}`}>
-            {tracker.last_price != null ? `$${tracker.last_price.toFixed(2)}` : '--'}
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <div className={`text-3xl font-bold tracking-tight ${belowThreshold ? 'text-success' : 'text-text'}`}>
+              {tracker.last_price != null ? `$${tracker.last_price.toFixed(2)}` : '--'}
+            </div>
+            <VerdictPill tier={tracker.ai_verdict_tier ?? null} reason={tracker.ai_verdict_reason ?? null} />
           </div>
           {sellerCount > 1 && bestSellerHost && (
             <div className="text-[11px] text-text-muted mt-0.5 truncate" title={`Lowest price across ${sellerCount} sellers`}>
