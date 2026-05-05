@@ -51,6 +51,10 @@ export const config = {
   aiAlertCopyTimeoutMs: 3000,
   aiSummaryStalenessDays: 7,
   aiVerdictMinDataDays: 14,
+  // Web Push (PWA notifications)
+  webPushVapidPublic: process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '',
+  webPushVapidPrivate: process.env.WEB_PUSH_VAPID_PRIVATE_KEY || '',
+  webPushSubject: process.env.WEB_PUSH_SUBJECT || '',
 };
 
 if (config.isProduction && !process.env.JWT_SECRET) {
