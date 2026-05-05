@@ -14,6 +14,7 @@ import {
   addNotification,
   getRecentSuccessfulPricesForSeller,
   getSellersWithPendingConfirmation,
+  getActiveProjectIdsForTracker,
 } from '../db/queries.js';
 import type { Tracker, TrackerUrl } from '../db/queries.js';
 import { extractPrice } from '../scraper/extractor.js';
@@ -28,6 +29,7 @@ import { sendEmailPriceAlert, sendEmailErrorAlert } from '../notifications/email
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { generateVerdictForTracker, generateAlertCopy, computeSignalsAndVerdictForTracker } from '../ai/generators.js';
+import { evaluateAndFireForProject } from '../projects/firer.js';
 
 const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
 let task: cron.ScheduledTask | null = null;
@@ -262,6 +264,15 @@ export async function checkTrackerUrl(
       // ai_failure_count without throwing.
       if (process.env.AI_ENABLED === 'true' && seller.last_price !== result.price) {
         void generateVerdictForTracker(tracker.id).catch(() => { /* generator already logs */ });
+      }
+
+      // Project basket re-eval — fire-and-forget for every active project
+      // containing this tracker. Independent of AI flag.
+      const activeProjectIds = getActiveProjectIdsForTracker(tracker.id);
+      for (const projectId of activeProjectIds) {
+        void evaluateAndFireForProject(projectId).catch(() => {
+          // firer logs internally — outer catch is the fire-and-forget backstop
+        });
       }
 
       logger.info(
