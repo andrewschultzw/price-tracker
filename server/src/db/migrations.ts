@@ -294,6 +294,48 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 9,
+    description: "Bundle Tracker — projects, project_trackers, project_notifications",
+    up: () => {
+      const db = getDb();
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS projects (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          target_total REAL NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+        CREATE INDEX IF NOT EXISTS idx_projects_user_status ON projects(user_id, status);
+
+        CREATE TABLE IF NOT EXISTS project_trackers (
+          project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          tracker_id INTEGER NOT NULL REFERENCES trackers(id) ON DELETE CASCADE,
+          per_item_ceiling REAL,
+          position INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (project_id, tracker_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_trackers_tracker_id ON project_trackers(tracker_id);
+
+        CREATE TABLE IF NOT EXISTS project_notifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          channel TEXT NOT NULL CHECK (channel IN ('discord', 'ntfy', 'webhook', 'email')),
+          basket_total REAL NOT NULL,
+          target_total REAL NOT NULL,
+          ai_commentary TEXT,
+          sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_notifications_project_channel
+          ON project_notifications(project_id, channel, sent_at DESC);
+      `);
+    },
+  },
 ];
 
 export function runMigrations(): void {
