@@ -3,7 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { resolve } from 'path';
-import { config } from './config.js';
+import { config, isWebPushConfigured } from './config.js';
 import { initializeSchema } from './db/schema.js';
 import { closeDb } from './db/connection.js';
 import { authMiddleware, adminMiddleware } from './auth/middleware.js';
@@ -15,6 +15,7 @@ import priceRoutes from './routes/prices.js';
 import settingsRoutes from './routes/settings.js';
 import notificationRoutes from './routes/notifications.js';
 import projectsRoutes from './routes/projects.js';
+import webPushRoutes from './routes/web-push.js';
 import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { startBackfillCron, stopBackfillCron } from './ai/backfill-cron.js';
@@ -82,6 +83,7 @@ app.use('/api/settings', apiKeyMiddleware, authMiddleware, settingsRoutes);
 app.use('/api/notifications', apiKeyMiddleware, authMiddleware, notificationRoutes);
 app.use('/api/admin', apiKeyMiddleware, authMiddleware, adminMiddleware, adminRoutes);
 app.use('/api/projects', apiKeyMiddleware, authMiddleware, projectsRoutes);
+app.use('/api/web-push', apiKeyMiddleware, authMiddleware, webPushRoutes);
 
 // Helper: count cumulative AI failures across all trackers
 function countAIFailures(): number {
@@ -134,6 +136,9 @@ app.get('*', (_req, res) => {
 
 const server = app.listen(config.port, () => {
   logger.info(`Price Tracker running on port ${config.port}`);
+  if (!isWebPushConfigured()) {
+    logger.warn({}, 'web_push_vapid_missing — set WEB_PUSH_VAPID_PUBLIC_KEY / WEB_PUSH_VAPID_PRIVATE_KEY / WEB_PUSH_SUBJECT to enable the web push channel');
+  }
   startScheduler();
   startBackfillCron();
 });

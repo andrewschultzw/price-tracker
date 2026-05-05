@@ -51,6 +51,10 @@ export const config = {
   aiAlertCopyTimeoutMs: 3000,
   aiSummaryStalenessDays: 7,
   aiVerdictMinDataDays: 14,
+  // Web Push (PWA notifications)
+  webPushVapidPublic: process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '',
+  webPushVapidPrivate: process.env.WEB_PUSH_VAPID_PRIVATE_KEY || '',
+  webPushSubject: process.env.WEB_PUSH_SUBJECT || '',
 };
 
 if (config.isProduction && !process.env.JWT_SECRET) {
@@ -65,6 +69,17 @@ if (config.isProduction && !process.env.JWT_SECRET) {
  */
 export function isEmailConfigured(): boolean {
   return !!(config.smtpHost && config.smtpPort && config.smtpUser && config.smtpPass && config.smtpFrom);
+}
+
+/**
+ * True when all VAPID values needed to send Web Push are present.
+ * The actual sender (`server/src/notifications/web-push.ts`) reads from
+ * `process.env` directly so test env mutations work, but consumers that
+ * need the boolean (e.g. startup banner, future Settings UI hint) should
+ * use this helper.
+ */
+export function isWebPushConfigured(): boolean {
+  return !!(config.webPushVapidPublic && config.webPushVapidPrivate && config.webPushSubject);
 }
 
 /**

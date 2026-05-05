@@ -1021,3 +1021,75 @@ export function addProjectNotification(args: {
      VALUES (?, ?, ?, ?, ?)`
   ).run(args.project_id, args.channel, args.basket_total, args.target_total, args.ai_commentary);
 }
+
+// === Web Push subscriptions ===
+
+export interface WebPushSubscriptionRecord {
+  id: number;
+  user_id: number;
+  endpoint: string;
+  p256dh_key: string;
+  auth_key: string;
+  device_label: string | null;
+  user_agent: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+/**
+ * UPSERT semantics: re-subscribing on the same browser+device returns the
+ * same endpoint, so we ON CONFLICT update the keys + device_label rather
+ * than creating a duplicate row. user_id is NOT updated on conflict —
+ * the original owner keeps the row (defense-in-depth against cross-user
+ * endpoint claims).
+ */
+export function upsertWebPushSubscription(args: {
+  user_id: number;
+  endpoint: string;
+  p256dh_key: string;
+  auth_key: string;
+  device_label: string | null;
+  user_agent: string | null;
+}): number {
+  getDb().prepare(
+    `INSERT INTO web_push_subscriptions
+       (user_id, endpoint, p256dh_key, auth_key, device_label, user_agent)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(endpoint) DO UPDATE SET
+       p256dh_key = excluded.p256dh_key,
+       auth_key = excluded.auth_key,
+       device_label = excluded.device_label,
+       user_agent = excluded.user_agent`
+  ).run(args.user_id, args.endpoint, args.p256dh_key, args.auth_key, args.device_label, args.user_agent);
+  // For UPSERTs, lastInsertRowid is 0 on UPDATE — re-fetch by endpoint.
+  const row = getDb().prepare(`SELECT id FROM web_push_subscriptions WHERE endpoint = ?`)
+    .get(args.endpoint) as { id: number };
+  return row.id;
+}
+
+export function getActiveWebPushSubscriptionsForUser(userId: number): WebPushSubscriptionRecord[] {
+  return getDb().prepare(
+    `SELECT * FROM web_push_subscriptions WHERE user_id = ? ORDER BY created_at ASC`
+  ).all(userId) as WebPushSubscriptionRecord[];
+}
+
+export function getWebPushSubscriptionById(id: number): WebPushSubscriptionRecord | undefined {
+  return getDb().prepare(
+    `SELECT * FROM web_push_subscriptions WHERE id = ?`
+  ).get(id) as WebPushSubscriptionRecord | undefined;
+}
+
+export function deleteWebPushSubscription(id: number): void {
+  getDb().prepare(`DELETE FROM web_push_subscriptions WHERE id = ?`).run(id);
+}
+
+/** Used by the firer to clean up stale endpoints when web-push returns 410/404. */
+export function deleteWebPushSubscriptionByEndpoint(endpoint: string): void {
+  getDb().prepare(`DELETE FROM web_push_subscriptions WHERE endpoint = ?`).run(endpoint);
+}
+
+export function updateWebPushLastUsedAt(id: number): void {
+  getDb().prepare(
+    `UPDATE web_push_subscriptions SET last_used_at = datetime('now') WHERE id = ?`
+  ).run(id);
+}

@@ -27,7 +27,9 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [ ] **Project / Bundle tracker.** Multi-tracker "baskets" with a combined budget target. Alert fires when the basket total hits target, regardless of any single item's drop. Per-item ceilings supported (informational, surfaced to AI advisor). Pairs with the AI Buyer's Assistant for per-item "buy now / wait" guidance. Spec: `docs/superpowers/specs/2026-05-05-bundle-tracker-design.md`. Branch: `feature/bundle-tracker`.
 
-- [ ] **Browser extension + installable PWA.** One-click capture from any retailer page (Chrome / Firefox extension) plus PWA-ification of the existing site for installable mobile app + Web Push. Stretch: iOS Share Sheet shortcut. Spec: TBD.
+- [ ] **PWA + Web Push (the PWA half of the third big bet).** Service worker + manifest + `<WebPushSettings>` Settings UI. Web Push as the 5th notification channel slotted into the existing `firePriceAlerts` + basket-alert fanout. Per-device subscriptions, channel-level cooldown, auto-cleanup of stale endpoints via 410/404 handling. Spec: `docs/superpowers/specs/2026-05-05-pwa-web-push-design.md`. Branch: `feature/pwa-web-push`.
+
+- [ ] **Browser extension (the extension half of the third big bet).** Chrome / Firefox extension, manifest v3, one-click "Track this" from any retailer page. Separate codebase, distributed via Chrome Web Store + Firefox Add-ons. Calls existing `POST /api/trackers` via the OpenClaw-style API key middleware. Spec: TBD (after PWA ships).
 
 ### Priority: future portfolio
 

@@ -336,6 +336,61 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 10,
+    description: "PWA Web Push — web_push_subscriptions table",
+    up: () => {
+      const db = getDb();
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS web_push_subscriptions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          endpoint TEXT NOT NULL UNIQUE,
+          p256dh_key TEXT NOT NULL,
+          auth_key TEXT NOT NULL,
+          device_label TEXT,
+          user_agent TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_used_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_web_push_subscriptions_user_id
+          ON web_push_subscriptions(user_id);
+      `);
+    },
+  },
+  {
+    version: 11,
+    description: "Add web_push to project_notifications channel CHECK constraint",
+    up: () => {
+      const db = getDb();
+      db.exec(`
+        -- SQLite doesn't support ALTER CONSTRAINT, so recreate the table with
+        -- the updated CHECK constraint that includes 'web_push'.
+        CREATE TABLE IF NOT EXISTS project_notifications_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          channel TEXT NOT NULL CHECK (channel IN ('discord', 'ntfy', 'webhook', 'email', 'web_push')),
+          basket_total REAL NOT NULL,
+          target_total REAL NOT NULL,
+          ai_commentary TEXT,
+          sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Copy existing data
+        INSERT INTO project_notifications_new
+          SELECT id, project_id, channel, basket_total, target_total, ai_commentary, sent_at
+          FROM project_notifications;
+
+        -- Drop old table and rename
+        DROP TABLE project_notifications;
+        ALTER TABLE project_notifications_new RENAME TO project_notifications;
+
+        -- Recreate the index
+        CREATE INDEX IF NOT EXISTS idx_project_notifications_project_channel
+          ON project_notifications(project_id, channel, sent_at DESC);
+      `);
+    },
+  },
 ];
 
 export function runMigrations(): void {
