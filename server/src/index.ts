@@ -14,6 +14,7 @@ import trackerRoutes from './routes/trackers.js';
 import priceRoutes from './routes/prices.js';
 import settingsRoutes from './routes/settings.js';
 import notificationRoutes from './routes/notifications.js';
+import projectsRoutes from './routes/projects.js';
 import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { startBackfillCron, stopBackfillCron } from './ai/backfill-cron.js';
@@ -80,6 +81,7 @@ app.use('/api/trackers', apiKeyMiddleware, authMiddleware, priceRoutes);
 app.use('/api/settings', apiKeyMiddleware, authMiddleware, settingsRoutes);
 app.use('/api/notifications', apiKeyMiddleware, authMiddleware, notificationRoutes);
 app.use('/api/admin', apiKeyMiddleware, authMiddleware, adminMiddleware, adminRoutes);
+app.use('/api/projects', apiKeyMiddleware, authMiddleware, projectsRoutes);
 
 // Helper: count cumulative AI failures across all trackers
 function countAIFailures(): number {
