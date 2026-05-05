@@ -15,6 +15,7 @@ import {
   getRecentSuccessfulPricesForSeller,
   getSellersWithPendingConfirmation,
   getActiveProjectIdsForTracker,
+  getActiveWebPushSubscriptionsForUser,
 } from '../db/queries.js';
 import type { Tracker, TrackerUrl } from '../db/queries.js';
 import { extractPrice } from '../scraper/extractor.js';
@@ -26,6 +27,7 @@ import { sendDiscordPriceAlert, sendDiscordErrorAlert } from '../notifications/d
 import { sendNtfyPriceAlert, sendNtfyErrorAlert } from '../notifications/ntfy.js';
 import { sendGenericPriceAlert, sendGenericErrorAlert } from '../notifications/webhook.js';
 import { sendEmailPriceAlert, sendEmailErrorAlert } from '../notifications/email.js';
+import { sendWebPushPriceAlert } from '../notifications/web-push.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { generateVerdictForTracker, generateAlertCopy, computeSignalsAndVerdictForTracker } from '../ai/generators.js';
@@ -39,9 +41,9 @@ const PLAUSIBILITY_CONFIRM_DELAY_BASE_MS = 90_000;
 const PLAUSIBILITY_CONFIRM_DELAY_JITTER_MS = 90_000;
 const PLAUSIBILITY_RESTART_STALE_AGE_MS = 600_000;
 
-export type ChannelName = 'discord' | 'ntfy' | 'webhook' | 'email';
+export type ChannelName = 'discord' | 'ntfy' | 'webhook' | 'email' | 'web_push';
 
-export const CHANNEL_NAMES: readonly ChannelName[] = ['discord', 'ntfy', 'webhook', 'email'] as const;
+export const CHANNEL_NAMES: readonly ChannelName[] = ['discord', 'ntfy', 'webhook', 'email', 'web_push'] as const;
 
 export interface EnabledChannels {
   discord?: string;
@@ -51,6 +53,7 @@ export interface EnabledChannels {
   ntfyToken?: string;
   webhook?: string;
   email?: string;
+  web_push?: boolean;       // true when user has any active subscription
 }
 
 /**
@@ -68,17 +71,20 @@ export function getCooldownHoursForChannel(userId: number, channel: ChannelName)
 
 export function getEnabledChannels(userId: number | null | undefined): EnabledChannels {
   if (!userId) return {};
-  return {
+  const result: EnabledChannels = {
     discord: getSetting('discord_webhook_url', userId) || undefined,
     ntfy: getSetting('ntfy_url', userId) || undefined,
     ntfyToken: getSetting('ntfy_token', userId) || undefined,
     webhook: getSetting('generic_webhook_url', userId) || undefined,
     email: getSetting('email_recipient', userId) || undefined,
   };
+  const subs = getActiveWebPushSubscriptionsForUser(userId);
+  if (subs.length > 0) result.web_push = true;
+  return result;
 }
 
 function hasAnyChannel(channels: EnabledChannels): boolean {
-  return !!(channels.discord || channels.ntfy || channels.webhook || channels.email);
+  return !!(channels.discord || channels.ntfy || channels.webhook || channels.email || channels.web_push);
 }
 
 /**
@@ -182,6 +188,9 @@ async function firePriceAlerts(
         break;
       case 'email':
         promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!, aiCommentary);
+        break;
+      case 'web_push':
+        promise = sendWebPushPriceAlert(alertTracker, currentPrice, userId, aiCommentary);
         break;
     }
     tasks.push({ name, promise });
