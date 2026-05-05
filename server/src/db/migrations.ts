@@ -268,6 +268,32 @@ const migrations: Migration[] = [
       ).run();
     },
   },
+  {
+    version: 8,
+    description: 'Add AI Buyer\'s Assistant columns to trackers',
+    up: () => {
+      const db = getDb();
+      const cols = db.prepare("PRAGMA table_info(trackers)").all() as { name: string }[];
+      const colNames = new Set(cols.map(c => c.name));
+
+      const additions: Array<[string, string]> = [
+        ['ai_verdict_tier', 'TEXT'],
+        ['ai_verdict_reason', 'TEXT'],
+        ['ai_verdict_reason_key', 'TEXT'],
+        ['ai_verdict_updated_at', 'INTEGER'],
+        ['ai_summary', 'TEXT'],
+        ['ai_summary_updated_at', 'INTEGER'],
+        ['ai_signals_json', 'TEXT'],
+        ['ai_failure_count', 'INTEGER NOT NULL DEFAULT 0'],
+      ];
+
+      for (const [name, type] of additions) {
+        if (!colNames.has(name)) {
+          db.prepare(`ALTER TABLE trackers ADD COLUMN ${name} ${type}`).run();
+        }
+      }
+    },
+  },
 ];
 
 export function runMigrations(): void {

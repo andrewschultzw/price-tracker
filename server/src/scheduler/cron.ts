@@ -27,6 +27,7 @@ import { sendGenericPriceAlert, sendGenericErrorAlert } from '../notifications/w
 import { sendEmailPriceAlert, sendEmailErrorAlert } from '../notifications/email.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { generateVerdictForTracker, generateAlertCopy, computeSignalsAndVerdictForTracker } from '../ai/generators.js';
 
 const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
 let task: cron.ScheduledTask | null = null;
@@ -114,6 +115,28 @@ async function firePriceAlerts(
   const userId = alertTracker.user_id!;
   const tasks: { name: ChannelName; promise: Promise<boolean> }[] = [];
 
+  let aiCommentary: string | null = null;
+  if (process.env.AI_ENABLED === 'true') {
+    try {
+      const sv = await computeSignalsAndVerdictForTracker(alertTracker.id);
+      if (sv) {
+        const oldPrice = seller.last_price ?? currentPrice;
+        aiCommentary = await Promise.race([
+          generateAlertCopy({
+            trackerName: alertTracker.name,
+            oldPrice,
+            newPrice: currentPrice,
+            signals: sv.signals,
+            reasonKey: sv.verdict.reasonKey,
+          }),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+        ]);
+      }
+    } catch {
+      aiCommentary = null;
+    }
+  }
+
   for (const name of CHANNEL_NAMES) {
     if (!channels[name]) continue;
 
@@ -147,16 +170,16 @@ async function firePriceAlerts(
     let promise: Promise<boolean>;
     switch (name) {
       case 'discord':
-        promise = sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord!);
+        promise = sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord!, aiCommentary);
         break;
       case 'ntfy':
-        promise = sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy!, channels.ntfyToken);
+        promise = sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy!, channels.ntfyToken, aiCommentary);
         break;
       case 'webhook':
-        promise = sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook!);
+        promise = sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook!, aiCommentary);
         break;
       case 'email':
-        promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!);
+        promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!, aiCommentary);
         break;
     }
     tasks.push({ name, promise });
@@ -232,6 +255,14 @@ export async function checkTrackerUrl(
       }
 
       refreshTrackerAggregates(tracker.id);
+
+      // AI Buyer's Assistant: regenerate verdict on price change.
+      // Fire-and-forget — never await, never block the scrape pipeline.
+      // Generator catches all errors internally and increments
+      // ai_failure_count without throwing.
+      if (process.env.AI_ENABLED === 'true' && seller.last_price !== result.price) {
+        void generateVerdictForTracker(tracker.id).catch(() => { /* generator already logs */ });
+      }
 
       logger.info(
         { trackerId: tracker.id, trackerUrlId: seller.id, price: result.price, strategy: result.strategy },

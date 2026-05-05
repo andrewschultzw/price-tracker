@@ -19,6 +19,17 @@ export interface Tracker {
   seller_count?: number;
   errored_seller_count?: number;
   best_seller_url?: string | null;
+  // AI Buyer's Assistant fields (server migration v8). All optional in the
+  // type because legacy responses + endpoints that don't populate them may
+  // omit them. Snake_case mirrors the server pass-through convention.
+  ai_verdict_tier?: 'BUY' | 'WAIT' | 'HOLD' | null;
+  ai_verdict_reason?: string | null;
+  ai_verdict_reason_key?: string | null;
+  ai_verdict_updated_at?: number | null;
+  ai_summary?: string | null;
+  ai_summary_updated_at?: number | null;
+  ai_signals_json?: string | null;
+  ai_failure_count?: number;
 }
 
 // Per-seller row (one row per URL under a tracker).

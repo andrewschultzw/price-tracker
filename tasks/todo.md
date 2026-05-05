@@ -14,6 +14,27 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 ## Open items
 
+### Priority: next big bets
+
+- [ ] **AI Buyer's Assistant.** Claude API integration that turns the price chart into an advisor. Buy/wait verdict per tracker, plain-English price-history summaries, deal-quality scoring (real low vs. fake-MSRP markup), smarter alert copy. (Review digest deferred to v2.) Spec: `docs/superpowers/specs/2026-05-04-ai-buyers-assistant-design.md`. Branch: `feature/ai-buyers-assistant`.
+
+- [ ] **Project / Bundle tracker.** Multi-tracker "baskets" with a combined budget target. Alert fires when the basket total hits target, regardless of any single item's drop. Per-item ceilings supported. Pairs with the AI Buyer's Assistant for per-item "buy now / wait" guidance. Spec: TBD.
+
+- [ ] **Browser extension + installable PWA.** One-click capture from any retailer page (Chrome / Firefox extension) plus PWA-ification of the existing site for installable mobile app + Web Push. Stretch: iOS Share Sheet shortcut. Spec: TBD.
+
+### Priority: future portfolio
+
+- [ ] **Public product pages.** Anonymous aggregated history at `/p/<slug>`. Camelcamelcamel for the long tail; SEO + reference utility.
+- [ ] **Community deal feed.** Opt-in anonymous trending feed of biggest drops across the user base. Reuses the existing `normalized_url` groundwork.
+- [ ] **Stock + refurb tracking.** Amazon Warehouse, Newegg refurb, Best Buy open-box alongside new. Often beats new by 20-30%.
+- [ ] **Doorbuster mode.** Prime Day / Black Friday escalates polling cadence to every 2-3 min and routes alerts through priority channels.
+- [ ] **Confidence-scored alerts.** "12-month low, 3rd time this year, holds for ~3 days." Replaces gut-feel with data on every alert.
+- [ ] **Natural-language query via OpenClaw.** "When was the LG monitor cheapest this year?" Discord DM hits a NL query endpoint. Extends the existing OpenClaw skill (currently create-only).
+- [ ] **Apple Watch / iOS widget.** Glanceable status of trackers near target.
+- [ ] **Wishlist / gift mode.** Share wishlists; recipient can't see what's been bought.
+- [ ] **Affiliate revenue layer.** Route "Buy" clicks through Amazon Associates etc. Self-sustaining hobby-business angle.
+- [ ] **Invite flow + family/friends polish.** Multi-user is already there under the hood; needs onboarding polish to go from 1 to ~20 real users.
+
 ### Priority: actually worth doing
 
 - [x] **Test debt from multi-seller session.** ~~Core invariants that could silently break~~ **Done 2026-04-09:** all 4 items closed. 38 new integration tests across `refresh-aggregates.test.ts` (14), `delete-tracker-url.test.ts` (9), `migration-v4.test.ts` (7), and `scheduler/cron-cooldown.test.ts` (8). New `_setDbForTesting()` helper in `connection.ts` lets tests spin up fresh in-memory sqlite instances with full migration runs. The cron-cooldown test is the most valuable — it locks down the defining multi-seller invariant that one seller hitting cooldown does NOT silence a later alert from a different seller on the same tracker. Server tests: 134 → 172.
@@ -34,9 +55,9 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [x] **Scheduler jitter.** ~~Same-minute firing risk at 30-50 trackers.~~ **Done 2026-04-18:** new `jitter_minutes` column on `trackers` with a fixed per-tracker random offset assigned at creation (formula: `randomInt(0, min(interval/6, 30))`). `getDueTrackerUrls` and `getDueTrackers` add jitter to `check_interval_minutes` when computing due time. Migration v5 backfilled all 22 existing trackers — confirmed spread across 15 distinct jitter values (2-29 min). 9 new tests in `jitter.test.ts`.
 
-- [ ] **CT 302 UniFi DHCP reservation** — MAC `BC:24:11:6D:45:11`, current IP `192.168.1.166`. Static in `pct config` but belt-and-suspenders reservation recommended. (Cross-referenced in `/root/homelabmisc/tasks/todo.md`.)
+- [x] **CT 302 UniFi DHCP reservation** ~~MAC `BC:24:11:6D:45:11`, current IP `192.168.1.166`. Static in `pct config` but belt-and-suspenders reservation recommended.~~ **Done 2026-05-04:** UniFi DHCP reservation added.
 
-- [ ] **CT 115 ntfy UniFi DHCP reservation** — same as above. MAC TBD (`ssh root@192.168.1.10 'pct config 115 | grep hwaddr'`), current IP `192.168.1.34`. (Cross-referenced in `/root/homelabmisc/tasks/todo.md`.)
+- [x] **CT 115 ntfy UniFi DHCP reservation** ~~Current IP `192.168.1.34`.~~ **Done 2026-05-04:** UniFi DHCP reservation added.
 
 ### Priority: future / separate session
 

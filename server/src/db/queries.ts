@@ -22,6 +22,15 @@ export interface Tracker {
   created_at: string;
   updated_at: string;
   user_id: number | null;
+  // AI Buyer's Assistant fields (migration v8)
+  ai_verdict_tier: 'BUY' | 'WAIT' | 'HOLD' | null;
+  ai_verdict_reason: string | null;
+  ai_verdict_reason_key: string | null;
+  ai_verdict_updated_at: number | null;
+  ai_summary: string | null;
+  ai_summary_updated_at: number | null;
+  ai_signals_json: string | null;
+  ai_failure_count: number;
 }
 
 /**
@@ -783,4 +792,70 @@ export function getOverlapCountsForUser(userId: number): Record<number, number> 
   const out: Record<number, number> = {};
   for (const r of rows) out[r.tracker_id] = r.count;
   return out;
+}
+
+// --- AI Buyer's Assistant ---
+
+// AI Buyer's Assistant write helpers — only generators.ts (Task 9) calls these.
+
+export function updateTrackerAIVerdict(
+  trackerId: number,
+  args: { tier: string; reason: string; reasonKey: string; signalsJson: string }
+): void {
+  getDb().prepare(`
+    UPDATE trackers SET
+      ai_verdict_tier = ?,
+      ai_verdict_reason = ?,
+      ai_verdict_reason_key = ?,
+      ai_verdict_updated_at = ?,
+      ai_signals_json = ?,
+      ai_failure_count = 0
+    WHERE id = ?
+  `).run(args.tier, args.reason, args.reasonKey, Date.now(), args.signalsJson, trackerId);
+}
+
+export function updateTrackerAISummary(trackerId: number, summary: string): void {
+  getDb().prepare(`
+    UPDATE trackers SET
+      ai_summary = ?,
+      ai_summary_updated_at = ?
+    WHERE id = ?
+  `).run(summary, Date.now(), trackerId);
+}
+
+export function incrementAIFailureCount(trackerId: number): void {
+  getDb().prepare(`
+    UPDATE trackers SET ai_failure_count = ai_failure_count + 1 WHERE id = ?
+  `).run(trackerId);
+}
+
+export function getTrackersWithStaleSummary(stalerThanMs: number, limit: number): Tracker[] {
+  return getDb().prepare(`
+    SELECT * FROM trackers
+    WHERE status = 'active'
+      AND (ai_summary_updated_at IS NULL OR ai_summary_updated_at < ?)
+    ORDER BY COALESCE(ai_summary_updated_at, 0) ASC
+    LIMIT ?
+  `).all(Date.now() - stalerThanMs, limit) as Tracker[];
+}
+
+/**
+ * Returns price observations for a tracker since `sinceMs` (unix ms),
+ * shaped as { price, recorded_at } where recorded_at is unix ms.
+ *
+ * NOTE: the underlying column is `scraped_at` (TEXT ISO datetime), not
+ * a unix-ms integer. We convert at the boundary so the AI signals
+ * code (PriceObservation type) can work in unix ms throughout.
+ */
+export function getRecentSuccessfulPricesForTracker(
+  trackerId: number,
+  sinceMs: number,
+): Array<{ price: number; recorded_at: number }> {
+  const sinceIso = new Date(sinceMs).toISOString();
+  const rows = getDb().prepare(`
+    SELECT price, scraped_at FROM price_history
+    WHERE tracker_id = ? AND scraped_at >= ?
+    ORDER BY scraped_at ASC
+  `).all(trackerId, sinceIso) as Array<{ price: number; scraped_at: string }>;
+  return rows.map(r => ({ price: r.price, recorded_at: new Date(r.scraped_at).getTime() }));
 }

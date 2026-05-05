@@ -9,6 +9,7 @@ import {
 import type { NotificationHistoryRow } from '../api'
 import type { Tracker, TrackerUrl, PriceRecord, Overlap } from '../types'
 import StatusBadge from '../components/StatusBadge'
+import { AIInsightsCard } from '../components/AIInsightsCard'
 import useTitle from '../useTitle'
 
 // PriceChart pulls in recharts (~180 KB). Lazy load it so the initial
@@ -409,6 +410,8 @@ export default function TrackerDetail() {
             )}
         </div>
       )}
+
+      <AIInsightsCard tracker={tracker} />
 
       <div className="bg-surface border border-border rounded-xl p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">

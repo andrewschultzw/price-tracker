@@ -8,9 +8,11 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "canary": "tsx src/scripts/canary-sweep.ts"
+    "canary": "tsx src/scripts/canary-sweep.ts",
+    "ai-smoke": "tsx src/scripts/ai-smoke.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.93.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^11.7.0",
     "cookie-parser": "^1.4.7",
