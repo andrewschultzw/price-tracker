@@ -25,7 +25,7 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
   - [ ] Delete the dead `config.aiEnabled` field — all callers read `process.env.AI_ENABLED` directly. Field is populated at startup but never read.
   - [ ] Strengthen `updateTrackerAIVerdict` arg type from `tier: string` to `tier: VerdictTier`. Single caller today (generators) passes the right type; tightens the type-safety net.
 
-- [ ] **Project / Bundle tracker.** Multi-tracker "baskets" with a combined budget target. Alert fires when the basket total hits target, regardless of any single item's drop. Per-item ceilings supported. Pairs with the AI Buyer's Assistant for per-item "buy now / wait" guidance. Spec: TBD.
+- [ ] **Project / Bundle tracker.** Multi-tracker "baskets" with a combined budget target. Alert fires when the basket total hits target, regardless of any single item's drop. Per-item ceilings supported (informational, surfaced to AI advisor). Pairs with the AI Buyer's Assistant for per-item "buy now / wait" guidance. Spec: `docs/superpowers/specs/2026-05-05-bundle-tracker-design.md`. Branch: `feature/bundle-tracker`.
 
 - [ ] **Browser extension + installable PWA.** One-click capture from any retailer page (Chrome / Firefox extension) plus PWA-ification of the existing site for installable mobile app + Web Push. Stretch: iOS Share Sheet shortcut. Spec: TBD.
 
