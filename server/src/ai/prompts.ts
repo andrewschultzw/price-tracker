@@ -1,6 +1,7 @@
 // server/src/ai/prompts.ts
 import type { Signals, ReasonKey, VerdictTier, PriceObservation } from './types.js';
 import type { ClaudePromptInput } from './client.js';
+import type { Project, BasketState, BasketMember } from '../projects/types.js';
 
 const TONE_BLOCK = `You are the deal-advisor inside a price-tracking app. Your tone is terse, factual, and helpful — like a knowledgeable friend texting a one-liner. Never use marketing language ("amazing deal!", "incredible savings!"). Never use exclamation points. Never reference yourself or the LLM nature of your output.`;
 
@@ -94,6 +95,43 @@ ${HALLUCINATION_GUARD}`;
     new_price: ctx.newPrice,
     reasonKey: ctx.reasonKey,
     signals: ctx.signals,
+  }, null, 2)}
+
+Compose the alert line.`;
+
+  return {
+    system: ephemeralSystem(systemText),
+    user: userText,
+    maxTokens: 60,
+    maxOutputChars: 120,
+    promptName: 'alert',
+  };
+}
+
+export interface BasketAlertCopyContext {
+  project: Project;
+  basket: BasketState;
+  members: BasketMember[];
+}
+
+export function buildBasketAlertCopyPrompt(ctx: BasketAlertCopyContext): ClaudePromptInput {
+  const systemText = `${TONE_BLOCK}
+
+You are composing a one-sentence punchy line to append to a "bundle ready" alert. The user has set a target total budget for a basket of products, and the basket has just dropped at or below the target. Reference the most striking signal across the basket — e.g. the savings amount, the number of items at recent lows, or the largest individual contributor to the savings. Length: max 120 characters. Output the sentence only — no quotes, no labels, no preamble.
+
+${HALLUCINATION_GUARD}`;
+
+  const userText = `${JSON.stringify({
+    project_name: ctx.project.name,
+    basket_total: ctx.basket.total,
+    target_total: ctx.basket.target_total,
+    savings: ctx.basket.total !== null ? ctx.basket.target_total - ctx.basket.total : null,
+    item_count: ctx.basket.item_count,
+    members: ctx.members.map(m => ({
+      name: m.tracker_name,
+      price: m.last_price,
+      verdict: m.ai_verdict_tier,
+    })),
   }, null, 2)}
 
 Compose the alert line.`;
