@@ -149,6 +149,47 @@ export async function sendNtfyErrorAlert(
   return true;
 }
 
+import type { Project as ProjectType, BasketState as BasketStateType, BasketMember as BasketMemberType } from '../projects/types.js';
+
+export async function sendNtfyBasketAlert(
+  project: ProjectType,
+  basket: BasketStateType,
+  members: BasketMemberType[],
+  ntfyUrl: string,
+  ntfyToken?: string,
+  aiCommentary?: string | null,
+): Promise<boolean> {
+  if (basket.total === null) return false;
+  let target: NtfyTarget;
+  try {
+    target = parseNtfyUrl(ntfyUrl);
+  } catch (err) {
+    logger.error({ err, projectId: project.id }, 'Invalid ntfy URL');
+    return false;
+  }
+  const savings = (project.target_total - basket.total).toFixed(2);
+  const memberLines = members
+    .map(m => `• ${m.tracker_name} — $${(m.last_price ?? 0).toFixed(2)}`)
+    .join('\n');
+  const baseBody = `Total: $${basket.total.toFixed(2)} (target $${project.target_total.toFixed(2)}, savings $${savings})\n\n${memberLines}`;
+  const message = aiCommentary ? `${baseBody}\n\n${aiCommentary}` : baseBody;
+
+  const result = await publish(target.base, {
+    topic: target.topic,
+    title: `Bundle Ready: ${project.name}`,
+    message,
+    priority: 4,
+    tags: ['tada', 'money_with_wings'],
+  }, ntfyToken);
+
+  if (!result.ok) {
+    logger.error({ error: result.error, projectId: project.id }, 'ntfy basket alert failed');
+    return false;
+  }
+  logger.info({ projectId: project.id, total: basket.total }, 'ntfy basket alert sent');
+  return true;
+}
+
 /**
  * Unlike the price/error alerts, the test function returns the actual error
  * string so the Settings page can display it instead of a bare "Failed".

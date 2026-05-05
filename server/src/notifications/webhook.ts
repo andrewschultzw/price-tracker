@@ -107,6 +107,51 @@ export async function sendGenericErrorAlert(
   }
 }
 
+import type { Project as ProjectType3, BasketState as BasketStateType3, BasketMember as BasketMemberType3 } from '../projects/types.js';
+
+export async function sendGenericBasketAlert(
+  project: ProjectType3,
+  basket: BasketStateType3,
+  members: BasketMemberType3[],
+  webhookUrl: string,
+  aiCommentary?: string | null,
+): Promise<boolean> {
+  if (basket.total === null) return false;
+  try {
+    assertWebhookUrl(webhookUrl);
+    const payload = {
+      event: 'bundle_ready' as const,
+      project: {
+        id: project.id, name: project.name,
+        target_total: project.target_total, status: project.status,
+      },
+      basket: {
+        total: basket.total,
+        target_total: basket.target_total,
+        savings: project.target_total - basket.total,
+        item_count: basket.item_count,
+      },
+      members: members.map(m => ({
+        tracker_id: m.tracker_id,
+        tracker_name: m.tracker_name,
+        last_price: m.last_price,
+        per_item_ceiling: m.per_item_ceiling,
+        ai_verdict_tier: m.ai_verdict_tier,
+      })),
+      ai_commentary: aiCommentary ?? null,
+    };
+    const resp = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return resp.ok;
+  } catch (err) {
+    logger.error({ err, projectId: project.id }, 'Generic webhook basket alert failed');
+    return false;
+  }
+}
+
 export async function testGenericWebhook(webhookUrl: string): Promise<{ ok: boolean; error?: string }> {
   try {
     assertWebhookUrl(webhookUrl);
