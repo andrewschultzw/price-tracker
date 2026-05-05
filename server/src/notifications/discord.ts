@@ -85,6 +85,50 @@ export async function sendDiscordErrorAlert(
   }
 }
 
+import type { Project, BasketState, BasketMember } from '../projects/types.js';
+
+export async function sendDiscordBasketAlert(
+  project: Project,
+  basket: BasketState,
+  members: BasketMember[],
+  webhookUrl: string,
+  aiCommentary?: string | null,
+): Promise<boolean> {
+  if (basket.total === null) return false;
+  const savings = (project.target_total - basket.total).toFixed(2);
+  const memberLines = members
+    .map(m => `• ${m.tracker_name} — $${(m.last_price ?? 0).toFixed(2)}`)
+    .join('\n');
+  const baseDescription = `${memberLines}`;
+  const description = aiCommentary
+    ? `${baseDescription}\n\n${aiCommentary}`
+    : baseDescription;
+
+  const embed: Record<string, unknown> = {
+    title: `Bundle Ready: ${project.name}`,
+    color: 0x00c853,
+    description,
+    fields: [
+      { name: 'Total', value: `$${basket.total.toFixed(2)}`, inline: true },
+      { name: 'Target', value: `$${project.target_total.toFixed(2)}`, inline: true },
+      { name: 'Savings', value: `$${savings}`, inline: true },
+      { name: 'Items', value: String(basket.item_count), inline: true },
+    ],
+  };
+
+  try {
+    const resp = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+    return resp.ok;
+  } catch (err) {
+    logger.error({ err, projectId: project.id }, 'Discord basket alert failed');
+    return false;
+  }
+}
+
 export async function testDiscordWebhook(webhookUrl: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const response = await fetch(webhookUrl, {

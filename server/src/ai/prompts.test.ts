@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { buildVerdictPrompt, buildSummaryPrompt, buildAlertCopyPrompt } from './prompts.js';
+import { buildVerdictPrompt, buildSummaryPrompt, buildAlertCopyPrompt, buildBasketAlertCopyPrompt } from './prompts.js';
 import type { Signals } from './types.js';
+import type { Project, BasketState, BasketMember } from '../projects/types.js';
 
 const sampleSignals: Signals = {
   data_days: 90, data_points: 90, current_price: 279, all_time_low: 279, all_time_high: 389,
@@ -82,5 +83,44 @@ describe('buildAlertCopyPrompt', () => {
     expect(p.user).toContain('Samsung 990 Pro 4TB');
     expect(p.user).toContain('349.99');
     expect(p.user).toContain('279');
+  });
+});
+
+const sampleProject: Project = {
+  id: 1, user_id: 1, name: 'NAS Build', target_total: 1200,
+  status: 'active', created_at: '2026-05-05', updated_at: '2026-05-05',
+};
+const sampleBasket: BasketState = {
+  total: 1149, target_total: 1200, item_count: 8,
+  items_with_price: 8, items_below_ceiling: 8, eligible: true, ineligible_reason: null,
+};
+const sampleMembersBasket: BasketMember[] = [
+  { tracker_id: 1, tracker_name: 'Samsung 990 Pro 4TB', last_price: 279, tracker_status: 'active',
+    per_item_ceiling: 280, position: 0, ai_verdict_tier: 'BUY', ai_verdict_reason: 'At low.' },
+];
+
+describe('buildBasketAlertCopyPrompt', () => {
+  it('promptName is "alert" and limit is 120 chars', () => {
+    const p = buildBasketAlertCopyPrompt({ project: sampleProject, basket: sampleBasket, members: sampleMembersBasket });
+    expect(p.promptName).toBe('alert');
+    expect(p.maxOutputChars).toBe(120);
+  });
+
+  it('serializes basket savings + project name in user block', () => {
+    const p = buildBasketAlertCopyPrompt({ project: sampleProject, basket: sampleBasket, members: sampleMembersBasket });
+    expect(p.user).toContain('NAS Build');
+    expect(p.user).toContain('1149');
+    expect(p.user).toContain('1200');
+    expect(p.user).toContain('51');                       // savings
+  });
+
+  it('marks the system block as cache-controlled ephemeral', () => {
+    const p = buildBasketAlertCopyPrompt({ project: sampleProject, basket: sampleBasket, members: sampleMembersBasket });
+    expect(p.system[0].cache_control).toEqual({ type: 'ephemeral' });
+  });
+
+  it('system block contains hallucination guard wording', () => {
+    const p = buildBasketAlertCopyPrompt({ project: sampleProject, basket: sampleBasket, members: sampleMembersBasket });
+    expect(p.system[0].text).toMatch(/only use values present in the signals/i);
   });
 });

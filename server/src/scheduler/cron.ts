@@ -14,6 +14,7 @@ import {
   addNotification,
   getRecentSuccessfulPricesForSeller,
   getSellersWithPendingConfirmation,
+  getActiveProjectIdsForTracker,
 } from '../db/queries.js';
 import type { Tracker, TrackerUrl } from '../db/queries.js';
 import { extractPrice } from '../scraper/extractor.js';
@@ -28,6 +29,7 @@ import { sendEmailPriceAlert, sendEmailErrorAlert } from '../notifications/email
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { generateVerdictForTracker, generateAlertCopy, computeSignalsAndVerdictForTracker } from '../ai/generators.js';
+import { evaluateAndFireForProject } from '../projects/firer.js';
 
 const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
 let task: cron.ScheduledTask | null = null;
@@ -37,11 +39,11 @@ const PLAUSIBILITY_CONFIRM_DELAY_BASE_MS = 90_000;
 const PLAUSIBILITY_CONFIRM_DELAY_JITTER_MS = 90_000;
 const PLAUSIBILITY_RESTART_STALE_AGE_MS = 600_000;
 
-type ChannelName = 'discord' | 'ntfy' | 'webhook' | 'email';
+export type ChannelName = 'discord' | 'ntfy' | 'webhook' | 'email';
 
-const CHANNEL_NAMES: readonly ChannelName[] = ['discord', 'ntfy', 'webhook', 'email'] as const;
+export const CHANNEL_NAMES: readonly ChannelName[] = ['discord', 'ntfy', 'webhook', 'email'] as const;
 
-interface EnabledChannels {
+export interface EnabledChannels {
   discord?: string;
   ntfy?: string;
   // Optional Bearer token for self-hosted ntfy instances with
@@ -56,7 +58,7 @@ interface EnabledChannels {
  * to `config.notificationCooldownHours` (6h) when unset, blank, non-
  * numeric, or negative. Zero is a valid value and means "no cooldown".
  */
-function getCooldownHoursForChannel(userId: number, channel: ChannelName): number {
+export function getCooldownHoursForChannel(userId: number, channel: ChannelName): number {
   const raw = getSetting(`${channel}_cooldown_hours`, userId);
   if (raw === undefined || raw === '') return config.notificationCooldownHours;
   const parsed = Number(raw);
@@ -64,7 +66,7 @@ function getCooldownHoursForChannel(userId: number, channel: ChannelName): numbe
   return parsed;
 }
 
-function getEnabledChannels(userId: number | null | undefined): EnabledChannels {
+export function getEnabledChannels(userId: number | null | undefined): EnabledChannels {
   if (!userId) return {};
   return {
     discord: getSetting('discord_webhook_url', userId) || undefined,
@@ -262,6 +264,15 @@ export async function checkTrackerUrl(
       // ai_failure_count without throwing.
       if (process.env.AI_ENABLED === 'true' && seller.last_price !== result.price) {
         void generateVerdictForTracker(tracker.id).catch(() => { /* generator already logs */ });
+      }
+
+      // Project basket re-eval — fire-and-forget for every active project
+      // containing this tracker. Independent of AI flag.
+      const activeProjectIds = getActiveProjectIdsForTracker(tracker.id);
+      for (const projectId of activeProjectIds) {
+        void evaluateAndFireForProject(projectId).catch(() => {
+          // firer logs internally — outer catch is the fire-and-forget backstop
+        });
       }
 
       logger.info(

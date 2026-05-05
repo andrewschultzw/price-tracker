@@ -859,3 +859,165 @@ export function getRecentSuccessfulPricesForTracker(
   `).all(trackerId, sinceIso) as Array<{ price: number; scraped_at: string }>;
   return rows.map(r => ({ price: r.price, recorded_at: new Date(r.scraped_at).getTime() }));
 }
+
+// === Projects ===
+
+export type { Project, ProjectTracker, BasketMember, BasketState, IneligibleReason } from '../projects/types.js';
+import type { Project, BasketMember } from '../projects/types.js';
+
+export function listProjectsForUser(userId: number, status?: 'active' | 'archived'): Project[] {
+  if (status) {
+    return getDb().prepare(
+      `SELECT * FROM projects WHERE user_id = ? AND status = ? ORDER BY created_at DESC`
+    ).all(userId, status) as Project[];
+  }
+  return getDb().prepare(
+    `SELECT * FROM projects WHERE user_id = ? ORDER BY created_at DESC`
+  ).all(userId) as Project[];
+}
+
+export function getProjectById(id: number, userId?: number): Project | undefined {
+  const row = userId !== undefined
+    ? getDb().prepare(`SELECT * FROM projects WHERE id = ? AND user_id = ?`).get(id, userId)
+    : getDb().prepare(`SELECT * FROM projects WHERE id = ?`).get(id);
+  return row as Project | undefined;
+}
+
+export function createProject(args: { user_id: number; name: string; target_total: number }): number {
+  const result = getDb().prepare(
+    `INSERT INTO projects (user_id, name, target_total) VALUES (?, ?, ?)`
+  ).run(args.user_id, args.name, args.target_total);
+  return Number(result.lastInsertRowid);
+}
+
+export function updateProject(
+  id: number,
+  args: { name?: string; target_total?: number; status?: 'active' | 'archived' }
+): void {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (args.name !== undefined) { sets.push('name = ?'); values.push(args.name); }
+  if (args.target_total !== undefined) { sets.push('target_total = ?'); values.push(args.target_total); }
+  if (args.status !== undefined) { sets.push('status = ?'); values.push(args.status); }
+  if (sets.length === 0) return;
+  sets.push("updated_at = datetime('now')");
+  values.push(id);
+  getDb().prepare(`UPDATE projects SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+}
+
+export function deleteProject(id: number): void {
+  getDb().prepare(`DELETE FROM projects WHERE id = ?`).run(id);
+}
+
+export function addProjectTracker(args: {
+  project_id: number;
+  tracker_id: number;
+  per_item_ceiling?: number | null;
+  position?: number;
+}): void {
+  const position = args.position ?? 0;
+  const ceiling = args.per_item_ceiling ?? null;
+  getDb().prepare(
+    `INSERT INTO project_trackers (project_id, tracker_id, per_item_ceiling, position) VALUES (?, ?, ?, ?)`
+  ).run(args.project_id, args.tracker_id, ceiling, position);
+}
+
+export function removeProjectTracker(projectId: number, trackerId: number): void {
+  getDb().prepare(
+    `DELETE FROM project_trackers WHERE project_id = ? AND tracker_id = ?`
+  ).run(projectId, trackerId);
+}
+
+export function updateProjectTracker(
+  projectId: number,
+  trackerId: number,
+  args: { per_item_ceiling?: number | null; position?: number }
+): void {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (args.per_item_ceiling !== undefined) { sets.push('per_item_ceiling = ?'); values.push(args.per_item_ceiling); }
+  if (args.position !== undefined) { sets.push('position = ?'); values.push(args.position); }
+  if (sets.length === 0) return;
+  values.push(projectId, trackerId);
+  getDb().prepare(
+    `UPDATE project_trackers SET ${sets.join(', ')} WHERE project_id = ? AND tracker_id = ?`
+  ).run(...values);
+}
+
+/** Returns the IDs of active projects containing this tracker. Called per-scrape. */
+export function getActiveProjectIdsForTracker(trackerId: number): number[] {
+  const rows = getDb().prepare(
+    `SELECT pt.project_id FROM project_trackers pt
+     INNER JOIN projects p ON p.id = pt.project_id
+     WHERE pt.tracker_id = ? AND p.status = 'active'`
+  ).all(trackerId) as { project_id: number }[];
+  return rows.map(r => r.project_id);
+}
+
+/**
+ * Loads basket members for a project — joins project_trackers + trackers
+ * and surfaces the AI verdict fields populated by the AI Buyer's Assistant.
+ * Sorted by position, then tracker name as a stable tiebreaker.
+ */
+export function getBasketMembersForProject(projectId: number): BasketMember[] {
+  const rows = getDb().prepare(
+    `SELECT
+       t.id AS tracker_id,
+       t.name AS tracker_name,
+       t.last_price,
+       t.status AS tracker_status,
+       pt.per_item_ceiling,
+       pt.position,
+       t.ai_verdict_tier,
+       t.ai_verdict_reason
+     FROM project_trackers pt
+     INNER JOIN trackers t ON t.id = pt.tracker_id
+     WHERE pt.project_id = ?
+     ORDER BY pt.position ASC, t.name ASC`
+  ).all(projectId) as BasketMember[];
+  return rows;
+}
+
+// === Project notifications (cooldown source-of-truth + history) ===
+
+export interface ProjectNotificationRecord {
+  id: number;
+  project_id: number;
+  channel: string;
+  basket_total: number;
+  target_total: number;
+  ai_commentary: string | null;
+  sent_at: string;
+}
+
+export function getLastProjectNotificationForChannel(
+  projectId: number,
+  channel: string,
+): ProjectNotificationRecord | undefined {
+  return getDb().prepare(
+    `SELECT * FROM project_notifications
+     WHERE project_id = ? AND channel = ?
+     ORDER BY sent_at DESC LIMIT 1`
+  ).get(projectId, channel) as ProjectNotificationRecord | undefined;
+}
+
+export function getRecentProjectNotifications(projectId: number, limit: number): ProjectNotificationRecord[] {
+  return getDb().prepare(
+    `SELECT * FROM project_notifications
+     WHERE project_id = ?
+     ORDER BY sent_at DESC LIMIT ?`
+  ).all(projectId, limit) as ProjectNotificationRecord[];
+}
+
+export function addProjectNotification(args: {
+  project_id: number;
+  channel: string;
+  basket_total: number;
+  target_total: number;
+  ai_commentary: string | null;
+}): void {
+  getDb().prepare(
+    `INSERT INTO project_notifications (project_id, channel, basket_total, target_total, ai_commentary)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(args.project_id, args.channel, args.basket_total, args.target_total, args.ai_commentary);
+}
