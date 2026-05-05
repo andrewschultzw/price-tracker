@@ -19,8 +19,9 @@ function trendIn30d(
   now: number,
 ): 'falling' | 'flat' | 'rising' {
   const window = history.filter(o => o.recorded_at >= now - 30 * MS_PER_DAY);
+  if (window.length < 2) return 'flat';
   const first = window[0].price;
-  if (window.length < 2 || first === 0) return 'flat';
+  if (first === 0) return 'flat';
   const last = window[window.length - 1].price;
   const change = (last - first) / first;
   if (change > TREND_CHANGE_THRESHOLD) return 'rising';

@@ -172,6 +172,16 @@ describe('computeSignals — direction', () => {
     const h = buildHistory([10, 15, 20, 18, 14, 11], 50, 10);
     expect(computeSignals(h, 11, null, NOW)!.consecutive_drops).toBe(3);
   });
+
+  it('trend_30d returns "flat" without crashing when no observations within 30 days', () => {
+    const h: PriceObservation[] = [
+      { price: 50, recorded_at: NOW - 200 * MS_PER_DAY },
+      { price: 60, recorded_at: NOW - 180 * MS_PER_DAY },
+      { price: 70, recorded_at: NOW - 60 * MS_PER_DAY },
+    ];
+    expect(() => computeSignals(h, 70, null, NOW)).not.toThrow();
+    expect(computeSignals(h, 70, null, NOW)!.trend_30d).toBe('flat');
+  });
 });
 
 describe('computeSignals — user-relative + community', () => {
