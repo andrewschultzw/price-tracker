@@ -7,8 +7,13 @@ import {
   deleteWebPushSubscription,
 } from '../db/queries.js';
 import { deriveDeviceLabel } from '../lib/device-label.js';
+import { logger } from '../logger.js';
 
 const router = Router();
+
+function endpointHost(endpoint: string): string {
+  try { return new URL(endpoint).hostname; } catch { return 'unknown'; }
+}
 
 const SubscribeSchema = z.object({
   endpoint: z.string().url(),
@@ -37,6 +42,12 @@ router.post('/subscribe', (req: Request, res: Response) => {
     user_agent: ua || null,
   });
   const sub = getWebPushSubscriptionById(id);
+  logger.info({
+    user_id: userId,
+    subscription_id: id,
+    device_label: label,
+    endpoint_host: endpointHost(parsed.data.endpoint),
+  }, 'web_push_subscribe');
   res.status(201).json({
     id: sub!.id,
     device_label: sub!.device_label,
@@ -66,6 +77,7 @@ router.delete('/subscriptions/:id', (req: Request, res: Response) => {
     return res.status(404).json({ error: 'not_found' });
   }
   deleteWebPushSubscription(id);
+  logger.info({ user_id: userId, subscription_id: id }, 'web_push_unsubscribe');
   res.status(204).send();
 });
 

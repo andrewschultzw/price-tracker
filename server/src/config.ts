@@ -72,6 +72,17 @@ export function isEmailConfigured(): boolean {
 }
 
 /**
+ * True when all VAPID values needed to send Web Push are present.
+ * The actual sender (`server/src/notifications/web-push.ts`) reads from
+ * `process.env` directly so test env mutations work, but consumers that
+ * need the boolean (e.g. startup banner, future Settings UI hint) should
+ * use this helper.
+ */
+export function isWebPushConfigured(): boolean {
+  return !!(config.webPushVapidPublic && config.webPushVapidPrivate && config.webPushSubject);
+}
+
+/**
  * True when both the API key and its mapped user ID are set. Used by
  * the X-API-Key middleware to decide whether to enforce the header or
  * fall through. When false, the middleware treats a missing header as

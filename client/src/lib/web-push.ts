@@ -50,6 +50,11 @@ export async function getSubscriptionState(): Promise<SubscriptionState> {
   return sub ? 'enabled' : 'available';
 }
 
+// localStorage key — used to remember the server-side subscription id for
+// THIS browser's subscription, so unsubscribePush() can delete the row
+// eagerly instead of waiting for natural 410 cleanup on the next alert.
+const DEVICE_ID_LS_KEY = 'price-tracker:web-push-device-id';
+
 export async function subscribePush(): Promise<WebPushDevice> {
   if (!VAPID_PUBLIC) {
     throw new Error('VITE_VAPID_PUBLIC_KEY is not set — server has no VAPID configured');
@@ -64,24 +69,33 @@ export async function subscribePush(): Promise<WebPushDevice> {
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
   });
   const json = sub.toJSON();
-  return subscribeWebPush({
+  const device = await subscribeWebPush({
     endpoint: json.endpoint!,
     keys: { p256dh: json.keys!.p256dh, auth: json.keys!.auth },
   });
+  // Remember this device's row id so unsubscribePush() can delete it eagerly.
+  try { localStorage.setItem(DEVICE_ID_LS_KEY, String(device.id)); } catch { /* private mode — fall back to 410 cleanup */ }
+  return device;
 }
 
 export async function unsubscribePush(): Promise<void> {
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
-  if (sub) {
-    await sub.unsubscribe();
-    // Note: we deliberately don't delete the server-side row here. The
-    // /devices endpoint redacts the encrypted endpoint+keys for security,
-    // so we can't match by endpoint client-side. Instead, we let natural
-    // 410 cleanup handle the server side: the next push attempt to the
-    // now-invalidated endpoint will return 410, and the firer deletes the
-    // row. Slightly delayed but eventually consistent.
-  }
+  if (sub) await sub.unsubscribe();
+  // Eagerly delete the server-side row using the cached device id from
+  // subscribePush(). If localStorage was cleared (private browsing,
+  // manual clear, fresh install), we fall back to natural 410 cleanup
+  // on the next push attempt — eventually consistent.
+  try {
+    const cached = localStorage.getItem(DEVICE_ID_LS_KEY);
+    if (cached) {
+      const id = Number(cached);
+      if (Number.isFinite(id)) {
+        try { await deleteWebPushDevice(id); } catch { /* row may already be gone */ }
+      }
+      localStorage.removeItem(DEVICE_ID_LS_KEY);
+    }
+  } catch { /* localStorage unavailable — server row will be cleaned via 410 */ }
 }
 
 export async function getDevices(): Promise<WebPushDevice[]> {

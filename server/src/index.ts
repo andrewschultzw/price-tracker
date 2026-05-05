@@ -3,7 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { resolve } from 'path';
-import { config } from './config.js';
+import { config, isWebPushConfigured } from './config.js';
 import { initializeSchema } from './db/schema.js';
 import { closeDb } from './db/connection.js';
 import { authMiddleware, adminMiddleware } from './auth/middleware.js';
@@ -136,6 +136,9 @@ app.get('*', (_req, res) => {
 
 const server = app.listen(config.port, () => {
   logger.info(`Price Tracker running on port ${config.port}`);
+  if (!isWebPushConfigured()) {
+    logger.warn({}, 'web_push_vapid_missing — set WEB_PUSH_VAPID_PUBLIC_KEY / WEB_PUSH_VAPID_PRIVATE_KEY / WEB_PUSH_SUBJECT to enable the web push channel');
+  }
   startScheduler();
   startBackfillCron();
 });

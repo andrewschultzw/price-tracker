@@ -17,10 +17,10 @@ function configureVapid(): boolean {
   const pub = process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '';
   const priv = process.env.WEB_PUSH_VAPID_PRIVATE_KEY || '';
   const subject = process.env.WEB_PUSH_SUBJECT || '';
-  if (!pub || !priv || !subject) {
-    logger.warn({}, 'web_push_vapid_missing');
-    return false;
-  }
+  // Silent return when not configured — the channel naturally inert. A
+  // one-time startup warning lives in index.ts so the operator knows once
+  // at boot rather than per-alert.
+  if (!pub || !priv || !subject) return false;
   try {
     webpush.setVapidDetails(subject, pub, priv);
     return true;
