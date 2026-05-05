@@ -16,7 +16,14 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 ### Priority: next big bets
 
-- [ ] **AI Buyer's Assistant.** Claude API integration that turns the price chart into an advisor. Buy/wait verdict per tracker, plain-English price-history summaries, deal-quality scoring (real low vs. fake-MSRP markup), smarter alert copy. (Review digest deferred to v2.) Spec: `docs/superpowers/specs/2026-05-04-ai-buyers-assistant-design.md`. Branch: `feature/ai-buyers-assistant`.
+- [x] **AI Buyer's Assistant.** ~~Claude API integration that turns the price chart into an advisor.~~ **Done 2026-05-04:** rules-judge / LLM-narrate pattern. Pure signals + verdict (zero IO, fully unit-tested), Anthropic Haiku 4.5 client wrapper with retry/validation/kill switch, ephemeral-cached prompt builders with hallucination guard, generators that compose all the pieces. Wired into the cron path as fire-and-forget on price change; alert copy across all 4 channels with 3s timeout fallback to plain template; nightly backfill cron for summaries. New env: `AI_ENABLED` (default false), `ANTHROPIC_API_KEY`, `AI_MODEL`. Migration v8 adds 8 AI columns to `trackers`. UI: BUY/WAIT/HOLD verdict pill on every card, AIInsightsCard above the chart on TrackerDetail. Server tests 280 → 364 (+84). Estimated cost ~$0.20/month at current scale. Spec: `docs/superpowers/specs/2026-05-04-ai-buyers-assistant-design.md`. Plan: `docs/superpowers/plans/2026-05-04-ai-buyers-assistant.md`. [PR #11](https://github.com/andrewschultzw/price-tracker/pull/11).
+
+  **Carry-forward (address before flipping `AI_ENABLED=true` globally):**
+  - [ ] Rename `ai_verdict_failures_24h` → `ai_verdict_failures_total` in `/api/health` (or document inline that it's cumulative-since-last-success, not a 24h window).
+  - [ ] `generateSummaryForTracker` doesn't increment `ai_failure_count` on failure — only verdict failures count. Either symmetrize the behavior or document the asymmetry on the failure-count column.
+  - [ ] Wire `community_low` into `loadSignalsForTracker` from `getOverlapForTracker`. Currently hardcoded to `null`, so Claude never sees the cohort signal even though the field is in the prompt.
+  - [ ] Delete the dead `config.aiEnabled` field — all callers read `process.env.AI_ENABLED` directly. Field is populated at startup but never read.
+  - [ ] Strengthen `updateTrackerAIVerdict` arg type from `tier: string` to `tier: VerdictTier`. Single caller today (generators) passes the right type; tightens the type-safety net.
 
 - [ ] **Project / Bundle tracker.** Multi-tracker "baskets" with a combined budget target. Alert fires when the basket total hits target, regardless of any single item's drop. Per-item ceilings supported. Pairs with the AI Buyer's Assistant for per-item "buy now / wait" guidance. Spec: TBD.
 
