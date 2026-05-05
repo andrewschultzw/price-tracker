@@ -1,22 +1,10 @@
-import type { Project, BasketMember, CompositeVerdictTier } from '../types';
+import type { Project, BasketMember } from '../types';
+import { deriveBasketTotal, deriveCompositeVerdict } from '../lib/basket';
 import { VerdictPill } from './VerdictPill';
 
 interface Props {
   project: Project;
   members: BasketMember[];
-}
-
-function deriveBasketTotal(members: BasketMember[]): number | null {
-  if (members.length === 0) return null;
-  if (members.some(m => m.last_price === null)) return null;
-  return members.reduce((sum, m) => sum + (m.last_price as number), 0);
-}
-
-function deriveCompositeVerdict(project: Project, members: BasketMember[]): CompositeVerdictTier {
-  const total = deriveBasketTotal(members);
-  if (total === null || total > project.target_total) return 'HOLD';
-  if (members.some(m => m.ai_verdict_tier === 'WAIT')) return 'WAIT';
-  return 'BUY';
 }
 
 export function BasketTotalCard({ project, members }: Props) {

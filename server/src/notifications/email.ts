@@ -177,10 +177,10 @@ function basketEmailText(project: ProjectType2, basket: BasketStateType2, member
 function basketEmailHtml(project: ProjectType2, basket: BasketStateType2, members: BasketMemberType2[], aiCommentary?: string | null): string {
   if (basket.total === null) return '';
   const memberRows = members.map(m =>
-    `<li>${m.tracker_name} — <strong>${formatMoney(m.last_price ?? 0)}</strong></li>`
+    `<li>${escapeHtml(m.tracker_name)} — <strong>${formatMoney(m.last_price ?? 0)}</strong></li>`
   ).join('');
-  const aiBlock = aiCommentary ? `<p><em>${aiCommentary}</em></p>` : '';
-  return `<h2>Bundle ready: ${project.name}</h2>` +
+  const aiBlock = aiCommentary ? `<p><em>${escapeHtml(aiCommentary)}</em></p>` : '';
+  return `<h2>Bundle ready: ${escapeHtml(project.name)}</h2>` +
     `<p>Total: <strong>${formatMoney(basket.total)}</strong> ` +
     `(target ${formatMoney(project.target_total)}, savings ${formatMoney(project.target_total - basket.total)})</p>` +
     `<ul>${memberRows}</ul>${aiBlock}`;

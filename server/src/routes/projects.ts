@@ -31,7 +31,8 @@ const UpdateTrackerSchema = z.object({
 // GET /api/projects?status=active|archived
 router.get('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const status = req.query.status as 'active' | 'archived' | undefined;
+  const rawStatus = req.query.status;
+  const status = rawStatus === 'active' || rawStatus === 'archived' ? rawStatus : undefined;
   const projects = listProjectsForUser(userId, status);
   res.json(projects);
 });
@@ -70,7 +71,7 @@ router.patch('/:id', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'invalid_body', details: parsed.error.flatten() });
   }
   updateProject(id, parsed.data);
-  res.json(getProjectById(id));
+  res.json(getProjectById(id, userId));
 });
 
 // DELETE /api/projects/:id
