@@ -15,6 +15,7 @@ import {
   assignOrphanedTrackersToUser, assignOrphanedSettingsToUser,
   getSafeUserById,
 } from '../db/user-queries.js';
+import { getSetting } from '../db/queries.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
@@ -43,6 +44,44 @@ export function generateSetupToken(): string {
   setupToken = randomBytes(32).toString('hex');
   return setupToken;
 }
+
+// GET /api/auth/invite-info/:code
+// Public endpoint (no auth required) — validates invite code and returns inviter info
+router.get('/invite-info/:code', (req: Request, res: Response) => {
+  const code = typeof req.params.code === 'string' ? req.params.code : '';
+  const invite = getInviteByCode(code);
+
+  if (!invite) {
+    res.status(404).json({ valid: false, reason: 'not_found' });
+    return;
+  }
+
+  if (invite.used_by !== null) {
+    res.status(409).json({ valid: false, reason: 'already_used' });
+    return;
+  }
+
+  if (invite.expires_at && new Date(invite.expires_at + 'Z') < new Date()) {
+    res.status(410).json({ valid: false, reason: 'expired' });
+    return;
+  }
+
+  // Look up inviter and check share_display_name setting
+  let inviter_name: string | null = null;
+  if (invite.created_by) {
+    const inviter = getUserById(invite.created_by);
+    if (inviter) {
+      const shareSetting = getSetting('share_display_name', inviter.id);
+      inviter_name = shareSetting === 'true' ? inviter.display_name : null;
+    }
+  }
+
+  res.json({
+    valid: true,
+    inviter_name,
+    expires_at: invite.expires_at,
+  });
+});
 
 // POST /api/auth/register
 router.post('/register', async (req: Request, res: Response) => {
