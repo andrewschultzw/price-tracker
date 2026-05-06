@@ -841,6 +841,33 @@ export function getTrackersWithStaleSummary(stalerThanMs: number, limit: number)
 }
 
 /**
+ * Trackers whose AI verdict is stale or missing. Used by the nightly
+ * backfill cron to ensure trackers with stable prices (no change events
+ * to trigger fire-and-forget verdict generation) still get a verdict
+ * computed periodically.
+ *
+ * Returns rows where:
+ *   - status = 'active' AND last_price IS NOT NULL (eligible for verdict)
+ *   - ai_verdict_updated_at IS NULL OR ai_verdict_updated_at < (now - stalenessMs)
+ *
+ * Sorted oldest-first (NULLs first, then ascending) so newest-stale rows
+ * get processed in subsequent sweeps if `limit` is hit. The
+ * `(col IS NULL) DESC, col ASC` form avoids depending on SQLite's
+ * `NULLS FIRST` keyword, which only landed in 3.30+.
+ */
+export function getTrackersWithStaleOrMissingVerdict(stalenessMs: number, limit: number): Array<{ id: number }> {
+  const cutoff = Date.now() - stalenessMs;
+  return getDb().prepare(`
+    SELECT id FROM trackers
+    WHERE status = 'active'
+      AND last_price IS NOT NULL
+      AND (ai_verdict_updated_at IS NULL OR ai_verdict_updated_at < ?)
+    ORDER BY (ai_verdict_updated_at IS NULL) DESC, ai_verdict_updated_at ASC
+    LIMIT ?
+  `).all(cutoff, limit) as Array<{ id: number }>;
+}
+
+/**
  * Returns price observations for a tracker since `sinceMs` (unix ms),
  * shaped as { price, recorded_at } where recorded_at is unix ms.
  *

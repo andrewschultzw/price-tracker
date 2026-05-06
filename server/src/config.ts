@@ -47,6 +47,11 @@ export const config = {
   aiModel: process.env.AI_MODEL || 'claude-haiku-4-5-20251001',
   aiAlertCopyTimeoutMs: 3000,
   aiSummaryStalenessDays: 7,
+  // Verdict staleness window for the nightly backfill sweep. Same default
+  // as summaries (7 days). Configurable separately so the verdict sweep
+  // (single Haiku call per tracker) can be tuned independently of the
+  // heavier summary sweep if cost or volume profiles diverge.
+  aiVerdictStalenessDays: 7,
   aiVerdictMinDataDays: 14,
   // Web Push (PWA notifications)
   webPushVapidPublic: process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '',
