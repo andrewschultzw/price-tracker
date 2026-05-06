@@ -1,5 +1,5 @@
-import { isTestConnection } from '../lib/messages.js';
-import { testConnection } from '../lib/api.js';
+import { isTestConnection, isCreate } from '../lib/messages.js';
+import { testConnection, createTracker } from '../lib/api.js';
 import type { ExtensionResponse, ErrorCode } from '../lib/messages.js';
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -28,6 +28,10 @@ async function dispatch(msg: unknown): Promise<ExtensionResponse> {
     if (isTestConnection(msg)) {
       await testConnection();
       return { ok: true };
+    }
+    if (isCreate(msg)) {
+      const tracker = await createTracker(msg.payload);
+      return { ok: true, tracker };
     }
     return { ok: false, error: 'NOT_IMPLEMENTED' };
   } catch (err) {
