@@ -1,6 +1,6 @@
 import { getStoredToken } from '../lib/api.js';
-import type { ExtensionResponse, CreateMessage } from '../lib/messages.js';
-import type { TrackerCreatePayload } from '../types/api.js';
+import type { ExtensionResponse, CreateMessage, CheckDupMessage } from '../lib/messages.js';
+import type { TrackerCreatePayload, Tracker } from '../types/api.js';
 
 const root = document.getElementById('root')!;
 
@@ -9,7 +9,16 @@ async function main() {
   if (!token) { renderNoToken(); return; }
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.url) { renderError('Could not read the active tab. Open a retailer page and try again.'); return; }
+  if (!tab?.url) { renderError('Could not read the active tab.'); return; }
+
+  const dup: ExtensionResponse = await chrome.runtime.sendMessage({
+    type: 'CHECK_DUP', url: tab.url,
+  } satisfies CheckDupMessage);
+
+  if (dup.ok && 'exists' in dup && dup.exists && dup.tracker) {
+    renderDup(dup.tracker);
+    return;
+  }
 
   renderForm(tab.url, tab.title ?? '');
 }
@@ -56,6 +65,25 @@ function renderForm(url: string, title: string) {
       showError($error, errorText(resp.error, resp.detail));
     }
   });
+}
+
+function renderDup(tracker: Tracker) {
+  swap('tpl-dup');
+  const host = root.querySelector('.host')!;
+  try { host.textContent = new URL(tracker.url).hostname; } catch { /* keep blank */ }
+  (root.querySelector('[data-name]') as HTMLElement).textContent = tracker.name;
+  (root.querySelector('[data-price]') as HTMLElement).textContent =
+    tracker.last_price !== null ? `$${tracker.last_price.toFixed(2)}` : '—';
+  if (tracker.ai_verdict_tier) {
+    const pill = root.querySelector('[data-verdict]') as HTMLElement;
+    pill.textContent = tracker.ai_verdict_tier;
+    pill.classList.remove('hidden');
+    pill.classList.add(tracker.ai_verdict_tier.toLowerCase());
+  }
+  (root.querySelector('[data-reason]') as HTMLElement).textContent =
+    tracker.ai_verdict_reason ?? '';
+  (root.querySelector('[data-link]') as HTMLAnchorElement).href =
+    `https://prices.schultzsolutions.tech/tracker/${tracker.id}`;
 }
 
 function renderSuccess(trackerId: number) {

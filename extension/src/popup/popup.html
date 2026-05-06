@@ -60,6 +60,19 @@
     </div>
   </template>
 
+  <template id="tpl-dup">
+    <div class="header"><strong>Already tracking</strong><span class="host"></span></div>
+    <div class="body">
+      <div class="muted small" data-name></div>
+      <div class="last-price">
+        <span data-price>—</span>
+        <span data-verdict class="verdict-pill hidden"></span>
+      </div>
+      <p class="muted" data-reason></p>
+      <a data-link class="ghost-button" target="_blank">Open in Price Tracker →</a>
+    </div>
+  </template>
+
   <script type="module" src="popup.ts"></script>
 </body>
 </html>

@@ -81,3 +81,21 @@ button.ghost, .ghost-button {
   font-size: 18px;
 }
 .title { font-weight: 500; margin-bottom: 4px; }
+.last-price {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 4px 0 8px 0;
+}
+.verdict-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 6px;
+  vertical-align: middle;
+  color: white;
+}
+.verdict-pill.buy { background: #10b981; }
+.verdict-pill.wait { background: #f59e0b; }
+.verdict-pill.hold { background: #94a3b8; }
