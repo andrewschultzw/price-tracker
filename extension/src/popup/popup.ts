@@ -5,6 +5,8 @@ import type { TrackerCreatePayload, Tracker } from '../types/api.js';
 const root = document.getElementById('root')!;
 
 async function main() {
+  swap('tpl-loading');
+
   const token = await getStoredToken();
   if (!token) { renderNoToken(); return; }
 

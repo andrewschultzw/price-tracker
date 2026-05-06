@@ -99,3 +99,13 @@ button.ghost, .ghost-button {
 .verdict-pill.buy { background: #10b981; }
 .verdict-pill.wait { background: #f59e0b; }
 .verdict-pill.hold { background: #94a3b8; }
+.loading { padding: 30px 14px; }
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid #334155;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
