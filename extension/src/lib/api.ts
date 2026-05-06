@@ -55,15 +55,41 @@ async function safeBody(r: Response): Promise<string> {
   try { return JSON.stringify(await r.json()); } catch { return ''; }
 }
 
+function assertTrackerShape(data: unknown): asserts data is Tracker {
+  if (!data || typeof data !== 'object') {
+    throw new ApiError('UNKNOWN', 'Tracker response is not an object');
+  }
+  const required: ReadonlyArray<keyof Tracker> = [
+    'id', 'name', 'url', 'normalized_url', 'threshold_price',
+    'check_interval_minutes', 'last_price', 'ai_verdict_tier', 'ai_verdict_reason',
+  ];
+  for (const k of required) {
+    if (!(k in data)) {
+      throw new ApiError('UNKNOWN', `Tracker response missing field: ${String(k)}`);
+    }
+  }
+}
+
+function assertTrackerListShape(data: unknown): asserts data is Tracker[] {
+  if (!Array.isArray(data)) {
+    throw new ApiError('UNKNOWN', 'Trackers response is not an array');
+  }
+  for (const t of data) assertTrackerShape(t);
+}
+
 export async function listTrackers(): Promise<Tracker[]> {
-  return request<Tracker[]>('/api/trackers', { method: 'GET' });
+  const data = await request<unknown>('/api/trackers', { method: 'GET' });
+  assertTrackerListShape(data);
+  return data;
 }
 
 export async function createTracker(payload: TrackerCreatePayload): Promise<Tracker> {
-  return request<Tracker>('/api/trackers', {
+  const data = await request<unknown>('/api/trackers', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  assertTrackerShape(data);
+  return data;
 }
 
 export async function testConnection(): Promise<void> {

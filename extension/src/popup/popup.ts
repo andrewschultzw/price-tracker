@@ -1,5 +1,5 @@
 import { getStoredToken } from '../lib/api.js';
-import type { ExtensionResponse, CreateMessage, CheckDupMessage } from '../lib/messages.js';
+import type { ExtensionResponse, CreateMessage, CheckDupMessage, ErrorCode } from '../lib/messages.js';
 import type { TrackerCreatePayload, Tracker } from '../types/api.js';
 
 const root = document.getElementById('root')!;
@@ -35,7 +35,7 @@ function renderNoToken() {
 function renderForm(url: string, title: string) {
   swap('tpl-form');
   const host = root.querySelector('.host')!;
-  host.textContent = new URL(url).hostname;
+  host.textContent = formatHost(url);
 
   const $name = root.querySelector('[data-field="name"]') as HTMLInputElement;
   const $url = root.querySelector('[data-field="url"]') as HTMLInputElement;
@@ -72,7 +72,7 @@ function renderForm(url: string, title: string) {
 function renderDup(tracker: Tracker) {
   swap('tpl-dup');
   const host = root.querySelector('.host')!;
-  try { host.textContent = new URL(tracker.url).hostname; } catch { /* keep blank */ }
+  host.textContent = formatHost(tracker.url);
   (root.querySelector('[data-name]') as HTMLElement).textContent = tracker.name;
   (root.querySelector('[data-price]') as HTMLElement).textContent =
     tracker.last_price !== null ? `$${tracker.last_price.toFixed(2)}` : '—';
@@ -122,15 +122,30 @@ function parseInterval(s: string): number | undefined {
   return Number.isFinite(n) && n >= 5 ? n : undefined;
 }
 
-function errorText(code: string, detail?: string): string {
+function errorText(code: ErrorCode, _detail?: string): string {
   switch (code) {
     case 'NO_TOKEN': return 'Open Settings to paste your API token.';
     case 'UNAUTHORIZED': return 'Token isn\'t working — re-paste in Settings.';
     case 'NETWORK': return 'Couldn\'t reach prices.schultzsolutions.tech.';
     case 'SERVER': return 'Server hiccup — try again, or add manually.';
-    case 'VALIDATION': return `URL doesn't look right${detail ? ` (${detail})` : ''}.`;
+    case 'VALIDATION': return 'URL doesn\'t look right or is missing required info.';
     case 'CONFLICT': return 'Already tracking this URL.';
-    default: return 'Something went wrong.';
+    case 'NOT_IMPLEMENTED': return 'This shouldn\'t happen — please report.';
+    case 'UNKNOWN': return 'Something went wrong.';
+    default: {
+      const _exhaustive: never = code;
+      return `Something went wrong${_exhaustive ? '' : ''}.`;
+    }
+  }
+}
+
+function formatHost(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+    return u.hostname;
+  } catch {
+    return '';
   }
 }
 
