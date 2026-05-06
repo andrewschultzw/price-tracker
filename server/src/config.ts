@@ -45,7 +45,10 @@ export const config = {
   priceTrackerApiKeyUserId: parseInt(process.env.PRICE_TRACKER_API_KEY_USER_ID || '0', 10),
   isProduction: process.env.NODE_ENV === 'production',
   // AI Buyer's Assistant (Claude API)
-  aiEnabled: process.env.AI_ENABLED === 'true',
+  // NB: AI_ENABLED is read directly from process.env in client.ts, generators.ts,
+  // and cron.ts so test env mutations (process.env.AI_ENABLED = 'true' in
+  // beforeEach) take effect at call-time. Don't add a cached `aiEnabled` field
+  // here — it would be a stale snapshot under tests.
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   aiModel: process.env.AI_MODEL || 'claude-haiku-4-5-20251001',
   aiAlertCopyTimeoutMs: 3000,

@@ -9,6 +9,7 @@ import { AIGenerationError } from './types.js';
 import {
   getTrackerById,
   getRecentSuccessfulPricesForTracker,
+  getOverlapForTracker,
   updateTrackerAIVerdict,
   updateTrackerAISummary,
   incrementAIFailureCount,
@@ -29,12 +30,20 @@ async function loadSignalsForTracker(trackerId: number) {
   const cutoff = Date.now() - HISTORY_WINDOW_DAYS * 86_400_000;
   const observations = getRecentSuccessfulPricesForTracker(trackerId, cutoff);
 
+  // Cohort signal: MIN(last_price) across all users tracking the same
+  // normalized URL (self included). Null when the tracker has no owner
+  // (legacy row) or no peer data. Lets Claude reference "lower than
+  // others have seen" in verdict prose.
+  const communityLow = tracker.user_id !== null
+    ? getOverlapForTracker(trackerId, tracker.user_id)?.communityLow ?? null
+    : null;
+
   const signals = computeSignals(
     observations,
     tracker.last_price,
     tracker.threshold_price ?? null,
     Date.now(),
-    null,
+    communityLow,
   );
   if (!signals) return null;
 
@@ -76,11 +85,16 @@ export async function generateSummaryForTracker(trackerId: number): Promise<void
     const resp = await clientFn(prompt);
     updateTrackerAISummary(trackerId, resp.text);
   } catch (err) {
+    // Symmetric with generateVerdictForTracker — both writers feed the
+    // same ai_failure_count column, which gates verdict-failure circuit
+    // breaking. A run of summary failures should bump the same counter.
     if (err instanceof AIGenerationError) {
       logger.warn({ tracker_id: trackerId, category: err.category }, 'ai_summary_failed');
+      incrementAIFailureCount(trackerId);
       return;
     }
     logger.error({ tracker_id: trackerId, err: String(err) }, 'ai_summary_unexpected');
+    incrementAIFailureCount(trackerId);
   }
 }
 

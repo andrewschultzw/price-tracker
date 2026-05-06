@@ -800,7 +800,7 @@ export function getOverlapCountsForUser(userId: number): Record<number, number> 
 
 export function updateTrackerAIVerdict(
   trackerId: number,
-  args: { tier: string; reason: string; reasonKey: string; signalsJson: string }
+  args: { tier: VerdictTier; reason: string; reasonKey: ReasonKey; signalsJson: string }
 ): void {
   getDb().prepare(`
     UPDATE trackers SET
@@ -864,6 +864,7 @@ export function getRecentSuccessfulPricesForTracker(
 
 export type { Project, ProjectTracker, BasketMember, BasketState, IneligibleReason } from '../projects/types.js';
 import type { Project, BasketMember } from '../projects/types.js';
+import type { VerdictTier, ReasonKey } from '../ai/types.js';
 
 export function listProjectsForUser(userId: number, status?: 'active' | 'archived'): Project[] {
   if (status) {

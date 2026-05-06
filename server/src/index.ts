@@ -115,7 +115,7 @@ app.get('/api/health', (req, res) => {
   // Admin observability fields
   const aiFields = {
     ai_enabled: process.env.AI_ENABLED === 'true',
-    ai_verdict_failures_24h: countAIFailures(),
+    ai_verdict_failures_total: countAIFailures(),
     // TODO(debt): The four metrics below need accumulators we don't track yet.
     // Landing as 0 placeholders; wire real values in a follow-up once
     // volume justifies an in-memory counter or an ai_metrics table.
