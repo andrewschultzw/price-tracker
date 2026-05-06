@@ -1,4 +1,4 @@
-import type { Tracker } from '../db/queries.js';
+import type { Tracker, TrackerUrlCondition } from '../db/queries.js';
 import type { Confidence } from '../ai/confidence.js';
 import { logger } from '../logger.js';
 
@@ -33,6 +33,7 @@ export async function sendGenericPriceAlert(
   webhookUrl: string,
   aiCommentary?: string | null,
   confidence?: Confidence | null,
+  condition?: TrackerUrlCondition | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
@@ -47,6 +48,10 @@ export async function sendGenericPriceAlert(
         threshold_price: tracker.threshold_price,
       },
       current_price: currentPrice,
+      // Top-level so downstream automations (Home Assistant, n8n) can branch
+      // on warehouse/refurb/open-box without parsing free-form text. Always
+      // present — defaults to 'new' so consumers don't have to handle null.
+      condition: condition ?? 'new',
       savings: Number((tracker.threshold_price - currentPrice).toFixed(2)),
       error: null,
       consecutive_failures: null,

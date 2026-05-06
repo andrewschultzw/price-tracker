@@ -66,4 +66,25 @@ describe('sendGenericPriceAlert', () => {
     const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
     expect(body.confidence).toEqual({ level: 'LOW', reasons: [] });
   });
+
+  it("includes condition='warehouse' as a top-level JSON field", async () => {
+    const fetchSpy = mockFetch();
+    await sendGenericPriceAlert(makeTracker(), 30, 'https://hooks.example/x', null, null, 'warehouse');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.condition).toBe('warehouse');
+  });
+
+  it("defaults condition to 'new' when not passed", async () => {
+    const fetchSpy = mockFetch();
+    await sendGenericPriceAlert(makeTracker(), 30, 'https://hooks.example/x', null);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.condition).toBe('new');
+  });
+
+  it("serializes condition='refurb' for refurbished listings", async () => {
+    const fetchSpy = mockFetch();
+    await sendGenericPriceAlert(makeTracker(), 30, 'https://hooks.example/x', null, null, 'refurb');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.condition).toBe('refurb');
+  });
 });

@@ -51,6 +51,12 @@ export function computeJitterMinutes(intervalMinutes: number): number {
   return Math.floor(Math.random() * (cap + 1));
 }
 
+// Listing condition for a per-seller URL. Non-'new' values cause alert
+// messages to append a tag (e.g. "$239 (Warehouse)") so users can tell at
+// a glance whether the winning price was a refurb / open-box / warehouse
+// listing rather than a fresh-from-the-factory unit.
+export type TrackerUrlCondition = 'new' | 'warehouse' | 'refurb' | 'open_box';
+
 // Per-seller row. Each tracker has >= 1 tracker_urls rows; position=0 is
 // the primary (drives trackers.url and category grouping).
 export interface TrackerUrl {
@@ -65,6 +71,7 @@ export interface TrackerUrl {
   pending_confirmation_price: number | null;
   pending_confirmation_at: string | null;
   status: 'active' | 'paused' | 'error';
+  condition: TrackerUrlCondition;
   created_at: string;
   updated_at: string;
 }
@@ -332,17 +339,47 @@ export function getSellersWithPendingConfirmation(): TrackerUrl[] {
  * Add a new seller URL to an existing tracker. Assigned the next-highest
  * position number so ordering is stable and the primary (position=0) never
  * shifts. Caller must verify tracker ownership before calling.
+ *
+ * `condition` defaults to 'new'. Pass 'warehouse' / 'refurb' / 'open_box'
+ * for refurbished, Amazon Warehouse, or open-box listings respectively —
+ * alerts append a label to the winning price when condition !== 'new'.
  */
-export function addTrackerUrl(trackerId: number, url: string): TrackerUrl {
+export function addTrackerUrl(
+  trackerId: number,
+  url: string,
+  condition: TrackerUrlCondition = 'new',
+): TrackerUrl {
   const db = getDb();
   const maxPos = db.prepare(
     'SELECT COALESCE(MAX(position), -1) as mp FROM tracker_urls WHERE tracker_id = ?',
   ).get(trackerId) as { mp: number };
   const nextPos = maxPos.mp + 1;
   const result = db.prepare(
-    'INSERT INTO tracker_urls (tracker_id, url, position) VALUES (?, ?, ?)',
-  ).run(trackerId, url, nextPos);
+    'INSERT INTO tracker_urls (tracker_id, url, position, condition) VALUES (?, ?, ?, ?)',
+  ).run(trackerId, url, nextPos, condition);
   return getTrackerUrlById(Number(result.lastInsertRowid))!;
+}
+
+/**
+ * Update the listing condition on a seller URL. Joined against `trackers`
+ * so the same query also enforces the (urlId, trackerId, userId) ownership
+ * triple — a user can only update conditions on URLs that belong to one of
+ * their own trackers. Returns true on success, false if no row matched.
+ */
+export function updateTrackerUrlCondition(
+  urlId: number,
+  trackerId: number,
+  userId: number,
+  condition: TrackerUrlCondition,
+): boolean {
+  const result = getDb().prepare(`
+    UPDATE tracker_urls
+    SET condition = ?, updated_at = datetime('now')
+    WHERE id = ?
+      AND tracker_id = ?
+      AND tracker_id IN (SELECT id FROM trackers WHERE user_id = ?)
+  `).run(condition, urlId, trackerId, userId);
+  return result.changes > 0;
 }
 
 /**

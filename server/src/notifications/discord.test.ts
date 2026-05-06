@@ -162,6 +162,39 @@ describe('sendDiscordPriceAlert', () => {
     const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
     expect(body.embeds[0].description).toBe('Strong buy.\n12-month low');
   });
+
+  it("tags Current Price with '(Warehouse)' when condition='warehouse'", async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 45, 'https://example/wh', null, null, 'warehouse');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    const fields = body.embeds[0].fields as { name: string; value: string }[];
+    const priceField = fields.find(f => f.name === 'Current Price')!;
+    expect(priceField.value).toBe('$45.00 (Warehouse)');
+  });
+
+  it("renders 'Refurbished' label for condition='refurb'", async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 45, 'https://example/wh', null, null, 'refurb');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    const priceField = (body.embeds[0].fields as { name: string; value: string }[]).find(f => f.name === 'Current Price')!;
+    expect(priceField.value).toBe('$45.00 (Refurbished)');
+  });
+
+  it("renders no condition tag for condition='new' (regression)", async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 45, 'https://example/wh', null, null, 'new');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    const priceField = (body.embeds[0].fields as { name: string; value: string }[]).find(f => f.name === 'Current Price')!;
+    expect(priceField.value).toBe('$45.00');
+  });
+
+  it('renders no condition tag when condition is undefined', async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 45, 'https://example/wh');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    const priceField = (body.embeds[0].fields as { name: string; value: string }[]).find(f => f.name === 'Current Price')!;
+    expect(priceField.value).toBe('$45.00');
+  });
 });
 
 describe('sendDiscordErrorAlert', () => {

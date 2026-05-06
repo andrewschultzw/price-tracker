@@ -1,8 +1,9 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import { config, isEmailConfigured } from '../config.js';
 import { logger } from '../logger.js';
-import type { Tracker } from '../db/queries.js';
+import type { Tracker, TrackerUrlCondition } from '../db/queries.js';
 import type { Confidence } from '../ai/confidence.js';
+import { conditionLabel, formatPriceWithCondition } from './condition-label.js';
 
 function emailSubjectPrefix(level: Confidence['level']): string {
   if (level === 'HIGH') return '[Strong Buy] ';
@@ -61,32 +62,52 @@ function formatMoney(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-function priceAlertText(tracker: Tracker, price: number): string {
+function priceAlertText(
+  tracker: Tracker,
+  price: number,
+  condition?: TrackerUrlCondition | null,
+): string {
   const threshold = tracker.threshold_price!;
   const savings = threshold - price;
-  return [
-    `${tracker.name} dropped to ${formatMoney(price)}`,
+  const lines = [
+    `${tracker.name} dropped to ${formatPriceWithCondition(price, condition)}`,
     '',
     `Target: ${formatMoney(threshold)}`,
     `Savings: ${formatMoney(savings)}`,
     `Seller: ${hostOf(tracker.url)}`,
-    '',
-    `Buy now: ${tracker.url}`,
-  ].join('\n');
+  ];
+  const condLabel = conditionLabel(condition);
+  if (condLabel) lines.push(`Condition: ${condLabel}`);
+  lines.push('', `Buy now: ${tracker.url}`);
+  return lines.join('\n');
 }
 
-function priceAlertHtml(tracker: Tracker, price: number): string {
+function priceAlertHtml(
+  tracker: Tracker,
+  price: number,
+  condition?: TrackerUrlCondition | null,
+): string {
   const threshold = tracker.threshold_price!;
   const savings = threshold - price;
   const host = hostOf(tracker.url);
+  const condLabel = conditionLabel(condition);
+  // Inline tag in the headline price line so the condition is visible at a
+  // glance — same shape as the other channels' "$239 (Warehouse)" rendering.
+  const priceHeadline = condLabel
+    ? `${formatMoney(price)} <span style="font-size: 16px; color: #6b7280; font-weight: 500;">(${escapeHtml(condLabel)})</span>`
+    : formatMoney(price);
+  const conditionRow = condLabel
+    ? `<tr><td style="color: #6b7280;">Condition</td><td style="font-weight: 600;">${escapeHtml(condLabel)}</td></tr>`
+    : '';
   return `<!doctype html>
 <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a1a; max-width: 520px; margin: 0 auto; padding: 24px;">
   <h2 style="margin: 0 0 8px 0; font-size: 18px;">${escapeHtml(tracker.name)}</h2>
-  <div style="font-size: 28px; font-weight: 700; color: #16a34a; margin: 8px 0 16px 0;">${formatMoney(price)}</div>
+  <div style="font-size: 28px; font-weight: 700; color: #16a34a; margin: 8px 0 16px 0;">${priceHeadline}</div>
   <table style="border-collapse: collapse; margin-bottom: 20px;" cellpadding="4">
     <tr><td style="color: #6b7280;">Target</td><td style="font-weight: 600;">${formatMoney(threshold)}</td></tr>
     <tr><td style="color: #6b7280;">Savings</td><td style="font-weight: 600; color: #16a34a;">${formatMoney(savings)}</td></tr>
     <tr><td style="color: #6b7280;">Seller</td><td>${escapeHtml(host)}</td></tr>
+    ${conditionRow}
   </table>
   <a href="${escapeAttr(tracker.url)}" style="display: inline-block; background: #2563eb; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: 500;">Buy now</a>
 </body></html>`;
@@ -126,10 +147,11 @@ export async function sendEmailPriceAlert(
   recipient: string,
   aiCommentary?: string | null,
   confidence?: Confidence | null,
+  condition?: TrackerUrlCondition | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
-  const baseText = priceAlertText(tracker, currentPrice);
-  const baseHtml = priceAlertHtml(tracker, currentPrice);
+  const baseText = priceAlertText(tracker, currentPrice, condition);
+  const baseHtml = priceAlertHtml(tracker, currentPrice, condition);
 
   // Plaintext: aiCommentary then "About this deal" line.
   const textParts: string[] = [baseText];
@@ -155,12 +177,16 @@ export async function sendEmailPriceAlert(
     : baseHtml;
 
   const subjectPrefix = confidence ? emailSubjectPrefix(confidence.level) : '';
+  // Tag the subject too so the condition is readable in the inbox preview
+  // before opening — formatPriceWithCondition() returns plain "$X" for 'new'
+  // (no parens) so today's subject lines stay identical when winning URL is new.
+  const priceTagged = formatPriceWithCondition(currentPrice, condition);
 
   try {
     await getTransport().sendMail({
       from: config.smtpFrom,
       to: recipient,
-      subject: `${subjectPrefix}Price drop: ${tracker.name} is ${formatMoney(currentPrice)}`,
+      subject: `${subjectPrefix}Price drop: ${tracker.name} is ${priceTagged}`,
       text,
       html,
     });

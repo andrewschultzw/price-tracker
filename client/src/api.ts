@@ -1,4 +1,4 @@
-import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail, WebPushDevice, SubscribePayload } from './types';
+import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail, WebPushDevice, SubscribePayload, TrackerUrlCondition } from './types';
 
 const BASE = '/api';
 
@@ -144,12 +144,24 @@ export const getNotificationHistory = (trackerId?: number, limit?: number) => {
 import type { TrackerUrl } from './types'
 export const getTrackerUrls = (trackerId: number) =>
   request<TrackerUrl[]>(`/trackers/${trackerId}/urls`);
-export const addTrackerUrl = (trackerId: number, url: string) =>
+export const addTrackerUrl = (
+  trackerId: number,
+  url: string,
+  condition: TrackerUrlCondition = 'new',
+) =>
   request<TrackerUrl[]>(`/trackers/${trackerId}/urls`, {
-    method: 'POST', body: JSON.stringify({ url }),
+    method: 'POST', body: JSON.stringify({ url, condition }),
   });
 export const deleteTrackerUrl = (trackerId: number, urlId: number) =>
   request<TrackerUrl[]>(`/trackers/${trackerId}/urls/${urlId}`, { method: 'DELETE' });
+export const updateTrackerUrlCondition = (
+  trackerId: number,
+  urlId: number,
+  condition: TrackerUrlCondition,
+) =>
+  request<void>(`/trackers/${trackerId}/urls/${urlId}`, {
+    method: 'PATCH', body: JSON.stringify({ condition }),
+  });
 
 // Settings
 export const getSettings = () => request<Record<string, string>>('/settings');
