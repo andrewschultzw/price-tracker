@@ -49,7 +49,6 @@ CREATE TABLE user_api_tokens (
   revoked_at INTEGER
 );
 CREATE INDEX idx_user_api_tokens_user ON user_api_tokens(user_id);
-CREATE INDEX idx_user_api_tokens_hash ON user_api_tokens(token_hash);
 ```
 
 ### Token format

@@ -408,7 +408,6 @@ const migrations: Migration[] = [
           revoked_at INTEGER
         );
         CREATE INDEX IF NOT EXISTS idx_user_api_tokens_user ON user_api_tokens(user_id);
-        CREATE INDEX IF NOT EXISTS idx_user_api_tokens_hash ON user_api_tokens(token_hash);
       `);
     },
   },
