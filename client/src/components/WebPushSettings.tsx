@@ -7,6 +7,7 @@ import {
   removeDevice,
   type SubscriptionState,
 } from '../lib/web-push';
+import { getSettings, updateSettings } from '../api';
 import type { WebPushDevice } from '../types';
 
 function formatRelative(iso: string | null): string {
@@ -24,11 +25,16 @@ export function WebPushSettings() {
   const [devices, setDevices] = useState<WebPushDevice[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [minConfidence, setMinConfidence] = useState<string>('');
+  const [savingConfidence, setSavingConfidence] = useState(false);
+  const [savedConfidence, setSavedConfidence] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
       setState(await getSubscriptionState());
       setDevices(await getDevices());
+      const settings = await getSettings();
+      setMinConfidence(settings.web_push_min_confidence || '');
     } catch (e) {
       setError(String(e));
     }
@@ -72,6 +78,20 @@ export function WebPushSettings() {
     }
   }
 
+  async function handleSaveMinConfidence() {
+    setSavingConfidence(true);
+    setSavedConfidence(false);
+    try {
+      await updateSettings({
+        web_push_min_confidence: minConfidence === 'LOW' ? '' : minConfidence,
+      });
+      setSavedConfidence(true);
+      setTimeout(() => setSavedConfidence(false), 3000);
+    } finally {
+      setSavingConfidence(false);
+    }
+  }
+
   const helpText: Record<SubscriptionState | 'loading', string> = {
     'loading': 'Checking notification status...',
     'unsupported': "Your browser doesn't support push notifications.",
@@ -111,6 +131,31 @@ export function WebPushSettings() {
       </div>
 
       {error && <div className="text-error text-sm mb-2">{error}</div>}
+
+      <div className="border-t border-border pt-3 mt-3">
+        <div className="text-sm font-medium text-text mb-3">Minimum confidence</div>
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <select
+              value={minConfidence || 'LOW'}
+              onChange={e => setMinConfidence(e.target.value === 'LOW' ? '' : e.target.value)}
+              disabled={savingConfidence}
+              className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text focus:outline-none focus:border-primary disabled:opacity-50"
+            >
+              <option value="LOW">All deals</option>
+              <option value="MEDIUM">Good deals only</option>
+              <option value="HIGH">Strong deals only</option>
+            </select>
+          </div>
+          <button
+            onClick={handleSaveMinConfidence}
+            disabled={savingConfidence}
+            className="px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex-shrink-0"
+          >
+            {savedConfidence ? 'Saved!' : savingConfidence ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
 
       {devices.length > 0 && (
         <div className="border-t border-border pt-3 mt-3">
