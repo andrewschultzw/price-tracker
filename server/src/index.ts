@@ -13,6 +13,7 @@ import adminRoutes from './routes/admin.js';
 import trackerRoutes from './routes/trackers.js';
 import priceRoutes from './routes/prices.js';
 import settingsRoutes from './routes/settings.js';
+import apiTokenRoutes from './routes/api-tokens.js';
 import notificationRoutes from './routes/notifications.js';
 import projectsRoutes from './routes/projects.js';
 import webPushRoutes from './routes/web-push.js';
@@ -79,6 +80,7 @@ app.use('/api/favicon', faviconRouter);
 // Protected API routes
 app.use('/api/trackers', apiKeyMiddleware, authMiddleware, trackerRoutes);
 app.use('/api/trackers', apiKeyMiddleware, authMiddleware, priceRoutes);
+app.use('/api/settings/api-tokens', apiKeyMiddleware, authMiddleware, apiTokenRoutes);
 app.use('/api/settings', apiKeyMiddleware, authMiddleware, settingsRoutes);
 app.use('/api/notifications', apiKeyMiddleware, authMiddleware, notificationRoutes);
 app.use('/api/admin', apiKeyMiddleware, authMiddleware, adminMiddleware, adminRoutes);
