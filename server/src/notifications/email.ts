@@ -2,6 +2,13 @@ import nodemailer, { Transporter } from 'nodemailer';
 import { config, isEmailConfigured } from '../config.js';
 import { logger } from '../logger.js';
 import type { Tracker } from '../db/queries.js';
+import type { Confidence } from '../ai/confidence.js';
+
+function emailSubjectPrefix(level: Confidence['level']): string {
+  if (level === 'HIGH') return '[Strong Buy] ';
+  if (level === 'MEDIUM') return '[Good Deal] ';
+  return '';
+}
 
 /**
  * Email notification channel. Sends multipart HTML+plaintext alerts over
@@ -118,19 +125,42 @@ export async function sendEmailPriceAlert(
   currentPrice: number,
   recipient: string,
   aiCommentary?: string | null,
+  confidence?: Confidence | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
   const baseText = priceAlertText(tracker, currentPrice);
   const baseHtml = priceAlertHtml(tracker, currentPrice);
-  const text = aiCommentary ? `${baseText}\n\n${aiCommentary}` : baseText;
-  const html = aiCommentary
-    ? baseHtml.replace('</body>', `<p style="margin-top: 16px; color: #374151;">${escapeHtml(aiCommentary)}</p>\n</body>`)
+
+  // Plaintext: aiCommentary then "About this deal" line.
+  const textParts: string[] = [baseText];
+  if (aiCommentary) textParts.push(aiCommentary);
+  if (confidence && confidence.reasons.length > 0) {
+    textParts.push(`About this deal: ${confidence.reasons.join(' · ')}`);
+  }
+  const text = textParts.join('\n\n');
+
+  // HTML: inject aiCommentary + reasons block before </body>.
+  const htmlInjections: string[] = [];
+  if (aiCommentary) {
+    htmlInjections.push(`<p style="margin-top: 16px; color: #374151;">${escapeHtml(aiCommentary)}</p>`);
+  }
+  if (confidence && confidence.reasons.length > 0) {
+    const reasonsHtml = confidence.reasons.map(r => escapeHtml(r)).join(' &middot; ');
+    htmlInjections.push(
+      `<p style="margin-top: 16px; color: #374151;"><strong>About this deal:</strong> ${reasonsHtml}</p>`,
+    );
+  }
+  const html = htmlInjections.length > 0
+    ? baseHtml.replace('</body>', `${htmlInjections.join('\n')}\n</body>`)
     : baseHtml;
+
+  const subjectPrefix = confidence ? emailSubjectPrefix(confidence.level) : '';
+
   try {
     await getTransport().sendMail({
       from: config.smtpFrom,
       to: recipient,
-      subject: `Price drop: ${tracker.name} is ${formatMoney(currentPrice)}`,
+      subject: `${subjectPrefix}Price drop: ${tracker.name} is ${formatMoney(currentPrice)}`,
       text,
       html,
     });

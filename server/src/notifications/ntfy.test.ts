@@ -39,4 +39,42 @@ describe('sendNtfyPriceAlert', () => {
     const body = fetchSpy.mock.calls[0][1].body as string;
     expect(body).toContain('12-month low.');
   });
+
+  it('HIGH confidence prefixes title with [STRONG] and appends reasons', async () => {
+    const fetchSpy = mockFetch();
+    await sendNtfyPriceAlert(makeTracker(), 30, 'https://ntfy.example/topic', undefined, null, {
+      level: 'HIGH', reasons: ['12-month low', 'typically holds ~5 days'],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.title).toBe('[STRONG] Price Drop: Test');
+    expect(body.message).toContain('12-month low · typically holds ~5 days');
+  });
+
+  it('MEDIUM confidence prefixes title with [GOOD]', async () => {
+    const fetchSpy = mockFetch();
+    await sendNtfyPriceAlert(makeTracker(), 30, 'https://ntfy.example/topic', undefined, null, {
+      level: 'MEDIUM', reasons: ['30-day low'],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.title).toBe('[GOOD] Price Drop: Test');
+    expect(body.message).toContain('30-day low');
+  });
+
+  it('LOW confidence omits title prefix but renders reasons', async () => {
+    const fetchSpy = mockFetch();
+    await sendNtfyPriceAlert(makeTracker(), 30, 'https://ntfy.example/topic', undefined, null, {
+      level: 'LOW', reasons: ['typically holds ~3 days'],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.title).toBe('Price Drop: Test');
+    expect(body.message).toContain('typically holds ~3 days');
+  });
+
+  it('null confidence preserves today\'s rendering', async () => {
+    const fetchSpy = mockFetch();
+    await sendNtfyPriceAlert(makeTracker(), 30, 'https://ntfy.example/topic', undefined, null, null);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.title).toBe('Price Drop: Test');
+    expect(body.message).not.toContain('STRONG');
+  });
 });

@@ -1,5 +1,12 @@
 import type { Tracker } from '../db/queries.js';
+import type { Confidence } from '../ai/confidence.js';
 import { logger } from '../logger.js';
+
+function ntfyTitlePrefix(level: Confidence['level']): string {
+  if (level === 'HIGH') return '[STRONG] ';
+  if (level === 'MEDIUM') return '[GOOD] ';
+  return '';
+}
 
 /**
  * ntfy has two publish APIs:
@@ -88,6 +95,7 @@ export async function sendNtfyPriceAlert(
   ntfyUrl: string,
   ntfyToken?: string,
   aiCommentary?: string | null,
+  confidence?: Confidence | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
@@ -101,10 +109,17 @@ export async function sendNtfyPriceAlert(
 
   const savings = (tracker.threshold_price - currentPrice).toFixed(2);
   const baseMessage = `Now $${currentPrice.toFixed(2)} (target $${tracker.threshold_price.toFixed(2)}, save $${savings})`;
-  const message = aiCommentary ? `${baseMessage}\n\n${aiCommentary}` : baseMessage;
+  const messageParts: string[] = [baseMessage];
+  if (aiCommentary) messageParts.push(aiCommentary);
+  if (confidence && confidence.reasons.length > 0) {
+    messageParts.push(confidence.reasons.join(' · '));
+  }
+  const message = messageParts.join('\n\n');
+
+  const titlePrefix = confidence ? ntfyTitlePrefix(confidence.level) : '';
   const result = await publish(target.base, {
     topic: target.topic,
-    title: `Price Drop: ${tracker.name}`,
+    title: `${titlePrefix}Price Drop: ${tracker.name}`,
     message,
     priority: 4,
     tags: ['tada', 'money_with_wings'],

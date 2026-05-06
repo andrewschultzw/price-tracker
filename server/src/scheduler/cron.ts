@@ -31,6 +31,8 @@ import { sendWebPushPriceAlert } from '../notifications/web-push.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { generateVerdictForTracker, generateAlertCopy, computeSignalsAndVerdictForTracker } from '../ai/generators.js';
+import { computeConfidence } from '../ai/confidence.js';
+import type { Confidence } from '../ai/confidence.js';
 import { evaluateAndFireForProject } from '../projects/firer.js';
 
 const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
@@ -123,11 +125,19 @@ async function firePriceAlerts(
   const userId = alertTracker.user_id!;
   const tasks: { name: ChannelName; promise: Promise<boolean> }[] = [];
 
+  // Confidence is independent of the AI flag — it's a pure deterministic
+  // categorization on top of the existing computeSignals output. Compute
+  // signals once, reuse for both the (optional) AI alert-copy prompt and
+  // the per-channel confidence rendering.
+  let confidence: Confidence | null = null;
   let aiCommentary: string | null = null;
-  if (process.env.AI_ENABLED === 'true') {
-    try {
-      const sv = await computeSignalsAndVerdictForTracker(alertTracker.id);
-      if (sv) {
+
+  try {
+    const sv = await computeSignalsAndVerdictForTracker(alertTracker.id);
+    if (sv) {
+      confidence = computeConfidence(sv.signals);
+
+      if (process.env.AI_ENABLED === 'true') {
         const oldPrice = seller.last_price ?? currentPrice;
         aiCommentary = await Promise.race([
           generateAlertCopy({
@@ -136,13 +146,15 @@ async function firePriceAlerts(
             newPrice: currentPrice,
             signals: sv.signals,
             reasonKey: sv.verdict.reasonKey,
+            confidence,
           }),
           new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
         ]);
       }
-    } catch {
-      aiCommentary = null;
     }
+  } catch {
+    confidence = null;
+    aiCommentary = null;
   }
 
   for (const name of CHANNEL_NAMES) {
@@ -178,19 +190,19 @@ async function firePriceAlerts(
     let promise: Promise<boolean>;
     switch (name) {
       case 'discord':
-        promise = sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord!, aiCommentary);
+        promise = sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord!, aiCommentary, confidence);
         break;
       case 'ntfy':
-        promise = sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy!, channels.ntfyToken, aiCommentary);
+        promise = sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy!, channels.ntfyToken, aiCommentary, confidence);
         break;
       case 'webhook':
-        promise = sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook!, aiCommentary);
+        promise = sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook!, aiCommentary, confidence);
         break;
       case 'email':
-        promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!, aiCommentary);
+        promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!, aiCommentary, confidence);
         break;
       case 'web_push':
-        promise = sendWebPushPriceAlert(alertTracker, currentPrice, userId, aiCommentary);
+        promise = sendWebPushPriceAlert(alertTracker, currentPrice, userId, aiCommentary, confidence);
         break;
     }
     tasks.push({ name, promise });

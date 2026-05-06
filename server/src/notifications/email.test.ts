@@ -101,6 +101,58 @@ describe('sendEmailPriceAlert', () => {
     expect(sentMessages[0].text).toContain('12-month low.');
     expect(sentMessages[0].html).toContain('12-month low.');
   });
+
+  it('HIGH confidence prefixes subject with [Strong Buy] and adds About-this-deal block', async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 30, 'u@example.com', null, {
+      level: 'HIGH', reasons: ['12-month low', 'typically holds ~5 days'],
+    });
+    const m = sentMessages[0];
+    expect(m.subject.startsWith('[Strong Buy] ')).toBe(true);
+    expect(m.text).toContain('About this deal: 12-month low · typically holds ~5 days');
+    expect(m.html).toContain('About this deal:');
+    expect(m.html).toContain('12-month low');
+    expect(m.html).toContain('typically holds ~5 days');
+  });
+
+  it('MEDIUM confidence prefixes subject with [Good Deal]', async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 30, 'u@example.com', null, {
+      level: 'MEDIUM', reasons: ['30-day low'],
+    });
+    const m = sentMessages[0];
+    expect(m.subject.startsWith('[Good Deal] ')).toBe(true);
+    expect(m.text).toContain('30-day low');
+  });
+
+  it('LOW confidence omits subject prefix but still renders reasons', async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 30, 'u@example.com', null, {
+      level: 'LOW', reasons: ['typically holds ~3 days'],
+    });
+    const m = sentMessages[0];
+    expect(m.subject.startsWith('[')).toBe(false);
+    expect(m.text).toContain('typically holds ~3 days');
+  });
+
+  it('null confidence renders identically to today', async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 30, 'u@example.com', null, null);
+    const m = sentMessages[0];
+    expect(m.subject).not.toContain('[Strong Buy]');
+    expect(m.subject).not.toContain('[Good Deal]');
+    expect(m.text).not.toContain('About this deal');
+  });
+
+  it('escapes HTML in reasons', async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 30, 'u@example.com', null, {
+      level: 'HIGH', reasons: ['<script>alert(1)</script>'],
+    });
+    const m = sentMessages[0];
+    expect(m.html).not.toContain('<script>');
+    expect(m.html).toContain('&lt;script&gt;');
+  });
 });
 
 describe('sendEmailErrorAlert', () => {

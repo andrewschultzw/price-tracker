@@ -1,5 +1,12 @@
 import type { Tracker } from '../db/queries.js';
+import type { Confidence } from '../ai/confidence.js';
 import { logger } from '../logger.js';
+
+function discordTitlePrefix(level: Confidence['level']): string {
+  if (level === 'HIGH') return '🟢 STRONG BUY — ';
+  if (level === 'MEDIUM') return '🟡 GOOD DEAL — ';
+  return '';
+}
 
 /**
  * Pure HTTP sender for Discord. Threshold checks and cooldown are handled
@@ -10,13 +17,16 @@ export async function sendDiscordPriceAlert(
   currentPrice: number,
   webhookUrl: string,
   aiCommentary?: string | null,
+  confidence?: Confidence | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
   const savings = (tracker.threshold_price - currentPrice).toFixed(2);
 
+  const titlePrefix = confidence ? discordTitlePrefix(confidence.level) : '';
+
   const embed: Record<string, unknown> = {
-    title: `Price Drop Alert: ${tracker.name}`,
+    title: `${titlePrefix}Price Drop Alert: ${tracker.name}`,
     color: 0x00c853,
     fields: [
       { name: 'Current Price', value: `$${currentPrice.toFixed(2)}`, inline: true },
@@ -28,8 +38,14 @@ export async function sendDiscordPriceAlert(
     footer: { text: 'Price Tracker' },
   };
 
-  if (aiCommentary) {
-    embed.description = aiCommentary;
+  // Build description: aiCommentary (when present) above reasons line.
+  const descriptionParts: string[] = [];
+  if (aiCommentary) descriptionParts.push(aiCommentary);
+  if (confidence && confidence.reasons.length > 0) {
+    descriptionParts.push(confidence.reasons.join(' · '));
+  }
+  if (descriptionParts.length > 0) {
+    embed.description = descriptionParts.join('\n');
   }
 
   try {

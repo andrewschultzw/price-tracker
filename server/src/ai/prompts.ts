@@ -1,6 +1,7 @@
 // server/src/ai/prompts.ts
 import type { Signals, ReasonKey, VerdictTier, PriceObservation } from './types.js';
 import type { ClaudePromptInput } from './client.js';
+import type { Confidence } from './confidence.js';
 import type { Project, BasketState, BasketMember } from '../projects/types.js';
 
 const TONE_BLOCK = `You are the deal-advisor inside a price-tracking app. Your tone is terse, factual, and helpful — like a knowledgeable friend texting a one-liner. Never use marketing language ("amazing deal!", "incredible savings!"). Never use exclamation points. Never reference yourself or the LLM nature of your output.`;
@@ -78,6 +79,11 @@ export interface AlertCopyContext {
   newPrice: number;
   signals: Signals;
   reasonKey: ReasonKey;
+  // Optional pre-computed deterministic confidence — when provided, it's
+  // included in the cached signals block so the LLM can narrate naturally
+  // ("Strong buy — 12-month low, first time in 4 months."). Zero new
+  // tokens at runtime since the block is ephemeral-cached.
+  confidence?: Confidence | null;
 }
 
 export function buildAlertCopyPrompt(ctx: AlertCopyContext): ClaudePromptInput {
@@ -95,6 +101,7 @@ ${HALLUCINATION_GUARD}`;
     new_price: ctx.newPrice,
     reasonKey: ctx.reasonKey,
     signals: ctx.signals,
+    confidence: ctx.confidence ?? null,
   }, null, 2)}
 
 Compose the alert line.`;
