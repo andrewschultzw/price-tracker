@@ -263,3 +263,41 @@ export function listWebPushDevices(): Promise<WebPushDevice[]> {
 export function deleteWebPushDevice(id: number): Promise<void> {
   return request<void>(`/web-push/subscriptions/${id}`, { method: 'DELETE' });
 }
+
+// === API Tokens (Connected Apps) ===
+
+export interface ApiTokenSummary {
+  id: number;
+  name: string;
+  prefix: string;
+  created_at: number;
+  last_used_at: number | null;
+  revoked_at: number | null;
+}
+
+export interface CreatedApiToken extends ApiTokenSummary {
+  token: string; // plaintext, only here
+}
+
+export async function listApiTokens(): Promise<ApiTokenSummary[]> {
+  const r = await fetch('/api/settings/api-tokens', { credentials: 'include' });
+  if (!r.ok) throw new Error(`listApiTokens failed: ${r.status}`);
+  return r.json();
+}
+
+export async function createApiToken(name: string): Promise<CreatedApiToken> {
+  const r = await fetch('/api/settings/api-tokens', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!r.ok) throw new Error(`createApiToken failed: ${r.status}`);
+  return r.json();
+}
+
+export async function revokeApiToken(id: number): Promise<void> {
+  const r = await fetch(`/api/settings/api-tokens/${id}`, {
+    method: 'DELETE', credentials: 'include',
+  });
+  if (!r.ok) throw new Error(`revokeApiToken failed: ${r.status}`);
+}
