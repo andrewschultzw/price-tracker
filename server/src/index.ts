@@ -17,6 +17,7 @@ import apiTokenRoutes from './routes/api-tokens.js';
 import notificationRoutes from './routes/notifications.js';
 import projectsRoutes from './routes/projects.js';
 import webPushRoutes from './routes/web-push.js';
+import publicProductRoutes, { sitemapHandler } from './routes/public-products.js';
 import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { startBackfillCron, stopBackfillCron } from './ai/backfill-cron.js';
@@ -76,6 +77,16 @@ app.use('/api/auth', authRoutes);
 // Public favicon proxy (intentionally no auth — favicons aren't sensitive
 // and unauthenticated <img> tags are simpler than cookie-gated assets).
 app.use('/api/favicon', faviconRouter);
+
+// Public product pages (intentionally no auth — anonymous CamelCamelCamel-
+// style aggregated price-history. Mount BEFORE the auth-gated routes so
+// no middleware accidentally gates access). Spec:
+// docs/superpowers/specs/2026-05-06-public-product-pages-design.md
+app.use('/api/public', publicProductRoutes);
+
+// Sitemap at root path so search engines can discover it via robots.txt
+// without needing the /api prefix.
+app.get('/sitemap.xml', sitemapHandler);
 
 // Protected API routes
 app.use('/api/trackers', apiKeyMiddleware, authMiddleware, trackerRoutes);

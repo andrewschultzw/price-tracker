@@ -19,6 +19,10 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Setup from './pages/Setup'
 
+// Public product pages — anonymous /p/<slug> SEO surface. Eagerly imported
+// since the entire route IS the page; no benefit to a chunk split here.
+import PublicProduct from './pages/PublicProduct'
+
 // Everything else is lazy. Each of these becomes its own chunk that
 // the browser only fetches when the user actually navigates there.
 const AddTracker = lazy(() => import('./pages/AddTracker'))
@@ -47,12 +51,19 @@ function App() {
   // Auto-close the mobile menu whenever the route changes
   useEffect(() => { setMenuOpen(false) }, [location.pathname])
 
-  if (['/login', '/register', '/setup'].some(p => location.pathname.startsWith(p))) {
+  // Public-only routes (login, registration, setup, anonymous product pages)
+  // bypass the authenticated app shell entirely. /p/* is intentionally
+  // available to BOTH signed-in and anonymous users — we always render the
+  // same simplified view so there's no header/nav variance for SEO crawlers
+  // and so a logged-in user can also share an anonymous link without seeing
+  // their own dashboard chrome bleed in.
+  if (['/login', '/register', '/setup', '/p/'].some(p => location.pathname.startsWith(p))) {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/setup" element={<Setup />} />
+        <Route path="/p/:slug" element={<PublicProduct />} />
       </Routes>
     )
   }

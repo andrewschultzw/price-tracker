@@ -301,3 +301,30 @@ export async function revokeApiToken(id: number): Promise<void> {
   });
   if (!r.ok) throw new Error(`revokeApiToken failed: ${r.status}`);
 }
+
+// === Public product pages (anonymous /p/<slug>) ===
+
+export interface PublicProduct {
+  slug: string;
+  display_name: string;
+  normalized_url: string;
+  lowest_current_price: number | null;
+  lowest_ever_price: number | null;
+  sample_count: number;
+  first_observed: string | null;
+  price_history: Array<{ date: string; price: number }>;
+}
+
+/**
+ * Fetch a public product page payload by slug. Deliberately omits
+ * `credentials: 'include'` — these endpoints are public and we don't
+ * want to send the authenticated user's cookie when it isn't needed.
+ * Throws Error('NOT_FOUND') on 404 so the caller can render a clean
+ * "Product not found" state.
+ */
+export async function getPublicProduct(slug: string): Promise<PublicProduct> {
+  const r = await fetch(`/api/public/products/${encodeURIComponent(slug)}`);
+  if (r.status === 404) throw new Error('NOT_FOUND');
+  if (!r.ok) throw new Error(`getPublicProduct failed: ${r.status}`);
+  return r.json();
+}
