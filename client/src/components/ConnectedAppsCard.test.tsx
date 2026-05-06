@@ -30,6 +30,7 @@ describe('ConnectedAppsCard', () => {
     vi.spyOn(api, 'createApiToken').mockResolvedValue({
       id: 1, name: 'My Mac', token: 'pt_aaaabbbbccccddddeeeeffffgggghhhhiiiijjjjkkk',
       prefix: 'pt_aaaab', created_at: Date.now(),
+      last_used_at: null, revoked_at: null,
     });
     render(<ConnectedAppsCard />);
     await waitFor(() => screen.getByText(/Generate new token/i));

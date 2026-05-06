@@ -275,10 +275,8 @@ export interface ApiTokenSummary {
   revoked_at: number | null;
 }
 
-export interface CreatedApiToken extends Omit<ApiTokenSummary, 'last_used_at' | 'revoked_at'> {
+export interface CreatedApiToken extends ApiTokenSummary {
   token: string; // plaintext, only here
-  last_used_at?: number | null;
-  revoked_at?: number | null;
 }
 
 export async function listApiTokens(): Promise<ApiTokenSummary[]> {
