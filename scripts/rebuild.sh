@@ -35,8 +35,12 @@ npm ci
 echo "=== Running client tests ==="
 npm test
 
-echo "=== Building client ==="
-npm run build
+# NOTE: client is NOT rebuilt here. deploy.sh runs `vite build` locally
+# with the dev machine's client/.env (which carries VITE_*-prefixed
+# build-time vars like VITE_VAPID_PUBLIC_KEY) and rsyncs dist/ to the
+# server. Re-building here would overwrite those bundles with a build
+# that lacks the dev-side env, so we skip it. The rsynced dist/ from
+# deploy.sh is what the express static handler serves.
 
 echo "=== Restarting service ==="
 cd "$DEPLOY_DIR"
