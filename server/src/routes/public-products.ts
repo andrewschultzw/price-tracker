@@ -4,6 +4,7 @@ import {
   getDailyMinHistoryForNormalizedUrl,
   getStatsForNormalizedUrl,
   listAllSlugs,
+  getCommunityDealFeed,
 } from '../db/queries.js';
 
 /**
@@ -45,15 +46,31 @@ router.get('/products/:slug', (req: Request, res: Response) => {
 });
 
 /**
+ * Community deal feed — public anonymous "biggest threshold-beating drops
+ * across opted-in users in the last 7 days." No auth, 5-min cache.
+ * See docs/superpowers/specs/2026-05-06-community-deal-feed-design.md
+ */
+router.get('/deals', (_req: Request, res: Response) => {
+  const entries = getCommunityDealFeed(50);
+  res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+  res.json({ entries, generated_at: new Date().toISOString() });
+});
+
+/**
  * Sitemap handler — registered at the app root in index.ts (NOT under
  * /api). Re-exported here so the route module owns the URL-building logic
  * close to the slug helpers.
  */
 export function sitemapHandler(_req: Request, res: Response): void {
   const slugs = listAllSlugs();
-  const urls = slugs
-    .map(s => `  <url><loc>${PUBLIC_BASE_URL}/p/${encodeURIComponent(s.slug)}</loc></url>`)
-    .join('\n');
+  // Static public surfaces always present in the sitemap (no params).
+  const staticEntries = [
+    `  <url><loc>${PUBLIC_BASE_URL}/deals</loc></url>`,
+  ];
+  const slugEntries = slugs.map(
+    s => `  <url><loc>${PUBLIC_BASE_URL}/p/${encodeURIComponent(s.slug)}</loc></url>`,
+  );
+  const urls = [...staticEntries, ...slugEntries].join('\n');
   const body =
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +

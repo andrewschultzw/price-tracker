@@ -97,6 +97,7 @@ export default function SettingsPage() {
   // instances with auth-default-access=deny-all. Empty string = no auth.
   const [ntfyToken, setNtfyToken] = useState('')
   const [shareDisplayName, setShareDisplayName] = useState(false)
+  const [shareInDealFeed, setShareInDealFeed] = useState(false)
   const [savingCommunity, setSavingCommunity] = useState(false)
   const [savedCommunity, setSavedCommunity] = useState(false)
   const [savingKey, setSavingKey] = useState<ChannelKey | null>(null)
@@ -120,6 +121,7 @@ export default function SettingsPage() {
       })
       setNtfyToken(s.ntfy_token || '')
       setShareDisplayName(s.share_display_name === 'true')
+      setShareInDealFeed(s.share_in_deal_feed === 'true')
     })
   }, [])
 
@@ -144,7 +146,10 @@ export default function SettingsPage() {
     setSavingCommunity(true)
     setSavedCommunity(false)
     try {
-      await updateSettings({ share_display_name: shareDisplayName ? 'true' : 'false' })
+      await updateSettings({
+        share_display_name: shareDisplayName ? 'true' : 'false',
+        share_in_deal_feed: shareInDealFeed ? 'true' : 'false',
+      })
       setSavedCommunity(true)
       setTimeout(() => setSavedCommunity(false), 3000)
     } finally {
@@ -295,6 +300,20 @@ export default function SettingsPage() {
           />
           <span className="text-sm">Show my display name to other users on trackers we share</span>
         </label>
+        <div className="border-t border-border pt-4 mb-4">
+          <label className="flex items-start gap-2 cursor-pointer mb-1">
+            <input
+              type="checkbox"
+              checked={shareInDealFeed}
+              onChange={e => setShareInDealFeed(e.target.checked)}
+              className="rounded mt-0.5"
+            />
+            <span className="text-sm">Share my biggest drops with the community deal feed</span>
+          </label>
+          <p className="text-xs text-text-muted ml-6">
+            Anonymous. Other users see the price + product, never your name. Default off.
+          </p>
+        </div>
         <button
           onClick={handleCommunitySave}
           disabled={savingCommunity}
