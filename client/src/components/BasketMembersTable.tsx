@@ -51,7 +51,7 @@ export function BasketMembersTable({ projectId, members, onChange }: Props) {
         {members.map(m => (
           <li key={m.tracker_id} className="py-3 flex flex-wrap items-center gap-3">
             <a
-              href={`/trackers/${m.tracker_id}`}
+              href={`/tracker/${m.tracker_id}`}
               className="font-medium text-text hover:text-primary flex-1 min-w-0 truncate"
             >
               {m.tracker_name}

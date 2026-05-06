@@ -109,7 +109,7 @@ describe('sendWebPushPriceAlert', () => {
     expect(payload.title).toContain('Samsung 990 Pro 4TB');
     expect(payload.title).toContain('279');
     expect(payload.body).toContain('12-month low');
-    expect(payload.url).toBe('/trackers/1');
+    expect(payload.url).toBe('/tracker/1');
     expect(payload.tag).toBe('tracker-1-price');
   });
 

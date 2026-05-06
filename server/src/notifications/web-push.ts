@@ -94,7 +94,7 @@ export async function sendWebPushPriceAlert(
   return dispatchToAllSubs(userId, {
     title,
     body,
-    url: `/trackers/${tracker.id}`,
+    url: `/tracker/${tracker.id}`,
     tag: `tracker-${tracker.id}-price`,
   });
 }
