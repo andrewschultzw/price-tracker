@@ -29,7 +29,17 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 - [ ] **PWA + Web Push (the PWA half of the third big bet).** Service worker + manifest + `<WebPushSettings>` Settings UI. Web Push as the 5th notification channel slotted into the existing `firePriceAlerts` + basket-alert fanout. Per-device subscriptions, channel-level cooldown, auto-cleanup of stale endpoints via 410/404 handling. Spec: `docs/superpowers/specs/2026-05-05-pwa-web-push-design.md`. Branch: `feature/pwa-web-push`.
 
-- [ ] **Browser extension (the extension half of the third big bet).** Chrome / Firefox extension, manifest v3, one-click "Track this" from any retailer page. Separate codebase, distributed via Chrome Web Store + Firefox Add-ons. Calls existing `POST /api/trackers` via the OpenClaw-style API key middleware. Spec: TBD (after PWA ships).
+- [ ] **Browser extension (the extension half of the third big bet).** Chrome MV3 extension, sideload-only for v1, one-click "Track this" from any retailer page via toolbar icon + right-click context menu. Talks to a new server-side per-user API token feature (Settings → "Connected Apps") via `X-API-Key` header — extends the existing `apiKeyMiddleware` to also accept user-issued tokens, not just the global env var. Background service worker owns all I/O; popup is pure UI; no content scripts. Includes duplicate detection (popup shows "Already tracking — last price $X, verdict BUY" when revisiting a tracked URL). Spec: `docs/superpowers/specs/2026-05-06-browser-extension-design.md`. Branch: `feature/browser-extension`.
+
+  **v2 / future additions (not in v1):**
+  - [ ] **Chrome Web Store distribution.** Promote v1 sideload to a public Web Store listing — $5 dev fee, screenshots, privacy policy, ~1-3 day review per update. Worth doing once v1 is stable.
+  - [ ] **Firefox MV3 compat.** Different polyfills (`browser.*` vs `chrome.*`), different signing, AMO listing. Only if there's actual demand.
+  - [ ] **Element picker / point-and-click CSS selector capture.** Content script overlay where the user clicks the price element to extract a selector. Fallback for retailers where auto-detection fails. Adds host_permissions and a content script — meaningful complexity bump.
+  - [ ] **Live in-page price preview** in the popup (the explicitly-rejected "Option C" from the click-flow brainstorm). Inject a content script on supported retailers to extract the current price/title from the live DOM, show in popup before confirming.
+  - [ ] **Quick-edit / delete trackers from the popup.** Right now popup is write-side only — re-visit on a tracked URL shows "Open in Price Tracker →". Could expose threshold edit + delete inline.
+  - [ ] **Add-to-Project flow from popup.** "Which bundle?" dropdown after Add succeeds — drops the new tracker straight into a Bundle Tracker project.
+  - [ ] **Toolbar badge / icon coloring.** Light up the icon on supported retailer hosts; show "tracking" badge if URL is already tracked. Requires a tab-update listener and either a host_permissions broadening or a periodic dup-check refresh.
+  - [ ] **Keyboard shortcut** (`Alt+Shift+T` or similar). Easy add via manifest's `commands`. Skipped in v1 because most users never learn extension shortcuts.
 
 ### Priority: future portfolio
 
