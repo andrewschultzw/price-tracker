@@ -45,13 +45,8 @@ async function getCachedTrackerList(): Promise<Tracker[]> {
   return trackers;
 }
 
-async function appendToCache(tracker: Tracker): Promise<void> {
-  const data = await chrome.storage.session.get(['trackerListCache']);
-  const cached = data.trackerListCache as CachedList | undefined;
-  if (!cached) return;
-  await chrome.storage.session.set({
-    trackerListCache: { fetchedAt: cached.fetchedAt, trackers: [...cached.trackers, tracker] },
-  });
+async function invalidateTrackerCache(): Promise<void> {
+  await chrome.storage.session.remove('trackerListCache');
 }
 
 async function dispatch(msg: unknown): Promise<ExtensionResponse> {
@@ -71,7 +66,7 @@ async function dispatch(msg: unknown): Promise<ExtensionResponse> {
     }
     if (isCreate(msg)) {
       const tracker = await createTracker(msg.payload);
-      await appendToCache(tracker);
+      await invalidateTrackerCache();
       return { ok: true, tracker };
     }
     return { ok: false, error: 'NOT_IMPLEMENTED' };

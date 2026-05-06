@@ -72,7 +72,7 @@ Today, `apiKeyMiddleware` checks `X-API-Key` against the global `PRICE_TRACKER_A
 
 1. If header missing/empty → `next()` and let JWT cookie auth handle it (existing behavior, unchanged)
 2. Hash the incoming header value with SHA-256
-3. Constant-time compare against the global `PRICE_TRACKER_API_KEY` hash (existing flow, but now hash-compared like user tokens) — match → set `req.user` to `priceTrackerApiKeyUserId`'s user row, log `source: 'api-key'`, `next()`
+3. Constant-time compare (`timingSafeEqual`) against the global `PRICE_TRACKER_API_KEY` plaintext (existing flow). Match → set `req.user` to `priceTrackerApiKeyUserId`'s user row, log `source: 'api-key'`, `next()`. **Note:** the global key path uses plaintext compare rather than hash compare because the existing OpenClaw flow predates user tokens and `timingSafeEqual` over plaintext is just as safe as hash-then-compare for a known-length env-var key.
 4. Else look up `user_api_tokens WHERE token_hash = ? AND revoked_at IS NULL`. Match → set `req.user` from the token's owner, update `last_used_at = Date.now()`, log `source: 'user-token'` with `user_id` + `token_id`, `next()`
 5. No match → 401 `{error: 'Invalid API key'}`. Log `api_token_auth_failed` with token prefix only (NEVER plaintext, NEVER hash).
 
