@@ -19,6 +19,11 @@ const ALLOWED_SETTING_KEYS = new Set([
   'ntfy_cooldown_hours',
   'webhook_cooldown_hours',
   'email_cooldown_hours',
+  'discord_min_confidence',
+  'ntfy_min_confidence',
+  'webhook_min_confidence',
+  'email_min_confidence',
+  'web_push_min_confidence',
 ]);
 
 // Basic email shape check. Not RFC 5322 strict — SMTP will reject
@@ -49,6 +54,14 @@ router.put('/', (req: Request, res: Response) => {
       const n = Number(value);
       if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
         res.status(400).json({ error: `Invalid cooldown for ${key} — must be a non-negative integer` });
+        return;
+      }
+    }
+    // Min confidence values must be 'LOW', 'MEDIUM', or 'HIGH'.
+    // Empty string clears the override and falls back to 'LOW' (default).
+    if (key.endsWith('_min_confidence') && value !== '') {
+      if (!['LOW', 'MEDIUM', 'HIGH'].includes(value)) {
+        res.status(400).json({ error: `Invalid confidence level for ${key} — must be 'LOW', 'MEDIUM', or 'HIGH'` });
         return;
       }
     }

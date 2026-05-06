@@ -5,18 +5,19 @@ import useTitle from '../useTitle'
 import { WebPushSettings } from '../components/WebPushSettings'
 import { ConnectedAppsCard } from '../components/ConnectedAppsCard'
 
-type ChannelKey = 'discord' | 'ntfy' | 'webhook' | 'email'
+type ChannelKey = 'discord' | 'ntfy' | 'webhook' | 'email' | 'web_push'
 
 interface ChannelConfig {
   key: ChannelKey
-  settingKey: 'discord_webhook_url' | 'ntfy_url' | 'generic_webhook_url' | 'email_recipient'
-  cooldownKey: 'discord_cooldown_hours' | 'ntfy_cooldown_hours' | 'webhook_cooldown_hours' | 'email_cooldown_hours'
+  settingKey: 'discord_webhook_url' | 'ntfy_url' | 'generic_webhook_url' | 'email_recipient' | null
+  cooldownKey: 'discord_cooldown_hours' | 'ntfy_cooldown_hours' | 'webhook_cooldown_hours' | 'email_cooldown_hours' | null
+  minConfidenceKey: 'discord_min_confidence' | 'ntfy_min_confidence' | 'webhook_min_confidence' | 'email_min_confidence' | 'web_push_min_confidence'
   icon: React.ReactNode
   title: string
   description: React.ReactNode
-  placeholder: string
+  placeholder?: string
   inputType?: 'url' | 'email'
-  test: (url: string, token?: string) => Promise<{ success: boolean; error?: string }>
+  test?: (url: string, token?: string) => Promise<{ success: boolean; error?: string }>
 }
 
 const CHANNELS: ChannelConfig[] = [
@@ -24,6 +25,7 @@ const CHANNELS: ChannelConfig[] = [
     key: 'discord',
     settingKey: 'discord_webhook_url',
     cooldownKey: 'discord_cooldown_hours',
+    minConfidenceKey: 'discord_min_confidence',
     icon: <MessageSquare className="w-5 h-5 text-primary" />,
     title: 'Discord',
     description: (
@@ -39,6 +41,7 @@ const CHANNELS: ChannelConfig[] = [
     key: 'ntfy',
     settingKey: 'ntfy_url',
     cooldownKey: 'ntfy_cooldown_hours',
+    minConfidenceKey: 'ntfy_min_confidence',
     icon: <Bell className="w-5 h-5 text-primary" />,
     title: 'ntfy (push notifications)',
     description: (
@@ -57,6 +60,7 @@ const CHANNELS: ChannelConfig[] = [
     key: 'webhook',
     settingKey: 'generic_webhook_url',
     cooldownKey: 'webhook_cooldown_hours',
+    minConfidenceKey: 'webhook_min_confidence',
     icon: <Webhook className="w-5 h-5 text-primary" />,
     title: 'Custom Webhook',
     description: (
@@ -73,6 +77,7 @@ const CHANNELS: ChannelConfig[] = [
     key: 'email',
     settingKey: 'email_recipient',
     cooldownKey: 'email_cooldown_hours',
+    minConfidenceKey: 'email_min_confidence',
     icon: <Mail className="w-5 h-5 text-primary" />,
     title: 'Email',
     description: (
@@ -89,10 +94,12 @@ const CHANNELS: ChannelConfig[] = [
 
 export default function SettingsPage() {
   useTitle('Settings')
-  const [values, setValues] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '' })
+  const [values, setValues] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '', web_push: '' })
   // Per-channel cooldown overrides. Empty string = use server default
   // (config.notificationCooldownHours, currently 6h). "0" = no cooldown.
-  const [cooldowns, setCooldowns] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '' })
+  const [cooldowns, setCooldowns] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '', web_push: '' })
+  // Per-channel minimum confidence level. Empty string = 'LOW' (all deals).
+  const [minConfidences, setMinConfidences] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '', web_push: '' })
   // ntfy has an optional second input — the Bearer token, for self-hosted
   // instances with auth-default-access=deny-all. Empty string = no auth.
   const [ntfyToken, setNtfyToken] = useState('')
@@ -112,12 +119,21 @@ export default function SettingsPage() {
         ntfy: s.ntfy_url || '',
         webhook: s.generic_webhook_url || '',
         email: s.email_recipient || '',
+        web_push: '',
       })
       setCooldowns({
         discord: s.discord_cooldown_hours || '',
         ntfy: s.ntfy_cooldown_hours || '',
         webhook: s.webhook_cooldown_hours || '',
         email: s.email_cooldown_hours || '',
+        web_push: '',
+      })
+      setMinConfidences({
+        discord: s.discord_min_confidence || '',
+        ntfy: s.ntfy_min_confidence || '',
+        webhook: s.webhook_min_confidence || '',
+        email: s.email_min_confidence || '',
+        web_push: s.web_push_min_confidence || '',
       })
       setNtfyToken(s.ntfy_token || '')
       setShareDisplayName(s.share_display_name === 'true')
@@ -129,10 +145,10 @@ export default function SettingsPage() {
     setSavingKey(ch.key)
     setSavedKey(null)
     try {
-      const payload: Record<string, string> = {
-        [ch.settingKey]: values[ch.key],
-        [ch.cooldownKey]: cooldowns[ch.key],
-      }
+      const payload: Record<string, string> = {}
+      if (ch.settingKey) payload[ch.settingKey] = values[ch.key]
+      if (ch.cooldownKey) payload[ch.cooldownKey] = cooldowns[ch.key]
+      payload[ch.minConfidenceKey] = minConfidences[ch.key]
       if (ch.key === 'ntfy') payload.ntfy_token = ntfyToken
       await updateSettings(payload)
       setSavedKey(ch.key)
@@ -158,7 +174,7 @@ export default function SettingsPage() {
   }
 
   const handleTest = async (ch: ChannelConfig) => {
-    if (!values[ch.key]) return
+    if (!ch.test || !values[ch.key]) return
     setTestingKey(ch.key)
     setTestResult(null)
     try {
@@ -189,6 +205,7 @@ export default function SettingsPage() {
           const saved = savedKey === ch.key
           const testing = testingKey === ch.key
           const testForThis = testResult?.key === ch.key ? testResult : null
+          const hasConfigInput = ch.settingKey !== null
 
           return (
             <div key={ch.key} className="bg-surface border border-border rounded-xl p-4 sm:p-6">
@@ -198,14 +215,18 @@ export default function SettingsPage() {
               </div>
               <p className="text-text-muted text-sm mb-4">{ch.description}</p>
 
-              <label className="block text-sm font-medium text-text-muted mb-1.5">{ch.inputType === 'email' ? 'Recipient' : 'URL'}</label>
-              <input
-                type={ch.inputType ?? 'url'}
-                value={val}
-                onChange={e => setValues(v => ({ ...v, [ch.key]: e.target.value }))}
-                placeholder={ch.placeholder}
-                className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary mb-4"
-              />
+              {hasConfigInput && (
+                <>
+                  <label className="block text-sm font-medium text-text-muted mb-1.5">{ch.inputType === 'email' ? 'Recipient' : 'URL'}</label>
+                  <input
+                    type={ch.inputType ?? 'url'}
+                    value={val}
+                    onChange={e => setValues(v => ({ ...v, [ch.key]: e.target.value }))}
+                    placeholder={ch.placeholder}
+                    className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary mb-4"
+                  />
+                </>
+              )}
 
               {ch.key === 'ntfy' && (
                 <>
@@ -223,18 +244,38 @@ export default function SettingsPage() {
                 </>
               )}
 
-              <label className="block text-sm font-medium text-text-muted mb-1.5">
-                Cooldown <span className="text-text-muted/60 font-normal">(hours — blank = default 6h, 0 = no cooldown)</span>
-              </label>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={cooldowns[ch.key]}
-                onChange={e => setCooldowns(c => ({ ...c, [ch.key]: e.target.value }))}
-                placeholder="6"
-                className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary mb-4"
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                {ch.cooldownKey && (
+                  <div>
+                    <label className="block text-sm font-medium text-text-muted mb-1.5">
+                      Cooldown <span className="text-text-muted/60 font-normal">(hours)</span>
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={cooldowns[ch.key]}
+                      onChange={e => setCooldowns(c => ({ ...c, [ch.key]: e.target.value }))}
+                      placeholder="6"
+                      className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-text-muted mb-1.5">
+                    Minimum confidence
+                  </label>
+                  <select
+                    value={minConfidences[ch.key] || 'LOW'}
+                    onChange={e => setMinConfidences(m => ({ ...m, [ch.key]: e.target.value === 'LOW' ? '' : e.target.value }))}
+                    className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text focus:outline-none focus:border-primary"
+                  >
+                    <option value="LOW">All deals</option>
+                    <option value="MEDIUM">Good deals only</option>
+                    <option value="HIGH">Strong deals only</option>
+                  </select>
+                </div>
+              </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -245,14 +286,16 @@ export default function SettingsPage() {
                   {saved ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
                   {saved ? 'Saved!' : saving ? 'Saving...' : 'Save'}
                 </button>
-                <button
-                  onClick={() => handleTest(ch)}
-                  disabled={!val || testing}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  <Send className="w-4 h-4" />
-                  {testing ? 'Sending...' : 'Test'}
-                </button>
+                {ch.test && (
+                  <button
+                    onClick={() => handleTest(ch)}
+                    disabled={!val || testing}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    <Send className="w-4 h-4" />
+                    {testing ? 'Sending...' : 'Test'}
+                  </button>
+                )}
                 {testForThis?.ok && (
                   <span className="flex items-center gap-1 text-sm text-success">
                     <CheckCircle className="w-4 h-4" /> Sent!
