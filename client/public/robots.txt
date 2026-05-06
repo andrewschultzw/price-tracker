@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /p/
+Disallow: /
+
+Sitemap: https://prices.schultzsolutions.tech/sitemap.xml

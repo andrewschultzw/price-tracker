@@ -1,6 +1,8 @@
 import { getDb } from './connection.js';
 import { normalizeTrackerUrl } from '../lib/normalize-url.js';
+import { buildSlug } from '../lib/build-slug.js';
 import { randomBytes, createHash } from 'crypto';
+import { logger } from '../logger.js';
 
 export interface Tracker {
   id: number;
@@ -165,14 +167,15 @@ export function createTracker(data: {
 }): Tracker {
   const db = getDb();
   const interval = data.check_interval_minutes ?? 360;
-  return db.transaction(() => {
+  const normalizedUrl = normalizeTrackerUrl(data.url);
+  const tracker = db.transaction(() => {
     const result = db.prepare(`
       INSERT INTO trackers (name, url, normalized_url, threshold_price, check_interval_minutes, jitter_minutes, css_selector, user_id)
       VALUES (@name, @url, @normalized_url, @threshold_price, @check_interval_minutes, @jitter_minutes, @css_selector, @user_id)
     `).run({
       name: data.name,
       url: data.url,
-      normalized_url: normalizeTrackerUrl(data.url),
+      normalized_url: normalizedUrl,
       threshold_price: data.threshold_price ?? null,
       check_interval_minutes: interval,
       jitter_minutes: computeJitterMinutes(interval),
@@ -183,6 +186,18 @@ export function createTracker(data: {
     db.prepare(`INSERT INTO tracker_urls (tracker_id, url, position) VALUES (?, ?, 0)`).run(trackerId, data.url);
     return getTrackerById(trackerId, data.user_id)!;
   })();
+
+  // Best-effort: also stamp a public-product slug for this normalized URL.
+  // First-tracker-wins on the display name (INSERT OR IGNORE inside the helper).
+  // Wrapped in try/catch so a slug failure never breaks tracker creation.
+  if (normalizedUrl) {
+    try {
+      createSlugForUrl(normalizedUrl, data.name);
+    } catch (err) {
+      logger.warn({ err, normalizedUrl }, 'Failed to create public_product_slug at tracker creation');
+    }
+  }
+  return tracker;
 }
 
 export function updateTracker(id: number, data: Partial<{
@@ -1190,4 +1205,130 @@ export function updateWebPushLastUsedAt(id: number): void {
   getDb().prepare(
     `UPDATE web_push_subscriptions SET last_used_at = datetime('now') WHERE id = ?`
   ).run(id);
+}
+
+// === Public product slugs (anonymous /p/<slug> pages) ===
+
+export interface PublicProductSlug {
+  slug: string;
+  normalized_url: string;
+  display_name: string;
+  created_at: number;
+}
+
+/**
+ * INSERT-OR-IGNORE a slug row for a normalized URL. First caller for a given
+ * `normalized_url` "wins" the display name — subsequent calls return the
+ * existing row unchanged. Returns null when normalized_url is empty (callers
+ * are expected to skip slug creation in that case).
+ *
+ * Pure DB helper — no side effects beyond the INSERT. Safe to call from
+ * within a tracker-creation transaction OR from migration backfill.
+ */
+export function createSlugForUrl(
+  normalized_url: string | null | undefined,
+  display_name: string,
+): PublicProductSlug | null {
+  if (!normalized_url) return null;
+  const db = getDb();
+  const slug = buildSlug(display_name, normalized_url);
+  db.prepare(
+    `INSERT OR IGNORE INTO public_product_slugs (slug, normalized_url, display_name, created_at)
+     VALUES (?, ?, ?, ?)`,
+  ).run(slug, normalized_url, display_name, Date.now());
+  // Re-fetch by normalized_url so we always return the canonical row (in
+  // case the slug we just built lost a race to a previous insert with a
+  // different display name).
+  return getDb().prepare(
+    `SELECT slug, normalized_url, display_name, created_at
+     FROM public_product_slugs WHERE normalized_url = ?`,
+  ).get(normalized_url) as PublicProductSlug | null;
+}
+
+export function getProductBySlug(slug: string): PublicProductSlug | null {
+  const row = getDb().prepare(
+    `SELECT slug, normalized_url, display_name, created_at
+     FROM public_product_slugs WHERE slug = ?`,
+  ).get(slug) as PublicProductSlug | undefined;
+  return row ?? null;
+}
+
+/**
+ * Every slug row, ordered oldest-first. Powers the sitemap.xml handler.
+ * Kept narrow on purpose — no display name, no URL — sitemap only needs
+ * the slug + creation time.
+ */
+export function listAllSlugs(): Array<{ slug: string; created_at: number }> {
+  return getDb().prepare(
+    `SELECT slug, created_at FROM public_product_slugs ORDER BY created_at ASC`,
+  ).all() as Array<{ slug: string; created_at: number }>;
+}
+
+// === Public product aggregates (cross-user, daily-MIN) ===
+
+/**
+ * Daily-MIN price history for a normalized URL across ALL trackers (every
+ * user). Aggregated by date so a user can't infer per-scrape timing of any
+ * other user. Empty array when the normalized_url has no recorded prices.
+ */
+export function getDailyMinHistoryForNormalizedUrl(
+  normalized_url: string,
+  startMs?: number,
+): Array<{ date: string; price: number }> {
+  const db = getDb();
+  if (startMs !== undefined) {
+    const startIso = new Date(startMs).toISOString();
+    return db.prepare(`
+      SELECT DATE(ph.scraped_at) AS date, MIN(ph.price) AS price
+      FROM price_history ph
+      INNER JOIN trackers t ON t.id = ph.tracker_id
+      WHERE t.normalized_url = ? AND ph.scraped_at >= ?
+      GROUP BY DATE(ph.scraped_at)
+      ORDER BY DATE(ph.scraped_at) ASC
+    `).all(normalized_url, startIso) as Array<{ date: string; price: number }>;
+  }
+  return db.prepare(`
+    SELECT DATE(ph.scraped_at) AS date, MIN(ph.price) AS price
+    FROM price_history ph
+    INNER JOIN trackers t ON t.id = ph.tracker_id
+    WHERE t.normalized_url = ?
+    GROUP BY DATE(ph.scraped_at)
+    ORDER BY DATE(ph.scraped_at) ASC
+  `).all(normalized_url) as Array<{ date: string; price: number }>;
+}
+
+export interface PublicProductStats {
+  /** MIN(last_price) across all trackers sharing this normalized_url, or null. */
+  lowest_current_price: number | null;
+  /** MIN(price) across all price_history rows for this normalized_url, or null. */
+  lowest_ever_price: number | null;
+  /** Total price_history rows recorded for this normalized_url. */
+  sample_count: number;
+  /** ISO date (YYYY-MM-DD) of the first observation, or null if no history. */
+  first_observed: string | null;
+}
+
+export function getStatsForNormalizedUrl(normalized_url: string): PublicProductStats {
+  const db = getDb();
+  const current = db.prepare(`
+    SELECT MIN(last_price) AS low FROM trackers
+    WHERE normalized_url = ? AND last_price IS NOT NULL
+  `).get(normalized_url) as { low: number | null };
+
+  const history = db.prepare(`
+    SELECT
+      MIN(ph.price) AS lowest_ever,
+      COUNT(*) AS sample_count,
+      MIN(DATE(ph.scraped_at)) AS first_observed
+    FROM price_history ph
+    INNER JOIN trackers t ON t.id = ph.tracker_id
+    WHERE t.normalized_url = ?
+  `).get(normalized_url) as { lowest_ever: number | null; sample_count: number; first_observed: string | null };
+
+  return {
+    lowest_current_price: current.low ?? null,
+    lowest_ever_price: history.lowest_ever ?? null,
+    sample_count: history.sample_count ?? 0,
+    first_observed: history.first_observed ?? null,
+  };
 }

@@ -2,6 +2,7 @@ import { getDb } from './connection.js';
 import { logger } from '../logger.js';
 import { encrypt, isEncrypted } from '../crypto/settings-crypto.js';
 import { normalizeTrackerUrl } from '../lib/normalize-url.js';
+import { buildSlug } from '../lib/build-slug.js';
 
 interface Migration {
   version: number;
@@ -409,6 +410,48 @@ const migrations: Migration[] = [
         );
         CREATE INDEX IF NOT EXISTS idx_user_api_tokens_user ON user_api_tokens(user_id);
       `);
+    },
+  },
+  {
+    version: 13,
+    description: 'Public product slug mapping for anonymous /p/<slug> pages',
+    up: () => {
+      const db = getDb();
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS public_product_slugs (
+          slug TEXT PRIMARY KEY,
+          normalized_url TEXT NOT NULL UNIQUE,
+          display_name TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_public_product_slugs_normalized_url
+          ON public_product_slugs(normalized_url);
+      `);
+
+      // Backfill: pick the most-recently-created tracker's name per distinct
+      // normalized_url. The window function picks rn=1 = newest tracker.
+      // Skip rows where normalized_url is NULL (we can't slug those).
+      const rows = db.prepare(`
+        SELECT normalized_url, name FROM (
+          SELECT normalized_url, name,
+            ROW_NUMBER() OVER (PARTITION BY normalized_url ORDER BY created_at DESC, id DESC) AS rn
+          FROM trackers
+          WHERE normalized_url IS NOT NULL
+        ) WHERE rn = 1
+      `).all() as Array<{ normalized_url: string; name: string }>;
+
+      const insert = db.prepare(`
+        INSERT OR IGNORE INTO public_product_slugs (slug, normalized_url, display_name, created_at)
+        VALUES (?, ?, ?, ?)
+      `);
+      const now = Date.now();
+      let inserted = 0;
+      for (const r of rows) {
+        const slug = buildSlug(r.name, r.normalized_url);
+        const result = insert.run(slug, r.normalized_url, r.name, now);
+        if (result.changes > 0) inserted++;
+      }
+      logger.info({ candidateRows: rows.length, inserted }, 'Backfilled public_product_slugs');
     },
   },
 ];
