@@ -108,8 +108,8 @@ describe('apiKeyMiddleware when API key auth is not configured', () => {
   });
 
   it('header set but no global key configured → still tries user-token branch (404 on miss)', async () => {
-    // When PRICE_TRACKER_API_KEY is unset, isApiKeyConfigured() returns false,
-    // so branch 1 is skipped. Branch 2 (user-token lookup) runs. Random header
+    // When PRICE_TRACKER_API_KEY is unset, the middleware skips branch 1
+    // (global API key). Branch 2 (user-token lookup) runs. Random header
     // value won't match any token → 401.
     const res = await request(makeApp()).get('/').set('X-API-Key', 'random-no-token-matches-this');
     expect(res.status).toBe(401);
