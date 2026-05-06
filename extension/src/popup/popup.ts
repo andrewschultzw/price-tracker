@@ -1,19 +1,107 @@
+import { getStoredToken } from '../lib/api.js';
+import type { ExtensionResponse, CreateMessage } from '../lib/messages.js';
+import type { TrackerCreatePayload } from '../types/api.js';
+
+const root = document.getElementById('root')!;
+
 async function main() {
-  const root = document.getElementById('root')!;
+  const token = await getStoredToken();
+  if (!token) { renderNoToken(); return; }
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  root.innerHTML = `
-    <div class="header"><strong>Price Tracker</strong></div>
-    <div class="body">
-      <div>${tab?.title ? escapeHtml(tab.title) : '(no title)'}</div>
-      <div class="muted">${tab?.url ? escapeHtml(tab.url) : ''}</div>
-    </div>
-  `;
+  if (!tab?.url) { renderError('Could not read the active tab. Open a retailer page and try again.'); return; }
+
+  renderForm(tab.url, tab.title ?? '');
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[c]!));
+function renderNoToken() {
+  swap('tpl-no-token');
+  root.querySelector('[data-action="open-options"]')!.addEventListener('click', () => {
+    chrome.runtime.openOptionsPage();
+  });
 }
 
-main().catch(err => console.error('popup failed', err));
+function renderForm(url: string, title: string) {
+  swap('tpl-form');
+  const host = root.querySelector('.host')!;
+  host.textContent = new URL(url).hostname;
+
+  const $name = root.querySelector('[data-field="name"]') as HTMLInputElement;
+  const $url = root.querySelector('[data-field="url"]') as HTMLInputElement;
+  const $threshold = root.querySelector('[data-field="threshold"]') as HTMLInputElement;
+  const $css = root.querySelector('[data-field="css"]') as HTMLInputElement;
+  const $interval = root.querySelector('[data-field="interval"]') as HTMLInputElement;
+  $name.value = title;
+  $url.value = url;
+  $name.focus();
+  $name.select();
+
+  const $error = root.querySelector('[data-error]') as HTMLDivElement;
+
+  root.querySelector('[data-action="add"]')!.addEventListener('click', async () => {
+    $error.classList.add('hidden');
+    const payload: TrackerCreatePayload = {
+      name: $name.value.trim(),
+      url: $url.value,
+      threshold_price: parseThreshold($threshold.value),
+      css_selector: $css.value.trim() || null,
+      check_interval_minutes: parseInterval($interval.value),
+    };
+    if (!payload.name) { showError($error, 'Name is required.'); return; }
+    const msg: CreateMessage = { type: 'CREATE', payload };
+    const resp = await chrome.runtime.sendMessage(msg) as ExtensionResponse;
+    if (resp.ok && 'tracker' in resp && resp.tracker) {
+      renderSuccess(resp.tracker.id);
+    } else if (!resp.ok) {
+      showError($error, errorText(resp.error, resp.detail));
+    }
+  });
+}
+
+function renderSuccess(trackerId: number) {
+  swap('tpl-success');
+  const link = root.querySelector('[data-link]') as HTMLAnchorElement;
+  link.href = `https://prices.schultzsolutions.tech/tracker/${trackerId}`;
+  setTimeout(() => window.close(), 2000);
+}
+
+function renderError(text: string) {
+  swap('tpl-error');
+  (root.querySelector('[data-msg]') as HTMLElement).textContent = text;
+  root.querySelector('[data-action="retry"]')!.addEventListener('click', () => location.reload());
+  root.querySelector('[data-action="open-options"]')!.addEventListener('click', () => chrome.runtime.openOptionsPage());
+}
+
+function swap(tplId: string) {
+  const tpl = document.getElementById(tplId) as HTMLTemplateElement;
+  root.replaceChildren(tpl.content.cloneNode(true));
+}
+
+function showError(node: HTMLDivElement, msg: string) {
+  node.textContent = msg;
+  node.classList.remove('hidden');
+}
+
+function parseThreshold(s: string): number | null {
+  const n = parseFloat(s.replace(/[$,\s]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function parseInterval(s: string): number | undefined {
+  const n = parseInt(s, 10);
+  return Number.isFinite(n) && n >= 5 ? n : undefined;
+}
+
+function errorText(code: string, detail?: string): string {
+  switch (code) {
+    case 'NO_TOKEN': return 'Open Settings to paste your API token.';
+    case 'UNAUTHORIZED': return 'Token isn\'t working — re-paste in Settings.';
+    case 'NETWORK': return 'Couldn\'t reach prices.schultzsolutions.tech.';
+    case 'SERVER': return 'Server hiccup — try again, or add manually.';
+    case 'VALIDATION': return `URL doesn't look right${detail ? ` (${detail})` : ''}.`;
+    case 'CONFLICT': return 'Already tracking this URL.';
+    default: return 'Something went wrong.';
+  }
+}
+
+main().catch(err => renderError(String(err)));

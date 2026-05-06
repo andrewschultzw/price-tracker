@@ -6,6 +6,60 @@
 </head>
 <body>
   <div id="root"></div>
+
+  <template id="tpl-form">
+    <div class="header"><strong>Add to Price Tracker</strong><span class="host"></span></div>
+    <div class="body">
+      <label>Name</label>
+      <input data-field="name" type="text" />
+
+      <label>URL</label>
+      <input data-field="url" type="text" readonly />
+
+      <label>Threshold price (optional)</label>
+      <input data-field="threshold" type="text" placeholder="$0.00" />
+
+      <details class="advanced">
+        <summary>Advanced</summary>
+        <label>CSS selector (optional)</label>
+        <input data-field="css" type="text" />
+        <label>Check interval (minutes)</label>
+        <input data-field="interval" type="number" min="5" placeholder="360" />
+      </details>
+
+      <button data-action="add" class="primary">Add Tracker</button>
+      <div data-error class="error hidden"></div>
+    </div>
+  </template>
+
+  <template id="tpl-no-token">
+    <div class="header"><strong>Set up your API token</strong></div>
+    <div class="body center">
+      <p>The extension needs an API token from your Price Tracker.</p>
+      <button data-action="open-options" class="primary">Open Settings</button>
+    </div>
+  </template>
+
+  <template id="tpl-success">
+    <div class="header"><strong>Added ✓</strong></div>
+    <div class="body center">
+      <div class="check-icon">✓</div>
+      <div class="title">Tracking now</div>
+      <p class="muted">First scrape will run within the next cron tick.</p>
+      <a data-link class="ghost-button" target="_blank">View tracker →</a>
+      <div class="muted small">closes in 2s…</div>
+    </div>
+  </template>
+
+  <template id="tpl-error">
+    <div class="header"><strong>Couldn't add tracker</strong></div>
+    <div class="body">
+      <p data-msg></p>
+      <button data-action="retry" class="primary">Retry</button>
+      <button data-action="open-options" class="ghost">Open Settings</button>
+    </div>
+  </template>
+
   <script type="module" src="popup.ts"></script>
 </body>
 </html>
