@@ -166,6 +166,61 @@ describe('sendWebPushPriceAlert', () => {
     expect(sendNotificationMock).not.toHaveBeenCalled();
   });
 
+  it('HIGH confidence prefixes body with green emoji and appends reasons', async () => {
+    const u = seedUser();
+    upsertWebPushSubscription({ user_id: u, endpoint: 'https://fcm.googleapis.com/fcm/send/E', p256dh_key: 'P', auth_key: 'A', device_label: null, user_agent: null });
+    sendNotificationMock.mockResolvedValue({ statusCode: 201 });
+
+    await sendWebPushPriceAlert(makeTracker(u), 279, u, null, {
+      level: 'HIGH', reasons: ['12-month low', 'typically holds ~5 days'],
+    });
+
+    const payload = JSON.parse(sendNotificationMock.mock.calls[0][1]);
+    expect(payload.body.startsWith('🟢 ')).toBe(true);
+    expect(payload.body).toContain('12-month low · typically holds ~5 days');
+  });
+
+  it('MEDIUM confidence prefixes body with yellow emoji', async () => {
+    const u = seedUser();
+    upsertWebPushSubscription({ user_id: u, endpoint: 'https://fcm.googleapis.com/fcm/send/E', p256dh_key: 'P', auth_key: 'A', device_label: null, user_agent: null });
+    sendNotificationMock.mockResolvedValue({ statusCode: 201 });
+
+    await sendWebPushPriceAlert(makeTracker(u), 279, u, null, {
+      level: 'MEDIUM', reasons: ['30-day low'],
+    });
+
+    const payload = JSON.parse(sendNotificationMock.mock.calls[0][1]);
+    expect(payload.body.startsWith('🟡 ')).toBe(true);
+  });
+
+  it('LOW confidence body has no emoji prefix', async () => {
+    const u = seedUser();
+    upsertWebPushSubscription({ user_id: u, endpoint: 'https://fcm.googleapis.com/fcm/send/E', p256dh_key: 'P', auth_key: 'A', device_label: null, user_agent: null });
+    sendNotificationMock.mockResolvedValue({ statusCode: 201 });
+
+    await sendWebPushPriceAlert(makeTracker(u), 279, u, null, {
+      level: 'LOW', reasons: ['typically holds ~3 days'],
+    });
+
+    const payload = JSON.parse(sendNotificationMock.mock.calls[0][1]);
+    expect(payload.body.startsWith('🟢')).toBe(false);
+    expect(payload.body.startsWith('🟡')).toBe(false);
+    expect(payload.body).toContain('typically holds ~3 days');
+  });
+
+  it('null confidence renders identically to today', async () => {
+    const u = seedUser();
+    upsertWebPushSubscription({ user_id: u, endpoint: 'https://fcm.googleapis.com/fcm/send/E', p256dh_key: 'P', auth_key: 'A', device_label: null, user_agent: null });
+    sendNotificationMock.mockResolvedValue({ statusCode: 201 });
+
+    await sendWebPushPriceAlert(makeTracker(u), 279, u, '12-month low', null);
+
+    const payload = JSON.parse(sendNotificationMock.mock.calls[0][1]);
+    expect(payload.body.startsWith('🟢')).toBe(false);
+    expect(payload.body.startsWith('🟡')).toBe(false);
+    expect(payload.body).toContain('12-month low');
+  });
+
   it('one device 410 + one device success → returns true (any-success semantics)', async () => {
     const u = seedUser();
     upsertWebPushSubscription({ user_id: u, endpoint: 'https://fcm.googleapis.com/fcm/send/STALE', p256dh_key: 'P', auth_key: 'A', device_label: null, user_agent: null });

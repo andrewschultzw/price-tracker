@@ -38,4 +38,32 @@ describe('sendGenericPriceAlert', () => {
     const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
     expect(body.ai_commentary).toBe('12-month low.');
   });
+
+  it('confidence is null when not passed', async () => {
+    const fetchSpy = mockFetch();
+    await sendGenericPriceAlert(makeTracker(), 30, 'https://hooks.example/x', null);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.confidence).toBeNull();
+  });
+
+  it('includes confidence object in JSON when provided', async () => {
+    const fetchSpy = mockFetch();
+    await sendGenericPriceAlert(makeTracker(), 30, 'https://hooks.example/x', null, {
+      level: 'HIGH', reasons: ['12-month low', 'typically holds ~5 days'],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.confidence).toEqual({
+      level: 'HIGH',
+      reasons: ['12-month low', 'typically holds ~5 days'],
+    });
+  });
+
+  it('LOW confidence still serializes (level + reasons)', async () => {
+    const fetchSpy = mockFetch();
+    await sendGenericPriceAlert(makeTracker(), 30, 'https://hooks.example/x', null, {
+      level: 'LOW', reasons: [],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.confidence).toEqual({ level: 'LOW', reasons: [] });
+  });
 });

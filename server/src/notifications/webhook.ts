@@ -1,4 +1,5 @@
 import type { Tracker } from '../db/queries.js';
+import type { Confidence } from '../ai/confidence.js';
 import { logger } from '../logger.js';
 
 /**
@@ -31,6 +32,7 @@ export async function sendGenericPriceAlert(
   currentPrice: number,
   webhookUrl: string,
   aiCommentary?: string | null,
+  confidence?: Confidence | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
@@ -49,6 +51,7 @@ export async function sendGenericPriceAlert(
       error: null,
       consecutive_failures: null,
       ai_commentary: aiCommentary || null,
+      confidence: confidence ? { level: confidence.level, reasons: confidence.reasons } : null,
       timestamp: new Date().toISOString(),
     };
 

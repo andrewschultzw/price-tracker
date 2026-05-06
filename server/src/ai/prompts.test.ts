@@ -84,6 +84,27 @@ describe('buildAlertCopyPrompt', () => {
     expect(p.user).toContain('349.99');
     expect(p.user).toContain('279');
   });
+
+  it('serializes confidence into the cached signals block when provided', () => {
+    const p = buildAlertCopyPrompt({
+      trackerName: 'Samsung 990 Pro 4TB',
+      oldPrice: 349.99, newPrice: 279,
+      signals: sampleSignals, reasonKey: 'at_all_time_low',
+      confidence: { level: 'HIGH', reasons: ['12-month low', 'typically holds ~5 days'] },
+    });
+    expect(p.user).toContain('"level": "HIGH"');
+    expect(p.user).toContain('12-month low');
+    expect(p.user).toContain('typically holds ~5 days');
+  });
+
+  it('serializes confidence as null when not provided', () => {
+    const p = buildAlertCopyPrompt({
+      trackerName: 'Samsung 990 Pro 4TB',
+      oldPrice: 349.99, newPrice: 279,
+      signals: sampleSignals, reasonKey: 'at_all_time_low',
+    });
+    expect(p.user).toContain('"confidence": null');
+  });
 });
 
 const sampleProject: Project = {

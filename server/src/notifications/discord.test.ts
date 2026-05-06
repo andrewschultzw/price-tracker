@@ -105,6 +105,63 @@ describe('sendDiscordPriceAlert', () => {
     expect(JSON.stringify(body)).toContain('12-month low.');
     expect(body.embeds[0].description).toBe('12-month low.');
   });
+
+  it('renders HIGH confidence prefix and reasons line', async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 30, 'https://example/wh', null, {
+      level: 'HIGH', reasons: ['12-month low', 'typically holds ~5 days'],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.embeds[0].title).toBe('🟢 STRONG BUY — Price Drop Alert: Test Product');
+    expect(body.embeds[0].description).toBe('12-month low · typically holds ~5 days');
+  });
+
+  it('renders MEDIUM confidence prefix', async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 30, 'https://example/wh', null, {
+      level: 'MEDIUM', reasons: ['30-day low'],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.embeds[0].title).toBe('🟡 GOOD DEAL — Price Drop Alert: Test Product');
+    expect(body.embeds[0].description).toBe('30-day low');
+  });
+
+  it('LOW confidence omits prefix but still renders reasons', async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 30, 'https://example/wh', null, {
+      level: 'LOW', reasons: ['typically holds ~3 days'],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.embeds[0].title).toBe('Price Drop Alert: Test Product');
+    expect(body.embeds[0].description).toBe('typically holds ~3 days');
+  });
+
+  it('confidence with empty reasons array still applies prefix only', async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 30, 'https://example/wh', null, {
+      level: 'HIGH', reasons: [],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.embeds[0].title).toContain('🟢 STRONG BUY');
+    expect(body.embeds[0].description).toBeUndefined();
+  });
+
+  it('null confidence renders identically to today (no prefix, no reasons)', async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 30, 'https://example/wh', null, null);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.embeds[0].title).toBe('Price Drop Alert: Test Product');
+    expect(body.embeds[0].description).toBeUndefined();
+  });
+
+  it('combines aiCommentary above reasons line', async () => {
+    const fetchSpy = mockFetch();
+    await sendDiscordPriceAlert(makeTracker(), 30, 'https://example/wh', 'Strong buy.', {
+      level: 'HIGH', reasons: ['12-month low'],
+    });
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.embeds[0].description).toBe('Strong buy.\n12-month low');
+  });
 });
 
 describe('sendDiscordErrorAlert', () => {
