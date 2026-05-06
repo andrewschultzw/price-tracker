@@ -3,6 +3,7 @@ import { Save, Send, CheckCircle, XCircle, MessageSquare, Bell, Webhook, Mail, U
 import { getSettings, updateSettings, testWebhook, testNtfy, testGenericWebhook, testEmail } from '../api'
 import useTitle from '../useTitle'
 import { WebPushSettings } from '../components/WebPushSettings'
+import { ConnectedAppsCard } from '../components/ConnectedAppsCard'
 
 type ChannelKey = 'discord' | 'ntfy' | 'webhook' | 'email'
 
@@ -270,6 +271,10 @@ export default function SettingsPage() {
       </div>
 
       <WebPushSettings />
+
+      <div className="mt-4">
+        <ConnectedAppsCard />
+      </div>
 
       <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mt-4">
         <div className="flex items-center gap-2 mb-2">
