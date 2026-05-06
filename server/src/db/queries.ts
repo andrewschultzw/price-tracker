@@ -1,5 +1,6 @@
 import { getDb } from './connection.js';
 import { normalizeTrackerUrl } from '../lib/normalize-url.js';
+import { randomBytes, createHash } from 'crypto';
 
 export interface Tracker {
   id: number;
@@ -858,6 +859,75 @@ export function getRecentSuccessfulPricesForTracker(
     ORDER BY scraped_at ASC
   `).all(trackerId, sinceIso) as Array<{ price: number; scraped_at: string }>;
   return rows.map(r => ({ price: r.price, recorded_at: new Date(r.scraped_at).getTime() }));
+}
+
+// --- User API tokens (browser extension) ---
+
+export interface UserApiTokenRow {
+  id: number;
+  user_id: number;
+  name: string;
+  prefix: string;
+  created_at: number;
+  last_used_at: number | null;
+  revoked_at: number | null;
+}
+
+export interface CreatedUserApiToken {
+  id: number;
+  name: string;
+  token: string;     // plaintext — returned ONLY here, never stored
+  prefix: string;
+  created_at: number;
+}
+
+function hashToken(plaintext: string): string {
+  return createHash('sha256').update(plaintext).digest('hex');
+}
+
+export function createUserApiToken(userId: number, name: string): CreatedUserApiToken {
+  const plaintext = 'pt_' + randomBytes(32).toString('base64url');
+  const token_hash = hashToken(plaintext);
+  const prefix = plaintext.slice(0, 8);
+  const created_at = Date.now();
+  const id = Number(getDb().prepare(
+    `INSERT INTO user_api_tokens (user_id, name, token_hash, prefix, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(userId, name, token_hash, prefix, created_at).lastInsertRowid);
+  return { id, name, token: plaintext, prefix, created_at };
+}
+
+export function listUserApiTokensForUser(userId: number): UserApiTokenRow[] {
+  return getDb().prepare(
+    `SELECT id, user_id, name, prefix, created_at, last_used_at, revoked_at
+     FROM user_api_tokens WHERE user_id = ? ORDER BY created_at DESC`,
+  ).all(userId) as UserApiTokenRow[];
+}
+
+interface ActiveTokenLookup {
+  id: number;
+  user_id: number;
+}
+
+export function findActiveTokenByHash(token_hash: string): ActiveTokenLookup | null {
+  const row = getDb().prepare(
+    `SELECT id, user_id FROM user_api_tokens
+     WHERE token_hash = ? AND revoked_at IS NULL`,
+  ).get(token_hash) as ActiveTokenLookup | undefined;
+  return row ?? null;
+}
+
+export function revokeUserApiToken(tokenId: number, userId: number): boolean {
+  const result = getDb().prepare(
+    `UPDATE user_api_tokens SET revoked_at = ?
+     WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+  ).run(Date.now(), tokenId, userId);
+  return result.changes > 0;
+}
+
+export function touchTokenLastUsed(tokenId: number): void {
+  getDb().prepare(`UPDATE user_api_tokens SET last_used_at = ? WHERE id = ?`)
+    .run(Date.now(), tokenId);
 }
 
 // === Projects ===
