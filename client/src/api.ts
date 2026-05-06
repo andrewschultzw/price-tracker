@@ -328,3 +328,32 @@ export async function getPublicProduct(slug: string): Promise<PublicProduct> {
   if (!r.ok) throw new Error(`getPublicProduct failed: ${r.status}`);
   return r.json();
 }
+
+// === Community deal feed (anonymous /deals) ===
+
+export interface DealFeedEntry {
+  slug: string;
+  display_name: string;
+  current_price: number;
+  threshold_price: number;
+  drop_pct: number;
+  hours_ago: number;
+  normalized_url: string;
+}
+
+export interface DealFeedResponse {
+  entries: DealFeedEntry[];
+  generated_at: string;
+}
+
+/**
+ * Fetch the public community deal feed. Like getPublicProduct, this
+ * deliberately omits `credentials: 'include'` — the endpoint is fully
+ * public and we don't want to send the authenticated user's cookie when
+ * it isn't needed.
+ */
+export async function getCommunityDeals(): Promise<DealFeedResponse> {
+  const r = await fetch('/api/public/deals');
+  if (!r.ok) throw new Error(`getCommunityDeals failed: ${r.status}`);
+  return r.json();
+}

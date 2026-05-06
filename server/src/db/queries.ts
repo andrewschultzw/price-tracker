@@ -1332,3 +1332,62 @@ export function getStatsForNormalizedUrl(normalized_url: string): PublicProductS
     first_observed: history.first_observed ?? null,
   };
 }
+
+// === Community deal feed ===
+
+/**
+ * One entry in the public anonymous community deal feed at /deals. Sourced
+ * from `notifications` (a notification fired = "the user's threshold was
+ * beaten") joined to `public_product_slugs` for stable links to /p/<slug>.
+ *
+ * Privacy: NO user_id, NO tracker_id, NO usernames — only the product +
+ * the price/threshold pair that fired and a coarse hours-ago timestamp.
+ */
+export interface DealFeedEntry {
+  slug: string;
+  display_name: string;
+  current_price: number;
+  threshold_price: number;
+  drop_pct: number;
+  hours_ago: number;
+  normalized_url: string;
+}
+
+/**
+ * Build the community deal feed: most-recent threshold-beating notification
+ * per product, across users opted in via the `share_in_deal_feed` setting,
+ * over the last 7 days, sorted by drop-pct desc.
+ *
+ * Implementation note: a simple `GROUP BY pps.slug HAVING n.id = MAX(n.id)`
+ * on the joined rows is unreliable in SQLite when other (non-aggregated)
+ * columns from `n` appear in the SELECT — the engine is allowed to pick any
+ * row of the group for those bare columns. We instead pre-filter to the set
+ * of "max id per tracker" notifications BEFORE the joins, which guarantees
+ * one row per tracker (and therefore per product, given the tracker→
+ * normalized_url→slug fan-in).
+ */
+export function getCommunityDealFeed(limit: number = 50): DealFeedEntry[] {
+  return getDb().prepare(`
+    SELECT pps.slug,
+           pps.display_name,
+           pps.normalized_url,
+           n.price AS current_price,
+           n.threshold_price,
+           (n.threshold_price - n.price) * 1.0 / n.threshold_price AS drop_pct,
+           CAST((julianday('now') - julianday(n.sent_at)) * 24 AS INTEGER) AS hours_ago
+      FROM notifications n
+      JOIN trackers t ON t.id = n.tracker_id
+      JOIN public_product_slugs pps ON pps.normalized_url = t.normalized_url
+      JOIN settings s ON s.user_id = t.user_id
+                     AND s.key = 'share_in_deal_feed'
+                     AND s.value = 'true'
+     WHERE n.id IN (SELECT MAX(id) FROM notifications GROUP BY tracker_id)
+       AND n.sent_at >= datetime('now', '-7 days')
+       AND t.normalized_url IS NOT NULL
+       AND n.threshold_price > 0
+     GROUP BY pps.slug
+     HAVING n.id = MAX(n.id)
+     ORDER BY drop_pct DESC, n.sent_at DESC
+     LIMIT ?
+  `).all(limit) as DealFeedEntry[];
+}

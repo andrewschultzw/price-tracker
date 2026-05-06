@@ -14,6 +14,7 @@ const ALLOWED_SETTING_KEYS = new Set([
   'generic_webhook_url',
   'email_recipient',
   'share_display_name',
+  'share_in_deal_feed',
   'discord_cooldown_hours',
   'ntfy_cooldown_hours',
   'webhook_cooldown_hours',
