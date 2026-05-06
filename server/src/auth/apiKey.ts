@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
 import { timingSafeEqual, createHash } from 'crypto';
-import { config, isApiKeyConfigured } from '../config.js';
 import { getUserById } from '../db/user-queries.js';
 import { findActiveTokenByHash, touchTokenLastUsed } from '../db/queries.js';
 import { logger } from '../logger.js';
@@ -14,14 +13,19 @@ export function apiKeyMiddleware(req: Request, res: Response, next: NextFunction
   }
 
   // Branch 1 — global PRICE_TRACKER_API_KEY (OpenClaw-style shared key).
-  if (isApiKeyConfigured()) {
-    const expected = Buffer.from(config.priceTrackerApiKey);
+  // Read from process.env at runtime to allow test env mutations.
+  const globalApiKey = process.env.PRICE_TRACKER_API_KEY || '';
+  const globalApiKeyUserId = parseInt(process.env.PRICE_TRACKER_API_KEY_USER_ID || '0', 10);
+  const isGlobalKeyConfigured = !!(globalApiKey && globalApiKeyUserId > 0);
+
+  if (isGlobalKeyConfigured) {
+    const expected = Buffer.from(globalApiKey);
     const got = Buffer.from(headerValue);
     if (got.length === expected.length && timingSafeEqual(got, expected)) {
-      const user = getUserById(config.priceTrackerApiKeyUserId);
+      const user = getUserById(globalApiKeyUserId);
       if (!user) {
         logger.warn(
-          { userId: config.priceTrackerApiKeyUserId },
+          { userId: globalApiKeyUserId },
           'API key matched but PRICE_TRACKER_API_KEY_USER_ID does not exist',
         );
         res.status(401).json({ error: 'Invalid API key' });

@@ -65,3 +65,53 @@ describe('apiKeyMiddleware — user tokens', () => {
     expect(res.body.userId).toBeNull();
   });
 });
+
+describe('apiKeyMiddleware — global PRICE_TRACKER_API_KEY', () => {
+  beforeEach(() => {
+    process.env.PRICE_TRACKER_API_KEY = 'test-api-key-123456';
+    process.env.PRICE_TRACKER_API_KEY_USER_ID = String(seedUser('admin@x.com'));
+  });
+
+  it('matching global key → req.user set from PRICE_TRACKER_API_KEY_USER_ID', async () => {
+    const expectedUserId = Number(process.env.PRICE_TRACKER_API_KEY_USER_ID);
+    const res = await request(makeApp()).get('/').set('X-API-Key', 'test-api-key-123456');
+    expect(res.body.userId).toBe(expectedUserId);
+  });
+
+  it('wrong global key → 401', async () => {
+    const res = await request(makeApp()).get('/').set('X-API-Key', 'wrong-key-same-length');
+    expect(res.status).toBe(401);
+  });
+
+  it('mismatched-length key → 401 without crashing', async () => {
+    const res = await request(makeApp()).get('/').set('X-API-Key', 'short');
+    expect(res.status).toBe(401);
+  });
+
+  it('global key matches but mapped user does not exist → 401', async () => {
+    process.env.PRICE_TRACKER_API_KEY_USER_ID = '99999';
+    const res = await request(makeApp()).get('/').set('X-API-Key', 'test-api-key-123456');
+    expect(res.status).toBe(401);
+  });
+
+  it('empty header → next() without req.user (treated as absent)', async () => {
+    const res = await request(makeApp()).get('/').set('X-API-Key', '');
+    expect(res.status).toBe(200);
+    expect(res.body.userId).toBeNull();
+  });
+});
+
+describe('apiKeyMiddleware when API key auth is not configured', () => {
+  beforeEach(() => {
+    delete process.env.PRICE_TRACKER_API_KEY;
+    delete process.env.PRICE_TRACKER_API_KEY_USER_ID;
+  });
+
+  it('header set but no global key configured → still tries user-token branch (404 on miss)', async () => {
+    // When PRICE_TRACKER_API_KEY is unset, isApiKeyConfigured() returns false,
+    // so branch 1 is skipped. Branch 2 (user-token lookup) runs. Random header
+    // value won't match any token → 401.
+    const res = await request(makeApp()).get('/').set('X-API-Key', 'random-no-token-matches-this');
+    expect(res.status).toBe(401);
+  });
+});
