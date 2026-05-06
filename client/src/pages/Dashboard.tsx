@@ -7,6 +7,7 @@ import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
 import CategoryCard from '../components/CategoryCard'
 import StatCards from '../components/StatCards'
+import WelcomeModal from '../components/WelcomeModal'
 import useTitle from '../useTitle'
 import { buildDashboardLayout } from '../lib/dashboard-sort'
 
@@ -42,18 +43,21 @@ export default function Dashboard() {
 
   if (trackers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-80 gap-4">
-        <Package className="w-16 h-16 text-text-muted/50" />
-        <h2 className="text-xl font-semibold text-text">No trackers yet</h2>
-        <p className="text-text-muted">Add a product URL to start tracking prices.</p>
-        <Link
-          to="/add"
-          className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg font-medium transition-colors no-underline"
-        >
-          <Plus className="w-4 h-4" />
-          Add Tracker
-        </Link>
-      </div>
+      <>
+        <WelcomeModal hasNoTrackers={true} />
+        <div className="flex flex-col items-center justify-center h-80 gap-4">
+          <Package className="w-16 h-16 text-text-muted/50" />
+          <h2 className="text-xl font-semibold text-text">No trackers yet</h2>
+          <p className="text-text-muted">Add a product URL to start tracking prices.</p>
+          <Link
+            to="/add"
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg font-medium transition-colors no-underline"
+          >
+            <Plus className="w-4 h-4" />
+            Add Tracker
+          </Link>
+        </div>
+      </>
     )
   }
 
