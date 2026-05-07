@@ -166,6 +166,12 @@ async function firePriceAlerts(
     aiCommentary = null;
   }
 
+  // The "winning URL" for the alert is `seller` itself — checkTrackerUrl
+  // operates per-seller, so each invocation of firePriceAlerts already has
+  // the per-seller row whose price is being announced. Pass its condition
+  // through to every channel so non-'new' listings get tagged inline.
+  const sellerCondition = seller.condition;
+
   // Compute alert rank from confidence level (null confidence = LOW)
   const alertRank = confidence ? MIN_CONF_RANK[confidence.level] : MIN_CONF_RANK.LOW;
 
@@ -223,19 +229,19 @@ async function firePriceAlerts(
     let promise: Promise<boolean>;
     switch (name) {
       case 'discord':
-        promise = sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord!, aiCommentary, confidence);
+        promise = sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord!, aiCommentary, confidence, sellerCondition);
         break;
       case 'ntfy':
-        promise = sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy!, channels.ntfyToken, aiCommentary, confidence);
+        promise = sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy!, channels.ntfyToken, aiCommentary, confidence, sellerCondition);
         break;
       case 'webhook':
-        promise = sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook!, aiCommentary, confidence);
+        promise = sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook!, aiCommentary, confidence, sellerCondition);
         break;
       case 'email':
-        promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!, aiCommentary, confidence);
+        promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!, aiCommentary, confidence, sellerCondition);
         break;
       case 'web_push':
-        promise = sendWebPushPriceAlert(alertTracker, currentPrice, userId, aiCommentary, confidence);
+        promise = sendWebPushPriceAlert(alertTracker, currentPrice, userId, aiCommentary, confidence, sellerCondition);
         break;
     }
     tasks.push({ name, promise });

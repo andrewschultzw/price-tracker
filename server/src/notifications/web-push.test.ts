@@ -232,6 +232,30 @@ describe('sendWebPushPriceAlert', () => {
     const ok = await sendWebPushPriceAlert(makeTracker(u), 279, u, null);
     expect(ok).toBe(true);
   });
+
+  it("tags title and body with '(Warehouse)' when condition='warehouse'", async () => {
+    const u = seedUser();
+    upsertWebPushSubscription({ user_id: u, endpoint: 'https://fcm.googleapis.com/fcm/send/E', p256dh_key: 'P', auth_key: 'A', device_label: null, user_agent: null });
+    sendNotificationMock.mockResolvedValue({ statusCode: 201 });
+
+    await sendWebPushPriceAlert(makeTracker(u, { last_price: 300 }), 279, u, null, null, 'warehouse');
+
+    const payload = JSON.parse(sendNotificationMock.mock.calls[0][1]);
+    expect(payload.title).toContain('$279.00 (Warehouse)');
+  });
+
+  it("renders no condition tag for condition='new' (regression)", async () => {
+    const u = seedUser();
+    upsertWebPushSubscription({ user_id: u, endpoint: 'https://fcm.googleapis.com/fcm/send/E', p256dh_key: 'P', auth_key: 'A', device_label: null, user_agent: null });
+    sendNotificationMock.mockResolvedValue({ statusCode: 201 });
+
+    await sendWebPushPriceAlert(makeTracker(u, { last_price: 300 }), 279, u, null, null, 'new');
+
+    const payload = JSON.parse(sendNotificationMock.mock.calls[0][1]);
+    expect(payload.title).toBe('$279.00 — Samsung 990 Pro 4TB');
+    expect(payload.title).not.toContain('(Warehouse)');
+    expect(payload.title).not.toContain('(New)');
+  });
 });
 
 describe('sendWebPushBasketAlert', () => {

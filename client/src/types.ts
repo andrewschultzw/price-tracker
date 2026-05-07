@@ -32,6 +32,10 @@ export interface Tracker {
   ai_failure_count?: number;
 }
 
+// Listing condition for a per-seller URL. Mirrors the server enum.
+// Non-'new' values surface as a badge in the UI and a tag in alert text.
+export type TrackerUrlCondition = 'new' | 'warehouse' | 'refurb' | 'open_box';
+
 // Per-seller row (one row per URL under a tracker).
 export interface TrackerUrl {
   id: number;
@@ -43,6 +47,7 @@ export interface TrackerUrl {
   last_error: string | null;
   consecutive_failures: number;
   status: 'active' | 'paused' | 'error';
+  condition: TrackerUrlCondition;
   created_at: string;
   updated_at: string;
 }

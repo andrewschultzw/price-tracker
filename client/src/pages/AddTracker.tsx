@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, Loader2, CheckCircle } from 'lucide-react'
-import { createTracker, testScrape } from '../api'
-import type { ScrapeResult } from '../types'
+import { createTracker, testScrape, getTrackerUrls, updateTrackerUrlCondition } from '../api'
+import type { ScrapeResult, TrackerUrlCondition } from '../types'
 import useTitle from '../useTitle'
 
 export default function AddTracker() {
@@ -13,6 +13,7 @@ export default function AddTracker() {
   const [thresholdPrice, setThresholdPrice] = useState('')
   const [interval, setInterval] = useState('360')
   const [cssSelector, setCssSelector] = useState('')
+  const [condition, setCondition] = useState<TrackerUrlCondition>('new')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<ScrapeResult | null>(null)
   const [testError, setTestError] = useState('')
@@ -47,6 +48,21 @@ export default function AddTracker() {
         check_interval_minutes: parseInt(interval),
         css_selector: cssSelector || null,
       })
+      // The server creates the primary tracker_url with condition='new' by
+      // default; if the user picked a non-'new' condition, patch it now.
+      // Two round-trips is fine here — this page redirects right after.
+      if (condition !== 'new') {
+        try {
+          const urls = await getTrackerUrls(tracker.id)
+          const primary = urls.find(u => u.position === 0)
+          if (primary) {
+            await updateTrackerUrlCondition(tracker.id, primary.id, condition)
+          }
+        } catch {
+          // Non-fatal — tracker exists, condition just stays 'new'. The
+          // user can fix it from TrackerDetail's seller list.
+        }
+      }
       navigate(`/tracker/${tracker.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create tracker')
@@ -101,6 +117,22 @@ export default function AddTracker() {
             required
             className="w-full bg-surface border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-text-muted mb-1.5">
+            Condition <span className="text-text-muted/50">(of this listing)</span>
+          </label>
+          <select
+            value={condition}
+            onChange={e => setCondition(e.target.value as TrackerUrlCondition)}
+            className="w-full bg-surface border border-border rounded-lg px-4 py-2.5 text-text focus:outline-none focus:border-primary"
+          >
+            <option value="new">New</option>
+            <option value="warehouse">Warehouse (Amazon Warehouse / used-like-new)</option>
+            <option value="refurb">Refurbished</option>
+            <option value="open_box">Open Box</option>
+          </select>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

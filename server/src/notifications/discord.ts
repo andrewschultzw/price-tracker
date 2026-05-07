@@ -1,6 +1,7 @@
-import type { Tracker } from '../db/queries.js';
+import type { Tracker, TrackerUrlCondition } from '../db/queries.js';
 import type { Confidence } from '../ai/confidence.js';
 import { logger } from '../logger.js';
+import { conditionLabel, formatPriceWithCondition } from './condition-label.js';
 
 function discordTitlePrefix(level: Confidence['level']): string {
   if (level === 'HIGH') return '🟢 STRONG BUY — ';
@@ -11,6 +12,10 @@ function discordTitlePrefix(level: Confidence['level']): string {
 /**
  * Pure HTTP sender for Discord. Threshold checks and cooldown are handled
  * upstream in cron.ts so all notification channels share the same logic.
+ *
+ * `condition` (when non-'new') tags the Current Price field so a user sees
+ * "$239.00 (Warehouse)" instead of just "$239.00" — disambiguates a
+ * winning warehouse / refurb / open-box listing from a fresh-new one.
  */
 export async function sendDiscordPriceAlert(
   tracker: Tracker,
@@ -18,6 +23,7 @@ export async function sendDiscordPriceAlert(
   webhookUrl: string,
   aiCommentary?: string | null,
   confidence?: Confidence | null,
+  condition?: TrackerUrlCondition | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
@@ -29,7 +35,7 @@ export async function sendDiscordPriceAlert(
     title: `${titlePrefix}Price Drop Alert: ${tracker.name}`,
     color: 0x00c853,
     fields: [
-      { name: 'Current Price', value: `$${currentPrice.toFixed(2)}`, inline: true },
+      { name: 'Current Price', value: formatPriceWithCondition(currentPrice, condition), inline: true },
       { name: 'Threshold', value: `$${tracker.threshold_price.toFixed(2)}`, inline: true },
       { name: 'Savings', value: `$${savings}`, inline: true },
     ],

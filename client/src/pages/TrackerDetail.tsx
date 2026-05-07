@@ -4,10 +4,31 @@ import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Downlo
 import {
   getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker,
   getTrackerStats, getNotificationHistory,
-  getTrackerUrls, addTrackerUrl, deleteTrackerUrl, getOverlap,
+  getTrackerUrls, addTrackerUrl, deleteTrackerUrl, updateTrackerUrlCondition, getOverlap,
 } from '../api'
 import type { NotificationHistoryRow } from '../api'
-import type { Tracker, TrackerUrl, PriceRecord, Overlap } from '../types'
+import type { Tracker, TrackerUrl, TrackerUrlCondition, PriceRecord, Overlap } from '../types'
+
+const CONDITION_OPTIONS: Array<{ value: TrackerUrlCondition; label: string }> = [
+  { value: 'new', label: 'New' },
+  { value: 'warehouse', label: 'Warehouse' },
+  { value: 'refurb', label: 'Refurbished' },
+  { value: 'open_box', label: 'Open Box' },
+]
+
+function conditionBadgeClass(c: TrackerUrlCondition): string {
+  if (c === 'warehouse') return 'bg-warning/15 text-warning'
+  if (c === 'refurb') return 'bg-primary/15 text-primary'
+  if (c === 'open_box') return 'bg-success/15 text-success'
+  return ''
+}
+
+function conditionLabel(c: TrackerUrlCondition): string {
+  if (c === 'warehouse') return 'Warehouse'
+  if (c === 'refurb') return 'Refurbished'
+  if (c === 'open_box') return 'Open Box'
+  return 'New'
+}
 import StatusBadge from '../components/StatusBadge'
 import { AIInsightsCard } from '../components/AIInsightsCard'
 import useTitle from '../useTitle'
@@ -23,6 +44,7 @@ export default function TrackerDetail() {
   const [tracker, setTracker] = useState<Tracker | null>(null)
   const [sellers, setSellers] = useState<TrackerUrl[]>([])
   const [newSellerUrl, setNewSellerUrl] = useState('')
+  const [newSellerCondition, setNewSellerCondition] = useState<TrackerUrlCondition>('new')
   const [addingSellerBusy, setAddingSellerBusy] = useState(false)
   const [sellerError, setSellerError] = useState<string | null>(null)
   const [prices, setPrices] = useState<PriceRecord[]>([])
@@ -74,15 +96,30 @@ export default function TrackerDetail() {
     if (!trimmed) return
     setAddingSellerBusy(true)
     try {
-      const updated = await addTrackerUrl(trackerId, trimmed)
+      const updated = await addTrackerUrl(trackerId, trimmed, newSellerCondition)
       setSellers(updated)
       setNewSellerUrl('')
+      setNewSellerCondition('new')
       // Reload to pick up the freshly-scraped price on the tracker card
       await load()
     } catch (err) {
       setSellerError(err instanceof Error ? err.message : String(err))
     } finally {
       setAddingSellerBusy(false)
+    }
+  }
+
+  const handleChangeSellerCondition = async (sellerId: number, c: TrackerUrlCondition) => {
+    setSellerError(null)
+    // Optimistic — update local state immediately so the dropdown shows the
+    // new value while the PATCH is in flight; revert on failure.
+    const before = sellers
+    setSellers(sellers.map(s => s.id === sellerId ? { ...s, condition: c } : s))
+    try {
+      await updateTrackerUrlCondition(trackerId, sellerId, c)
+    } catch (err) {
+      setSellers(before)
+      setSellerError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -300,6 +337,7 @@ export default function TrackerDetail() {
             <thead>
               <tr className="text-text-muted text-xs border-b border-border">
                 <th className="text-left py-2 font-medium">Seller</th>
+                <th className="text-left py-2 font-medium pl-4">Condition</th>
                 <th className="text-right py-2 font-medium">Price</th>
                 <th className="text-left py-2 font-medium pl-4">Last checked</th>
                 <th className="text-left py-2 font-medium pl-4">Status</th>
@@ -328,8 +366,28 @@ export default function TrackerDetail() {
                         {isLowest && sellers.length > 1 && (
                           <span className="text-[10px] text-success bg-success/10 rounded px-1.5 py-0.5 flex-shrink-0">lowest</span>
                         )}
+                        {s.condition !== 'new' && (
+                          <span
+                            className={`text-[10px] rounded px-1.5 py-0.5 flex-shrink-0 ${conditionBadgeClass(s.condition)}`}
+                            title={`Listing condition: ${conditionLabel(s.condition)}`}
+                          >
+                            {conditionLabel(s.condition)}
+                          </span>
+                        )}
                         <ExternalLink className="w-3 h-3 text-text-muted flex-shrink-0" />
                       </a>
+                    </td>
+                    <td className="py-2 pl-4">
+                      <select
+                        value={s.condition}
+                        onChange={e => handleChangeSellerCondition(s.id, e.target.value as TrackerUrlCondition)}
+                        className="bg-bg border border-border rounded px-2 py-0.5 text-xs text-text focus:outline-none focus:border-primary"
+                        title="Change listing condition"
+                      >
+                        {CONDITION_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="py-2 text-right font-medium whitespace-nowrap">
                       {s.last_price != null ? `$${s.last_price.toFixed(2)}` : '--'}
@@ -370,6 +428,16 @@ export default function TrackerDetail() {
             className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text placeholder-text-muted/50 focus:outline-none focus:border-primary"
             onKeyDown={e => { if (e.key === 'Enter') handleAddSeller() }}
           />
+          <select
+            value={newSellerCondition}
+            onChange={e => setNewSellerCondition(e.target.value as TrackerUrlCondition)}
+            className="bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+            title="Listing condition for the new seller URL"
+          >
+            {CONDITION_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
           <button
             onClick={handleAddSeller}
             disabled={!newSellerUrl.trim() || addingSellerBusy}

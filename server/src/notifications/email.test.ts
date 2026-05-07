@@ -153,6 +153,34 @@ describe('sendEmailPriceAlert', () => {
     expect(m.html).not.toContain('<script>');
     expect(m.html).toContain('&lt;script&gt;');
   });
+
+  it("tags subject and body with 'Warehouse' when condition='warehouse'", async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 189.99, 'u@example.com', null, null, 'warehouse');
+    const m = sentMessages[0];
+    expect(m.subject).toContain('$189.99 (Warehouse)');
+    expect(m.text).toContain('$189.99 (Warehouse)');
+    expect(m.text).toContain('Condition: Warehouse');
+    expect(m.html).toContain('Warehouse');
+  });
+
+  it("tags subject and body with 'Refurbished' when condition='refurb'", async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 189.99, 'u@example.com', null, null, 'refurb');
+    const m = sentMessages[0];
+    expect(m.subject).toContain('$189.99 (Refurbished)');
+    expect(m.text).toContain('Condition: Refurbished');
+  });
+
+  it("renders no condition tag for condition='new' (regression)", async () => {
+    sentMessages.length = 0;
+    await sendEmailPriceAlert(makeTracker(), 189.99, 'u@example.com', null, null, 'new');
+    const m = sentMessages[0];
+    expect(m.subject).not.toContain('(Warehouse)');
+    expect(m.subject).not.toContain('(New)');
+    expect(m.subject).toContain('$189.99');
+    expect(m.text).not.toContain('Condition:');
+  });
 });
 
 describe('sendEmailErrorAlert', () => {
