@@ -1358,6 +1358,13 @@ export function getProductBySlug(slug: string): PublicProductSlug | null {
   return row ?? null;
 }
 
+export function getSlugByNormalizedUrl(normalized_url: string): string | null {
+  const row = getDb().prepare(
+    `SELECT slug FROM public_product_slugs WHERE normalized_url = ?`,
+  ).get(normalized_url) as { slug: string } | undefined;
+  return row?.slug ?? null;
+}
+
 /**
  * Every slug row, ordered oldest-first. Powers the sitemap.xml handler.
  * Kept narrow on purpose — no display name, no URL — sitemap only needs

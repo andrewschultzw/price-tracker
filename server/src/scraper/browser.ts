@@ -15,6 +15,11 @@ async function getBrowser(): Promise<Browser> {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        // Some retailers (notably Best Buy) trigger ERR_HTTP2_PROTOCOL_ERROR
+        // with Chromium's HTTP/2 implementation. Forcing HTTP/1.1 sidesteps
+        // it cleanly. We abort images/fonts/CSS anyway, so the parallelism
+        // benefit of HTTP/2 is negligible for scrape workloads.
+        '--disable-http2',
       ],
     });
   }

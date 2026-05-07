@@ -83,6 +83,7 @@ export default function TrackerDetail() {
   const [editThreshold, setEditThreshold] = useState('')
   const [editInterval, setEditInterval] = useState('')
   const [overlap, setOverlap] = useState<Overlap | null>(null)
+  const [publicSlug, setPublicSlug] = useState<string | null>(null)
   // Doorbuster mode editor state. Local strings (datetime-local format);
   // converted to ISO at save. Empty string = unset.
   const [doorbusterStart, setDoorbusterStart] = useState('')
@@ -188,6 +189,17 @@ export default function TrackerDetail() {
   }
 
   useEffect(() => { load() }, [trackerId, range])
+
+  // Resolve the public-page slug for this tracker (if it has one).
+  // Auto-created at tracker creation when normalized_url is present;
+  // missing (404) for trackers with un-normalizable URLs.
+  useEffect(() => {
+    if (!Number.isFinite(trackerId)) return
+    fetch(`/api/trackers/${trackerId}/public-slug`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setPublicSlug(data?.slug ?? null))
+      .catch(() => setPublicSlug(null))
+  }, [trackerId])
 
   const handleCheck = async () => {
     setChecking(true)
@@ -307,6 +319,16 @@ export default function TrackerDetail() {
               <span className="truncate">{tracker.url}</span>
               <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
             </a>
+            {publicSlug && (
+              <a
+                href={`/p/${publicSlug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-text-muted text-xs hover:text-primary flex items-center gap-1 mt-1"
+              >
+                <span>View public page →</span>
+              </a>
+            )}
             {/* Wishlist toggle. The PATCH at /api/wishlist/items/:id is the
                 primary mutation path; we reload the tracker after to pick up
                 the new flag value. is_wishlisted comes back from the server

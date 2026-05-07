@@ -6,6 +6,7 @@ import {
   getTrackerUrlsForTracker, addTrackerUrl, deleteTrackerUrl, refreshTrackerAggregates,
   updateTrackerUrlCondition,
   getOverlapForTracker, getOverlapCountsForUser,
+  getSlugByNormalizedUrl,
 } from '../db/queries.js';
 import { checkTracker, checkTrackerUrl } from '../scheduler/cron.js';
 import { extractPrice } from '../scraper/extractor.js';
@@ -95,6 +96,20 @@ router.get('/:id', (req: Request, res: Response) => {
     return;
   }
   res.json(tracker);
+});
+
+router.get('/:id/public-slug', (req: Request, res: Response) => {
+  const tracker = getTrackerById(Number(req.params.id), req.user!.userId);
+  if (!tracker || !tracker.normalized_url) {
+    res.status(404).json({ error: 'No public page' });
+    return;
+  }
+  const slug = getSlugByNormalizedUrl(tracker.normalized_url);
+  if (!slug) {
+    res.status(404).json({ error: 'No public page' });
+    return;
+  }
+  res.json({ slug });
 });
 
 router.put('/:id', (req: Request, res: Response) => {
