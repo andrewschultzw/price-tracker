@@ -33,6 +33,10 @@ const updateSchema = z
     doorbuster_start_at: z.string().nullable().optional(),
     doorbuster_end_at: z.string().nullable().optional(),
     doorbuster_interval_minutes: z.number().int().min(1).nullable().optional(),
+    // Wishlist toggle (migration v16). Convenience path — the dedicated
+    // PATCH /api/wishlist/items/:id is the primary flow but PUT here keeps
+    // bulk-updates working uniformly.
+    is_wishlisted: z.boolean().optional(),
   })
   .refine(
     data => {
@@ -99,7 +103,14 @@ router.put('/:id', (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const tracker = updateTracker(Number(req.params.id), parsed.data, req.user!.userId);
+  // is_wishlisted comes in as boolean from the client but is stored as 0/1
+  // in SQLite; coerce at the boundary so the rest of the data shape passes
+  // through to updateTracker unchanged.
+  const { is_wishlisted, ...rest } = parsed.data;
+  const data = is_wishlisted === undefined
+    ? rest
+    : { ...rest, is_wishlisted: is_wishlisted ? 1 : 0 };
+  const tracker = updateTracker(Number(req.params.id), data, req.user!.userId);
   if (!tracker) {
     res.status(404).json({ error: 'Tracker not found' });
     return;

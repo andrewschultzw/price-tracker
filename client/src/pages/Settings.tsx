@@ -5,6 +5,7 @@ import useTitle from '../useTitle'
 import { WebPushSettings } from '../components/WebPushSettings'
 import { ConnectedAppsCard } from '../components/ConnectedAppsCard'
 import { InvitesCard } from '../components/InvitesCard'
+import { WishlistCard } from '../components/WishlistCard'
 
 type ChannelKey = 'discord' | 'ntfy' | 'webhook' | 'email' | 'web_push'
 
@@ -327,6 +328,10 @@ export default function SettingsPage() {
 
       <div className="mt-4">
         <InvitesCard />
+      </div>
+
+      <div className="mt-4">
+        <WishlistCard />
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mt-4">

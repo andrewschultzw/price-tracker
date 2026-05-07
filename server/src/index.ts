@@ -19,6 +19,8 @@ import notificationRoutes from './routes/notifications.js';
 import projectsRoutes from './routes/projects.js';
 import webPushRoutes from './routes/web-push.js';
 import publicProductRoutes, { sitemapHandler } from './routes/public-products.js';
+import wishlistRoutes from './routes/wishlist.js';
+import publicWishlistRoutes from './routes/public-wishlist.js';
 import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { startBackfillCron, stopBackfillCron } from './ai/backfill-cron.js';
@@ -79,6 +81,11 @@ app.use('/api/auth', authRoutes);
 // and unauthenticated <img> tags are simpler than cookie-gated assets).
 app.use('/api/favicon', faviconRouter);
 
+// Public anonymous wishlist surface (token-gated, no auth). Mounted before
+// the broader /api/public mount so the more-specific path wins. Spec:
+// docs/superpowers/specs/2026-05-07-wishlist-mode-design.md
+app.use('/api/public/wishlist', publicWishlistRoutes);
+
 // Public product pages (intentionally no auth — anonymous CamelCamelCamel-
 // style aggregated price-history. Mount BEFORE the auth-gated routes so
 // no middleware accidentally gates access). Spec:
@@ -99,6 +106,7 @@ app.use('/api/notifications', apiKeyMiddleware, authMiddleware, notificationRout
 app.use('/api/admin', apiKeyMiddleware, authMiddleware, adminMiddleware, adminRoutes);
 app.use('/api/projects', apiKeyMiddleware, authMiddleware, projectsRoutes);
 app.use('/api/web-push', apiKeyMiddleware, authMiddleware, webPushRoutes);
+app.use('/api/wishlist', apiKeyMiddleware, authMiddleware, wishlistRoutes);
 
 // Helper: count cumulative AI failures across all trackers
 function countAIFailures(): number {

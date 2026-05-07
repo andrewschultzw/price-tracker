@@ -382,6 +382,99 @@ export async function getPublicProduct(slug: string): Promise<PublicProduct> {
   return r.json();
 }
 
+// === Wishlist / gift mode ===
+
+export interface OwnerWishlist {
+  items: Tracker[];
+  count: number;
+}
+
+export interface PublicWishlistItem {
+  tracker_id: number;
+  name: string;
+  url: string;
+  last_price: number | null;
+  ai_verdict_tier: 'BUY' | 'WAIT' | 'HOLD' | null;
+  ai_verdict_reason: string | null;
+  is_claimed: boolean;
+}
+
+export interface PublicWishlist {
+  display_name: string | null;
+  items: PublicWishlistItem[];
+}
+
+export async function getMyWishlist(): Promise<OwnerWishlist> {
+  const r = await fetch('/api/wishlist/me', { credentials: 'include' });
+  if (!r.ok) throw new Error(`getMyWishlist failed: ${r.status}`);
+  return r.json();
+}
+
+export async function getWishlistShareToken(): Promise<{ token: string; share_url: string }> {
+  const r = await fetch('/api/wishlist/share-token', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!r.ok) throw new Error(`getWishlistShareToken failed: ${r.status}`);
+  return r.json();
+}
+
+export async function rotateWishlistShareTokenApi(): Promise<{ token: string; share_url: string }> {
+  const r = await fetch('/api/wishlist/share-token', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rotate: true }),
+  });
+  if (!r.ok) throw new Error(`rotateWishlistShareToken failed: ${r.status}`);
+  return r.json();
+}
+
+export async function setTrackerWishlist(trackerId: number, isWishlisted: boolean): Promise<void> {
+  const r = await fetch(`/api/wishlist/items/${trackerId}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_wishlisted: isWishlisted }),
+  });
+  if (!r.ok) throw new Error(`setTrackerWishlist failed: ${r.status}`);
+}
+
+/**
+ * Fetch a public wishlist by share token. Like getPublicProduct, omits
+ * `credentials: 'include'` — the endpoint is public and we don't want to
+ * send the authenticated user's cookie when it isn't needed. Throws
+ * 'NOT_FOUND' on 404 so the page can render a clean error state.
+ */
+export async function getPublicWishlist(token: string): Promise<PublicWishlist> {
+  const r = await fetch(`/api/public/wishlist/${encodeURIComponent(token)}`);
+  if (r.status === 404) throw new Error('NOT_FOUND');
+  if (!r.ok) throw new Error(`getPublicWishlist failed: ${r.status}`);
+  return r.json();
+}
+
+export async function claimWishlistItem(token: string, trackerId: number): Promise<{ claim_token: string }> {
+  const r = await fetch(`/api/public/wishlist/${encodeURIComponent(token)}/claim/${trackerId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (r.status === 409) throw new Error('ALREADY_CLAIMED');
+  if (!r.ok) throw new Error(`claimWishlistItem failed: ${r.status}`);
+  return r.json();
+}
+
+export async function unclaimWishlistItem(token: string, trackerId: number, claimToken: string): Promise<void> {
+  const r = await fetch(`/api/public/wishlist/${encodeURIComponent(token)}/claim/${trackerId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ claim_token: claimToken }),
+  });
+  if (!r.ok) throw new Error(`unclaimWishlistItem failed: ${r.status}`);
+}
+
 // === Community deal feed (anonymous /deals) ===
 
 export interface DealFeedEntry {

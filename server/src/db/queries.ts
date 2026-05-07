@@ -41,6 +41,10 @@ export interface Tracker {
   doorbuster_start_at: string | null;
   doorbuster_end_at: string | null;
   doorbuster_interval_minutes: number | null;
+  // Wishlist (migration v16). Stored as INTEGER 0/1 in SQLite; the route
+  // layer coerces to/from boolean at the API boundary. Default 0 = "not on
+  // wishlist" so existing trackers stay private until explicitly toggled.
+  is_wishlisted: number;
 }
 
 /**
@@ -248,6 +252,10 @@ export function updateTracker(id: number, data: Partial<{
   doorbuster_start_at: string | null;
   doorbuster_end_at: string | null;
   doorbuster_interval_minutes: number | null;
+  // Wishlist toggle (migration v16). Stored as 0/1; boolean coerced to int
+  // by callers (Number(boolean) === 0|1 works for both directions). Primary
+  // mutation path is the dedicated PATCH at /api/wishlist/items/:id.
+  is_wishlisted: number;
 }>, userId?: number): Tracker | undefined {
   const fields: string[] = [];
   const values: Record<string, unknown> = { id };
@@ -1488,3 +1496,181 @@ export function getCommunityDealFeed(limit: number = 50): DealFeedEntry[] {
      LIMIT ?
   `).all(limit) as DealFeedEntry[];
 }
+
+// === Wishlist / gift mode (migration v16) ===
+
+/**
+ * Generate or return the user's existing wishlist share token. Idempotent —
+ * a user that already has a token gets the same one back; first-time callers
+ * get a freshly-generated `wl_<32>` value.
+ *
+ * Token format: `wl_` + 32 base64url chars (24 random bytes → 32 chars).
+ * 192 bits of entropy makes brute-force enumeration infeasible.
+ */
+export function generateOrGetWishlistShareToken(userId: number): string {
+  const existing = getDb().prepare(
+    'SELECT wishlist_share_token FROM users WHERE id = ?',
+  ).get(userId) as { wishlist_share_token: string | null } | undefined;
+  if (existing?.wishlist_share_token) return existing.wishlist_share_token;
+  const token = 'wl_' + randomBytes(24).toString('base64url');
+  getDb().prepare(
+    'UPDATE users SET wishlist_share_token = ? WHERE id = ?',
+  ).run(token, userId);
+  return token;
+}
+
+/**
+ * Replace the user's existing share token with a freshly-generated one.
+ * Anyone holding the old link will hit a 404 on next request — by design.
+ */
+export function rotateWishlistShareToken(userId: number): string {
+  const token = 'wl_' + randomBytes(24).toString('base64url');
+  getDb().prepare(
+    'UPDATE users SET wishlist_share_token = ? WHERE id = ?',
+  ).run(token, userId);
+  return token;
+}
+
+/**
+ * Look up a user by their wishlist share token. Returns null on miss
+ * (unknown / rotated / never-generated) so the route layer can 404 cleanly.
+ */
+export function getUserByWishlistToken(
+  token: string,
+): { id: number; display_name: string } | null {
+  const row = getDb().prepare(
+    'SELECT id, display_name FROM users WHERE wishlist_share_token = ?',
+  ).get(token) as { id: number; display_name: string } | undefined;
+  return row ?? null;
+}
+
+/**
+ * Toggle the per-tracker is_wishlisted flag. Ownership-scoped — a user can
+ * only flip their own trackers. Returns true on success, false on miss
+ * (unknown id OR cross-user request — the route returns 404 either way).
+ */
+export function setTrackerWishlistFlag(
+  trackerId: number,
+  userId: number,
+  isWishlisted: boolean,
+): boolean {
+  const result = getDb().prepare(
+    'UPDATE trackers SET is_wishlisted = ? WHERE id = ? AND user_id = ?',
+  ).run(isWishlisted ? 1 : 0, trackerId, userId);
+  return result.changes > 0;
+}
+
+/**
+ * Owner-side wishlist view. Returns the trackers this user has flagged as
+ * wishlisted, ordered by name. Deliberately DOES NOT join wishlist_claims —
+ * the owner stays surprise-blind. The dedicated public endpoint exposes
+ * claim status to gift-givers; this helper is for the owner UI only.
+ */
+export function getOwnerWishlist(userId: number): Tracker[] {
+  return getDb().prepare(
+    `SELECT * FROM trackers WHERE user_id = ? AND is_wishlisted = 1 ORDER BY name`,
+  ).all(userId) as Tracker[];
+}
+
+/**
+ * One row of the public wishlist GET response. Carries only the fields safe
+ * to expose to anonymous gift-givers: name, URL (so they can buy from the
+ * retailer), current low price, AI verdict pill, and claim status. NO
+ * threshold_price (that's the owner's private "buy under $X" target —
+ * leaking it could be embarrassing).
+ */
+export interface PublicWishlistItem {
+  tracker_id: number;
+  name: string;
+  url: string;
+  last_price: number | null;
+  ai_verdict_tier: 'BUY' | 'WAIT' | 'HOLD' | null;
+  ai_verdict_reason: string | null;
+  is_claimed: boolean;
+}
+
+/**
+ * Resolve a public-facing wishlist by share token. Returns the owner's
+ * display name (gated by the share_display_name setting at the route level)
+ * and a list of items with claim status. Null when the token doesn't match
+ * a user — route layer 404s without leaking existence.
+ */
+export function getPublicWishlistByToken(
+  token: string,
+): { display_name: string; share_display_name_on: boolean; items: PublicWishlistItem[] } | null {
+  const owner = getUserByWishlistToken(token);
+  if (!owner) return null;
+  const rows = getDb().prepare(`
+    SELECT t.id AS tracker_id, t.name, t.url, t.last_price,
+           t.ai_verdict_tier, t.ai_verdict_reason,
+           CASE WHEN c.id IS NOT NULL THEN 1 ELSE 0 END AS is_claimed
+    FROM trackers t
+    LEFT JOIN wishlist_claims c ON c.tracker_id = t.id
+    WHERE t.user_id = ? AND t.is_wishlisted = 1
+    ORDER BY t.name
+  `).all(owner.id) as Array<Omit<PublicWishlistItem, 'is_claimed'> & { is_claimed: number }>;
+  // share_display_name is a per-user setting (the same one that gates
+  // overlap-name visibility). Reuse it here so users have one consistent
+  // "show my name in public surfaces" toggle.
+  const shareSetting = getSetting('share_display_name', owner.id);
+  return {
+    display_name: owner.display_name,
+    share_display_name_on: shareSetting === 'true',
+    items: rows.map(r => ({ ...r, is_claimed: r.is_claimed === 1 })),
+  };
+}
+
+/**
+ * Claim a wishlist item. Returns the new claim_token on success or
+ * { error: 'already_claimed' } if any row already exists. The simple
+ * "any-claim wins" rule is intentional — there's no "second claim from a
+ * different person" semantics; first-come gets it, others see "already
+ * claimed by someone."
+ */
+export function createWishlistClaim(
+  trackerId: number,
+): { claim_token: string } | { error: 'already_claimed' } {
+  const existing = getDb().prepare(
+    'SELECT id FROM wishlist_claims WHERE tracker_id = ?',
+  ).get(trackerId);
+  if (existing) return { error: 'already_claimed' };
+  const claim_token = 'wc_' + randomBytes(24).toString('base64url');
+  getDb().prepare(
+    'INSERT INTO wishlist_claims (tracker_id, claim_token, claimed_at) VALUES (?, ?, ?)',
+  ).run(trackerId, claim_token, Date.now());
+  return { claim_token };
+}
+
+/**
+ * Release a claim. Requires the matching claim_token (the one returned at
+ * claim creation, saved in the claimer's localStorage). Returns false if no
+ * row matched the (tracker_id, claim_token) pair so the route layer 404s
+ * without leaking whether the wrong token vs. wrong tracker caused the miss.
+ */
+export function deleteWishlistClaim(
+  trackerId: number,
+  claimToken: string,
+): boolean {
+  const result = getDb().prepare(
+    'DELETE FROM wishlist_claims WHERE tracker_id = ? AND claim_token = ?',
+  ).run(trackerId, claimToken);
+  return result.changes > 0;
+}
+
+/**
+ * True iff this tracker is currently flagged as wishlisted AND owned by
+ * `userId`. The public claim endpoint uses this to verify a (token, tracker)
+ * pair before creating a claim row — prevents claiming someone else's
+ * non-wishlisted tracker by guessing IDs.
+ */
+export function isTrackerInUsersWishlist(
+  trackerId: number,
+  userId: number,
+): boolean {
+  const row = getDb().prepare(
+    'SELECT is_wishlisted FROM trackers WHERE id = ? AND user_id = ?',
+  ).get(trackerId, userId) as { is_wishlisted: number } | undefined;
+  return !!row && row.is_wishlisted === 1;
+}
+
+

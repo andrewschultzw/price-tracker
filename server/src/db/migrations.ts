@@ -495,6 +495,37 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 16,
+    description: 'Wishlist / gift mode: per-user share token, per-tracker flag, claims table',
+    up: () => {
+      const db = getDb();
+      const userCols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+      if (!userCols.some(c => c.name === 'wishlist_share_token')) {
+        db.prepare('ALTER TABLE users ADD COLUMN wishlist_share_token TEXT').run();
+        // UNIQUE on add-column not supported in some SQLite versions; create a
+        // unique index instead. Partial index on non-NULL so users without a
+        // generated token (the default) don't collide on NULL.
+        db.prepare(
+          `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_wishlist_share_token
+           ON users(wishlist_share_token) WHERE wishlist_share_token IS NOT NULL`,
+        ).run();
+      }
+      const trackerCols = db.prepare("PRAGMA table_info(trackers)").all() as { name: string }[];
+      if (!trackerCols.some(c => c.name === 'is_wishlisted')) {
+        db.prepare('ALTER TABLE trackers ADD COLUMN is_wishlisted INTEGER NOT NULL DEFAULT 0').run();
+      }
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS wishlist_claims (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tracker_id INTEGER NOT NULL REFERENCES trackers(id) ON DELETE CASCADE,
+          claim_token TEXT NOT NULL UNIQUE,
+          claimed_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_wishlist_claims_tracker ON wishlist_claims(tracker_id);
+      `);
+    },
+  },
 ];
 
 export function runMigrations(): void {
