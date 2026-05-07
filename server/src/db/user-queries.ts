@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { getDb } from './connection.js';
 import { hashToken } from '../auth/tokens.js';
+import { config } from '../config.js';
 
 export interface User {
   id: number;
@@ -135,8 +136,20 @@ export function resetUserPassword(id: number, passwordHash: string): boolean {
 
 // --- Invite Codes ---
 
+/**
+ * Create a new invite code. When `expiresAt` is omitted, defaults to
+ * `config.defaultInviteExpiryDays` (30) days from now. The stored format
+ * is the existing project convention — ISO8601 with the trailing `Z`
+ * stripped, so the SQL comparison `expires_at + 'Z'` in auth.ts and the
+ * SQLite `expires_at > datetime('now')` predicate both work.
+ */
 export function createInviteCode(createdBy: number, expiresAt?: string): InviteCode {
   const code = randomBytes(12).toString('hex');
+  const expires =
+    expiresAt ??
+    new Date(Date.now() + config.defaultInviteExpiryDays * 86_400_000)
+      .toISOString()
+      .replace('Z', '');
   const stmt = getDb().prepare(`
     INSERT INTO invite_codes (code, created_by, expires_at)
     VALUES (@code, @created_by, @expires_at)
@@ -144,7 +157,7 @@ export function createInviteCode(createdBy: number, expiresAt?: string): InviteC
   const result = stmt.run({
     code,
     created_by: createdBy,
-    expires_at: expiresAt ?? null,
+    expires_at: expires,
   });
   return getDb().prepare('SELECT * FROM invite_codes WHERE id = ?').get(Number(result.lastInsertRowid)) as InviteCode;
 }
@@ -153,12 +166,48 @@ export function getInviteByCode(code: string): InviteCode | undefined {
   return getDb().prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as InviteCode | undefined;
 }
 
+export function getInviteCodeById(id: number): InviteCode | undefined {
+  return getDb().prepare('SELECT * FROM invite_codes WHERE id = ?').get(id) as InviteCode | undefined;
+}
+
 export function markInviteUsed(code: string, usedBy: number): void {
   getDb().prepare('UPDATE invite_codes SET used_by = ? WHERE code = ?').run(usedBy, code);
 }
 
 export function getAllInviteCodes(): InviteCode[] {
   return getDb().prepare('SELECT * FROM invite_codes ORDER BY created_at DESC').all() as InviteCode[];
+}
+
+/**
+ * Per-user invite list (newest first). Used by `/api/invites` to render
+ * the user's own Invites card. Admins still use `getAllInviteCodes()`
+ * via the admin route for the system-wide view.
+ */
+export function getInviteCodesByUser(userId: number): InviteCode[] {
+  return getDb().prepare(
+    `SELECT * FROM invite_codes WHERE created_by = ? ORDER BY created_at DESC`
+  ).all(userId) as InviteCode[];
+}
+
+/**
+ * Count invites this user currently has outstanding — unused AND not
+ * expired. Used by the per-user quota check. We wrap `expires_at` in
+ * SQLite's `datetime()` so the comparison is timestamp-based regardless
+ * of whether the stored value was a naive ISO string (created via
+ * `createInviteCode`) or some legacy format.
+ */
+export function countActiveInvitesByUser(userId: number): number {
+  const row = getDb().prepare(`
+    SELECT COUNT(*) AS n
+    FROM invite_codes
+    WHERE created_by = ?
+      AND used_by IS NULL
+      AND (
+        expires_at IS NULL
+        OR datetime(expires_at) > datetime('now')
+      )
+  `).get(userId) as { n: number };
+  return row.n ?? 0;
 }
 
 export function deleteInviteCode(id: number): boolean {
