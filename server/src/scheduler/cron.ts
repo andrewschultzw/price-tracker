@@ -71,6 +71,15 @@ export function getCooldownHoursForChannel(userId: number, channel: ChannelName)
   return parsed;
 }
 
+const MIN_CONF_RANK = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
+
+export function getChannelMinConfidenceRank(userId: number, channel: ChannelName): number {
+  const raw = getSetting(`${channel}_min_confidence`, userId);
+  if (raw === 'MEDIUM') return MIN_CONF_RANK.MEDIUM;
+  if (raw === 'HIGH') return MIN_CONF_RANK.HIGH;
+  return MIN_CONF_RANK.LOW;
+}
+
 export function getEnabledChannels(userId: number | null | undefined): EnabledChannels {
   if (!userId) return {};
   const result: EnabledChannels = {
@@ -163,9 +172,33 @@ async function firePriceAlerts(
   // through to every channel so non-'new' listings get tagged inline.
   const sellerCondition = seller.condition;
 
-  for (const name of CHANNEL_NAMES) {
-    if (!channels[name]) continue;
+  // Compute alert rank from confidence level (null confidence = LOW)
+  const alertRank = confidence ? MIN_CONF_RANK[confidence.level] : MIN_CONF_RANK.LOW;
 
+  // Build per-channel minimum confidence ranks
+  const channelMinRanks = Object.fromEntries(
+    CHANNEL_NAMES.map(ch => [ch, getChannelMinConfidenceRank(userId, ch)])
+  ) as Record<ChannelName, number>;
+
+  // Filter to only channels that meet the confidence threshold
+  const allowedChannels = CHANNEL_NAMES.filter(
+    ch => channels[ch] && alertRank >= channelMinRanks[ch]
+  );
+
+  // If all channels are suppressed by confidence, log and return early
+  if (allowedChannels.length === 0) {
+    logger.info(
+      {
+        tracker_id: alertTracker.id,
+        user_id: userId,
+        confidence_level: confidence?.level ?? 'LOW',
+      },
+      'alert_suppressed_by_min_confidence'
+    );
+    return [];
+  }
+
+  for (const name of allowedChannels) {
     if (!bypassCooldown) {
       const cooldownHours = getCooldownHoursForChannel(userId, name);
       if (cooldownHours > 0) {

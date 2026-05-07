@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BarChart3, UserPlus } from 'lucide-react';
 import { register } from '../api';
@@ -13,8 +13,32 @@ export default function Register() {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [inviteState, setInviteState] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
+  const [inviterName, setInviterName] = useState<string | null>(null);
+  const [invalidReason, setInvalidReason] = useState<string | null>(null);
   const { setUser } = useAuth();
   const navigate = useNavigate();
+
+  // Validate invite code on mount
+  useEffect(() => {
+    if (!inviteCode) return;
+    setInviteState('checking');
+    fetch(`/api/auth/invite-info/${inviteCode}`)
+      .then(async r => {
+        const data = await r.json();
+        if (data.valid) {
+          setInviteState('valid');
+          setInviterName(data.inviter_name);
+        } else {
+          setInviteState('invalid');
+          setInvalidReason(data.reason);
+        }
+      })
+      .catch(() => {
+        setInviteState('invalid');
+        setInvalidReason('not_found');
+      });
+  }, [inviteCode]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -36,6 +60,7 @@ export default function Register() {
     }
   };
 
+  // No code in URL
   if (!inviteCode) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center px-4">
@@ -49,6 +74,42 @@ export default function Register() {
     );
   }
 
+  // Validating the invite code
+  if (inviteState === 'checking') {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center px-4">
+        <div className="bg-surface border border-border rounded-xl p-6 max-w-sm w-full text-center">
+          <div className="mb-4">
+            <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <p className="text-text-muted text-sm">Checking invite...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Invalid invite code
+  if (inviteState === 'invalid') {
+    const reasonMessages: Record<string, string> = {
+      'not_found': 'This invite link doesn\'t exist.',
+      'already_used': 'This invite has already been redeemed.',
+      'expired': 'This invite has expired.',
+    };
+    const message = reasonMessages[invalidReason || 'not_found'] || 'Invalid invite link.';
+
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center px-4">
+        <div className="bg-surface border border-border rounded-xl p-6 max-w-sm w-full text-center">
+          <h2 className="text-lg font-semibold mb-2 text-danger">Invite Invalid</h2>
+          <p className="text-text-muted text-sm">
+            {message}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Valid invite - show form
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
@@ -58,7 +119,12 @@ export default function Register() {
         </div>
 
         <div className="bg-surface border border-border rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4 text-center">Create Account</h2>
+          <h2 className="text-lg font-semibold mb-1 text-center">Create Account</h2>
+          {inviterName ? (
+            <p className="text-text-muted text-sm text-center mb-4">Invited by {inviterName}</p>
+          ) : (
+            <p className="text-text-muted text-sm text-center mb-4">Invited</p>
+          )}
 
           {error && (
             <div className="bg-danger/10 border border-danger/30 text-danger rounded-lg px-4 py-2 mb-4 text-sm">
