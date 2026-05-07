@@ -351,3 +351,62 @@ describe('Doorbuster — PUT /api/trackers/:id', () => {
   });
 });
 
+describe('GET /api/trackers/search', () => {
+  beforeEach(() => {
+    resetCrypto();
+    initSettingsCrypto(randomBytes(32).toString('base64'));
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    _setDbForTesting(db);
+    initializeSchema();
+  });
+
+  it('returns matching trackers for q=samsung', async () => {
+    const u = seedUser('a@x.com');
+    seedTracker(u, 'Samsung 990 Pro 4TB');
+    seedTracker(u, 'WD Red 10TB');
+    const app = await makeApp();
+    const res = await request(app)
+      .get('/api/trackers/search?q=samsung')
+      .set('Cookie', authCookie(u));
+    expect(res.status).toBe(200);
+    expect(res.body.query).toBe('samsung');
+    expect(res.body.results).toHaveLength(1);
+    expect(res.body.results[0].name).toBe('Samsung 990 Pro 4TB');
+  });
+
+  it('returns 400 when q is missing', async () => {
+    const u = seedUser('a@x.com');
+    const app = await makeApp();
+    const res = await request(app)
+      .get('/api/trackers/search')
+      .set('Cookie', authCookie(u));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/q is required/);
+  });
+
+  it('respects the limit query parameter', async () => {
+    const u = seedUser('a@x.com');
+    for (let i = 0; i < 5; i++) seedTracker(u, `Monitor ${i}`);
+    const app = await makeApp();
+    const res = await request(app)
+      .get('/api/trackers/search?q=monitor&limit=2')
+      .set('Cookie', authCookie(u));
+    expect(res.status).toBe(200);
+    expect(res.body.results).toHaveLength(2);
+  });
+
+  it('does not return another user\'s trackers', async () => {
+    const u1 = seedUser('a@x.com');
+    const u2 = seedUser('b@x.com');
+    seedTracker(u1, 'Samsung A');
+    seedTracker(u2, 'Samsung B');
+    const app = await makeApp();
+    const res = await request(app)
+      .get('/api/trackers/search?q=samsung')
+      .set('Cookie', authCookie(u1));
+    expect(res.status).toBe(200);
+    expect(res.body.results).toHaveLength(1);
+    expect(res.body.results[0].name).toBe('Samsung A');
+  });
+});
