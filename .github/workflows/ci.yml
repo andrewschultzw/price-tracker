@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test + Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            server/package-lock.json
+            client/package-lock.json
+            extension/package-lock.json
+
+      - name: Install server deps
+        working-directory: server
+        run: npm ci
+
+      - name: Install client deps
+        working-directory: client
+        run: npm ci
+
+      - name: Install extension deps
+        working-directory: extension
+        run: npm ci
+
+      - name: Server tests
+        working-directory: server
+        run: npm test -- --run
+
+      - name: Server typecheck
+        working-directory: server
+        run: npx tsc --noEmit
+
+      - name: Client tests
+        working-directory: client
+        run: npm test -- --run
+
+      - name: Client typecheck
+        working-directory: client
+        run: npx tsc --noEmit
+
+      - name: Client build (catches the silent-stale-bundle class of bug)
+        working-directory: client
+        run: npm run build
+
+      - name: Extension tests
+        working-directory: extension
+        run: npm test
+
+      - name: Extension typecheck
+        working-directory: extension
+        run: npm run typecheck
+
+      - name: Extension build
+        working-directory: extension
+        run: npm run build
