@@ -19,14 +19,39 @@ const createSchema = z.object({
   css_selector: z.string().nullable().optional(),
 });
 
-const updateSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  url: z.string().url().optional(),
-  threshold_price: z.number().positive().nullable().optional(),
-  check_interval_minutes: z.number().int().min(5).optional(),
-  css_selector: z.string().nullable().optional(),
-  status: z.enum(['active', 'paused']).optional(),
-});
+const updateSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    url: z.string().url().optional(),
+    threshold_price: z.number().positive().nullable().optional(),
+    check_interval_minutes: z.number().int().min(5).optional(),
+    css_selector: z.string().nullable().optional(),
+    status: z.enum(['active', 'paused']).optional(),
+    // Doorbuster fields (migration v14). All three are atomic — see refine
+    // below. ISO strings (datetime-local from the UI is .toISOString()).
+    doorbuster_start_at: z.string().nullable().optional(),
+    doorbuster_end_at: z.string().nullable().optional(),
+    doorbuster_interval_minutes: z.number().int().min(1).nullable().optional(),
+  })
+  .refine(
+    data => {
+      // The three doorbuster fields are atomic: either all three set
+      // (turning the feature on) or all three null/absent (turning it off
+      // or leaving it off). Mixed states are rejected so the UI can never
+      // half-configure the window.
+      const fields = [
+        data.doorbuster_start_at,
+        data.doorbuster_end_at,
+        data.doorbuster_interval_minutes,
+      ];
+      const setCount = fields.filter(f => f !== undefined && f !== null).length;
+      return setCount === 0 || setCount === 3;
+    },
+    {
+      message:
+        'doorbuster_start_at, doorbuster_end_at, and doorbuster_interval_minutes must all be set together',
+    },
+  );
 
 router.get('/', (req: Request, res: Response) => {
   const trackers = getAllTrackers(req.user!.userId);

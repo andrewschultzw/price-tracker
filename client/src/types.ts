@@ -30,6 +30,12 @@ export interface Tracker {
   ai_summary_updated_at?: number | null;
   ai_signals_json?: string | null;
   ai_failure_count?: number;
+  // Doorbuster mode (server migration v14). All three nullable; "active"
+  // only when all three are populated AND `now` is between start and end.
+  // ISO 8601 timestamps; interval is in minutes.
+  doorbuster_start_at?: string | null;
+  doorbuster_end_at?: string | null;
+  doorbuster_interval_minutes?: number | null;
 }
 
 // Per-seller row (one row per URL under a tracker).

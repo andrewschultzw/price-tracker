@@ -454,6 +454,31 @@ const migrations: Migration[] = [
       logger.info({ candidateRows: rows.length, inserted }, 'Backfilled public_product_slugs');
     },
   },
+  {
+    version: 14,
+    description: 'Doorbuster mode: per-tracker accelerated-cadence window',
+    up: () => {
+      const db = getDb();
+      // All three columns nullable so the feature is OFF by default for every
+      // existing tracker. The CHECK on doorbuster_interval_minutes enforces
+      // sane lower bound when set; nullability + CHECK are idempotent on
+      // re-run because we guard each ALTER on PRAGMA table_info.
+      const cols = db.prepare("PRAGMA table_info(trackers)").all() as { name: string }[];
+      const colNames = new Set(cols.map(c => c.name));
+      if (!colNames.has('doorbuster_start_at')) {
+        db.prepare('ALTER TABLE trackers ADD COLUMN doorbuster_start_at TEXT').run();
+      }
+      if (!colNames.has('doorbuster_end_at')) {
+        db.prepare('ALTER TABLE trackers ADD COLUMN doorbuster_end_at TEXT').run();
+      }
+      if (!colNames.has('doorbuster_interval_minutes')) {
+        db.prepare(
+          `ALTER TABLE trackers ADD COLUMN doorbuster_interval_minutes INTEGER
+           CHECK(doorbuster_interval_minutes IS NULL OR doorbuster_interval_minutes >= 1)`
+        ).run();
+      }
+    },
+  },
 ];
 
 export function runMigrations(): void {
