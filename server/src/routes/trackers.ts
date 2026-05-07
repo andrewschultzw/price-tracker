@@ -4,6 +4,7 @@ import {
   getAllTrackers, getTrackerById, createTracker, updateTracker, deleteTracker,
   getRecentPricesForAllTrackers, getTrackerStats,
   getTrackerUrlsForTracker, addTrackerUrl, deleteTrackerUrl, refreshTrackerAggregates,
+  updateTrackerUrlCondition,
   getOverlapForTracker, getOverlapCountsForUser,
 } from '../db/queries.js';
 import { checkTracker, checkTrackerUrl } from '../scheduler/cron.js';
@@ -143,8 +144,15 @@ router.get('/:id/overlap', (req: Request, res: Response) => {
 
 // --- Seller URLs (tracker_urls) ---
 
+const CONDITION_VALUES = ['new', 'warehouse', 'refurb', 'open_box'] as const;
+
 const addUrlSchema = z.object({
   url: z.string().url(),
+  condition: z.enum(CONDITION_VALUES).default('new'),
+});
+
+const updateUrlConditionSchema = z.object({
+  condition: z.enum(CONDITION_VALUES),
 });
 
 // List sellers for a tracker
@@ -169,7 +177,7 @@ router.post('/:id/urls', async (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const newSeller = addTrackerUrl(tracker.id, parsed.data.url);
+  const newSeller = addTrackerUrl(tracker.id, parsed.data.url, parsed.data.condition);
 
   // Scrape immediately so the user sees a price right away instead of
   // waiting for the next cron tick. bypassCooldown=true because this is
@@ -185,6 +193,30 @@ router.post('/:id/urls', async (req: Request, res: Response) => {
 
   const updated = getTrackerUrlsForTracker(tracker.id);
   res.status(201).json(updated);
+});
+
+// Update a seller URL's condition (new/warehouse/refurb/open_box)
+router.patch('/:id/urls/:urlId', (req: Request, res: Response) => {
+  const parsed = updateUrlConditionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const ok = updateTrackerUrlCondition(
+    Number(req.params.urlId),
+    Number(req.params.id),
+    req.user!.userId,
+    parsed.data.condition,
+  );
+  if (!ok) {
+    // Either the tracker doesn't belong to this user, or the URL doesn't
+    // belong to that tracker. Return 404 either way — same pattern as
+    // the existing tracker URL CRUD: never leak existence of cross-user
+    // resources.
+    res.status(404).json({ error: 'Tracker URL not found' });
+    return;
+  }
+  res.status(204).send();
 });
 
 // Delete a seller URL from a tracker

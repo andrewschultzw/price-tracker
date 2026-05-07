@@ -1,6 +1,7 @@
-import type { Tracker } from '../db/queries.js';
+import type { Tracker, TrackerUrlCondition } from '../db/queries.js';
 import type { Confidence } from '../ai/confidence.js';
 import { logger } from '../logger.js';
+import { formatPriceWithCondition } from './condition-label.js';
 
 function ntfyTitlePrefix(level: Confidence['level']): string {
   if (level === 'HIGH') return '[STRONG] ';
@@ -96,6 +97,7 @@ export async function sendNtfyPriceAlert(
   ntfyToken?: string,
   aiCommentary?: string | null,
   confidence?: Confidence | null,
+  condition?: TrackerUrlCondition | null,
 ): Promise<boolean> {
   if (!tracker.threshold_price) return false;
 
@@ -108,7 +110,8 @@ export async function sendNtfyPriceAlert(
   }
 
   const savings = (tracker.threshold_price - currentPrice).toFixed(2);
-  const baseMessage = `Now $${currentPrice.toFixed(2)} (target $${tracker.threshold_price.toFixed(2)}, save $${savings})`;
+  // formatPriceWithCondition tags non-'new' conditions: "Now $239 (Warehouse)".
+  const baseMessage = `Now ${formatPriceWithCondition(currentPrice, condition)} (target $${tracker.threshold_price.toFixed(2)}, save $${savings})`;
   const messageParts: string[] = [baseMessage];
   if (aiCommentary) messageParts.push(aiCommentary);
   if (confidence && confidence.reasons.length > 0) {

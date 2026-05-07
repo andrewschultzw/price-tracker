@@ -456,6 +456,22 @@ const migrations: Migration[] = [
   },
   {
     version: 14,
+    description: 'Add condition column to tracker_urls (new/warehouse/refurb/open_box)',
+    up: () => {
+      const db = getDb();
+      const cols = db.prepare("PRAGMA table_info(tracker_urls)").all() as { name: string }[];
+      if (cols.some(c => c.name === 'condition')) return; // idempotent
+      // SQLite supports ADD COLUMN with CHECK constraints in 3.25+. better-
+      // sqlite3 ships well above that bar (4.0+), so the simple form is safe.
+      db.exec(`
+        ALTER TABLE tracker_urls
+          ADD COLUMN condition TEXT NOT NULL DEFAULT 'new'
+          CHECK(condition IN ('new', 'warehouse', 'refurb', 'open_box'))
+      `);
+    },
+  },
+  {
+    version: 15,
     description: 'Doorbuster mode: per-tracker accelerated-cadence window',
     up: () => {
       const db = getDb();

@@ -77,4 +77,27 @@ describe('sendNtfyPriceAlert', () => {
     expect(body.title).toBe('Price Drop: Test');
     expect(body.message).not.toContain('STRONG');
   });
+
+  it("tags the price with '(Warehouse)' when condition='warehouse'", async () => {
+    const fetchSpy = mockFetch();
+    await sendNtfyPriceAlert(makeTracker(), 30, 'https://ntfy.example/topic', undefined, null, null, 'warehouse');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.message).toContain('Now $30.00 (Warehouse)');
+  });
+
+  it("tags the price with '(Open Box)' when condition='open_box'", async () => {
+    const fetchSpy = mockFetch();
+    await sendNtfyPriceAlert(makeTracker(), 30, 'https://ntfy.example/topic', undefined, null, null, 'open_box');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.message).toContain('Now $30.00 (Open Box)');
+  });
+
+  it("renders no condition tag for condition='new' (regression)", async () => {
+    const fetchSpy = mockFetch();
+    await sendNtfyPriceAlert(makeTracker(), 30, 'https://ntfy.example/topic', undefined, null, null, 'new');
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+    expect(body.message).toContain('Now $30.00 ');
+    expect(body.message).not.toContain('(New)');
+    expect(body.message).not.toContain('(Warehouse)');
+  });
 });

@@ -57,6 +57,10 @@ export function initializeSchema(): void {
       -- docs/superpowers/specs/2026-04-27-plausibility-guard-design.md.
       pending_confirmation_price REAL,
       pending_confirmation_at TEXT,
+      -- Listing condition (migration v14). 'new' is the default; other
+      -- values let alerts disambiguate "Amazon Warehouse $239" vs "$279 new".
+      condition TEXT NOT NULL DEFAULT 'new'
+        CHECK(condition IN ('new', 'warehouse', 'refurb', 'open_box')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );

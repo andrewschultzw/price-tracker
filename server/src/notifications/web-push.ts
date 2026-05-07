@@ -6,9 +6,10 @@ import {
   updateWebPushLastUsedAt,
 } from '../db/queries.js';
 import { logger } from '../logger.js';
-import type { Tracker } from '../db/queries.js';
+import type { Tracker, TrackerUrlCondition } from '../db/queries.js';
 import type { Confidence } from '../ai/confidence.js';
 import type { Project, BasketState, BasketMember } from '../projects/types.js';
+import { formatPriceWithCondition } from './condition-label.js';
 
 function webPushBodyPrefix(level: Confidence['level']): string {
   if (level === 'HIGH') return '🟢 ';
@@ -92,11 +93,14 @@ export async function sendWebPushPriceAlert(
   userId: number,
   aiCommentary: string | null,
   confidence?: Confidence | null,
+  condition?: TrackerUrlCondition | null,
 ): Promise<boolean> {
-  const title = `$${currentPrice.toFixed(2)} — ${tracker.name}`;
+  // Tag both the title and the body so the condition is visible whether
+  // the user only sees the lock-screen preview (title) or expands.
+  const title = `${formatPriceWithCondition(currentPrice, condition)} — ${tracker.name}`;
   const baseBody = tracker.last_price !== null && tracker.last_price > currentPrice
     ? `Down from $${tracker.last_price.toFixed(2)}`
-    : `Now at $${currentPrice.toFixed(2)}`;
+    : `Now at ${formatPriceWithCondition(currentPrice, condition)}`;
 
   const prefix = confidence ? webPushBodyPrefix(confidence.level) : '';
   // Existing format keeps ` — ` between baseBody and aiCommentary so today's

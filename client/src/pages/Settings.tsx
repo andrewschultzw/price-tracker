@@ -4,6 +4,7 @@ import { getSettings, updateSettings, testWebhook, testNtfy, testGenericWebhook,
 import useTitle from '../useTitle'
 import { WebPushSettings } from '../components/WebPushSettings'
 import { ConnectedAppsCard } from '../components/ConnectedAppsCard'
+import { InvitesCard } from '../components/InvitesCard'
 
 type ChannelKey = 'discord' | 'ntfy' | 'webhook' | 'email' | 'web_push'
 
@@ -322,6 +323,10 @@ export default function SettingsPage() {
 
       <div className="mt-4">
         <ConnectedAppsCard />
+      </div>
+
+      <div className="mt-4">
+        <InvitesCard />
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mt-4">

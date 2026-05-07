@@ -1,4 +1,4 @@
-import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail, WebPushDevice, SubscribePayload } from './types';
+import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail, WebPushDevice, SubscribePayload, TrackerUrlCondition } from './types';
 
 const BASE = '/api';
 
@@ -144,12 +144,24 @@ export const getNotificationHistory = (trackerId?: number, limit?: number) => {
 import type { TrackerUrl } from './types'
 export const getTrackerUrls = (trackerId: number) =>
   request<TrackerUrl[]>(`/trackers/${trackerId}/urls`);
-export const addTrackerUrl = (trackerId: number, url: string) =>
+export const addTrackerUrl = (
+  trackerId: number,
+  url: string,
+  condition: TrackerUrlCondition = 'new',
+) =>
   request<TrackerUrl[]>(`/trackers/${trackerId}/urls`, {
-    method: 'POST', body: JSON.stringify({ url }),
+    method: 'POST', body: JSON.stringify({ url, condition }),
   });
 export const deleteTrackerUrl = (trackerId: number, urlId: number) =>
   request<TrackerUrl[]>(`/trackers/${trackerId}/urls/${urlId}`, { method: 'DELETE' });
+export const updateTrackerUrlCondition = (
+  trackerId: number,
+  urlId: number,
+  condition: TrackerUrlCondition,
+) =>
+  request<void>(`/trackers/${trackerId}/urls/${urlId}`, {
+    method: 'PATCH', body: JSON.stringify({ condition }),
+  });
 
 // Settings
 export const getSettings = () => request<Record<string, string>>('/settings');
@@ -300,6 +312,47 @@ export async function revokeApiToken(id: number): Promise<void> {
     method: 'DELETE', credentials: 'include',
   });
   if (!r.ok) throw new Error(`revokeApiToken failed: ${r.status}`);
+}
+
+// === Per-user invites (Settings → Invites card) ===
+
+export interface InviteQuota {
+  used: number;
+  /** null = unlimited (admin) */
+  remaining: number | null;
+  default: number;
+}
+
+export async function getMyInvites(): Promise<InviteCode[]> {
+  const r = await fetch('/api/invites', { credentials: 'include' });
+  if (!r.ok) throw new Error(`getMyInvites failed: ${r.status}`);
+  return r.json();
+}
+
+export async function getMyInviteQuota(): Promise<InviteQuota> {
+  const r = await fetch('/api/invites/quota', { credentials: 'include' });
+  if (!r.ok) throw new Error(`getMyInviteQuota failed: ${r.status}`);
+  return r.json();
+}
+
+export async function createMyInvite(expires_at?: string): Promise<InviteCode> {
+  const r = await fetch('/api/invites', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expires_at }),
+  });
+  if (r.status === 429) throw new Error('QUOTA_REACHED');
+  if (!r.ok) throw new Error(`createMyInvite failed: ${r.status}`);
+  return r.json();
+}
+
+export async function deleteMyInvite(id: number): Promise<void> {
+  const r = await fetch(`/api/invites/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!r.ok) throw new Error(`deleteMyInvite failed: ${r.status}`);
 }
 
 // === Public product pages (anonymous /p/<slug>) ===
