@@ -1,5 +1,19 @@
-import { isTestConnection, isCreate, isCheckDup } from '../lib/messages.js';
-import { testConnection, createTracker, listTrackers } from '../lib/api.js';
+import {
+  isTestConnection,
+  isCreate,
+  isCheckDup,
+  isListProjects,
+  isAddToProject,
+  isUpdateThreshold,
+} from '../lib/messages.js';
+import {
+  testConnection,
+  createTracker,
+  listTrackers,
+  listProjects,
+  addTrackerToProject,
+  updateTrackerThreshold,
+} from '../lib/api.js';
 import { normalizeTrackerUrl } from '../lib/normalize-url.js';
 import type { ExtensionResponse, ErrorCode } from '../lib/messages.js';
 import type { Tracker } from '../types/api.js';
@@ -26,6 +40,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 const TRACKER_LIST_TTL_MS = 60_000;
+const BADGE_TRACKED = '✓';
+const BADGE_COLOR = '#10b981';
 
 interface CachedList {
   fetchedAt: number;
@@ -49,6 +65,58 @@ async function invalidateTrackerCache(): Promise<void> {
   await chrome.storage.session.remove('trackerListCache');
 }
 
+async function updateBadgeForTab(tabId: number, url: string | undefined): Promise<void> {
+  if (!url) {
+    await chrome.action.setBadgeText({ tabId, text: '' });
+    return;
+  }
+  const normalized = normalizeTrackerUrl(url);
+  if (!normalized) {
+    await chrome.action.setBadgeText({ tabId, text: '' });
+    return;
+  }
+  // Best-effort: skip silently on token errors / network failures.
+  try {
+    const trackers = await getCachedTrackerList();
+    const matched = trackers.some(t => t.normalized_url === normalized);
+    if (matched) {
+      await chrome.action.setBadgeText({ tabId, text: BADGE_TRACKED });
+      await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR });
+    } else {
+      await chrome.action.setBadgeText({ tabId, text: '' });
+    }
+  } catch {
+    await chrome.action.setBadgeText({ tabId, text: '' });
+  }
+}
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    await updateBadgeForTab(tabId, tab.url);
+  } catch {
+    // tab might be gone — ignore
+  }
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // Only react when the page finishes loading. URL updates without a
+  // 'complete' status (e.g. SPA pushState) won't be reliable anyway.
+  if (changeInfo.status !== 'complete') return;
+  await updateBadgeForTab(tabId, tab.url);
+});
+
+async function repaintActiveTabBadge(): Promise<void> {
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (activeTab?.id && activeTab.url) {
+      await updateBadgeForTab(activeTab.id, activeTab.url);
+    }
+  } catch {
+    // ignore — badge is best-effort
+  }
+}
+
 async function dispatch(msg: unknown): Promise<ExtensionResponse> {
   try {
     if (isTestConnection(msg)) {
@@ -66,6 +134,23 @@ async function dispatch(msg: unknown): Promise<ExtensionResponse> {
     }
     if (isCreate(msg)) {
       const tracker = await createTracker(msg.payload);
+      await invalidateTrackerCache();
+      // Re-prime the cache so the new tracker is included, then repaint
+      // the badge on the active tab so the green ✓ appears immediately.
+      await getCachedTrackerList();
+      await repaintActiveTabBadge();
+      return { ok: true, tracker };
+    }
+    if (isListProjects(msg)) {
+      const projects = await listProjects();
+      return { ok: true, projects: projects.map(p => ({ id: p.id, name: p.name })) };
+    }
+    if (isAddToProject(msg)) {
+      await addTrackerToProject(msg.project_id, msg.tracker_id);
+      return { ok: true };
+    }
+    if (isUpdateThreshold(msg)) {
+      const tracker = await updateTrackerThreshold(msg.tracker_id, msg.threshold);
       await invalidateTrackerCache();
       return { ok: true, tracker };
     }

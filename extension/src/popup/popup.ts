@@ -1,5 +1,13 @@
 import { getStoredToken } from '../lib/api.js';
-import type { ExtensionResponse, CreateMessage, CheckDupMessage, ErrorCode } from '../lib/messages.js';
+import type {
+  ExtensionResponse,
+  CreateMessage,
+  CheckDupMessage,
+  ListProjectsMessage,
+  AddToProjectMessage,
+  UpdateThresholdMessage,
+  ErrorCode,
+} from '../lib/messages.js';
 import type { TrackerCreatePayload, Tracker } from '../types/api.js';
 
 const root = document.getElementById('root')!;
@@ -62,7 +70,7 @@ function renderForm(url: string, title: string) {
     const msg: CreateMessage = { type: 'CREATE', payload };
     const resp = await chrome.runtime.sendMessage(msg) as ExtensionResponse;
     if (resp.ok && 'tracker' in resp && resp.tracker) {
-      renderSuccess(resp.tracker.id);
+      void renderSuccess(resp.tracker.id);
     } else if (!resp.ok) {
       showError($error, errorText(resp.error, resp.detail));
     }
@@ -86,13 +94,116 @@ function renderDup(tracker: Tracker) {
     tracker.ai_verdict_reason ?? '';
   (root.querySelector('[data-link]') as HTMLAnchorElement).href =
     `https://prices.schultzsolutions.tech/tracker/${tracker.id}`;
+
+  // Threshold display + inline edit
+  const thresholdDisplay = root.querySelector('[data-threshold-display]') as HTMLElement;
+  const editBtn = root.querySelector('[data-edit-threshold]') as HTMLButtonElement;
+  const editRow = root.querySelector('[data-threshold-edit]') as HTMLDivElement;
+  const input = root.querySelector('[data-threshold-input]') as HTMLInputElement;
+  const saveBtn = root.querySelector('[data-save-threshold]') as HTMLButtonElement;
+
+  function fmtThreshold(v: number | null): string {
+    return v !== null ? `$${v.toFixed(2)}` : 'not set';
+  }
+  thresholdDisplay.textContent = fmtThreshold(tracker.threshold_price);
+  input.value = tracker.threshold_price !== null ? String(tracker.threshold_price) : '';
+
+  editBtn.addEventListener('click', () => {
+    editRow.classList.remove('hidden');
+    editBtn.style.display = 'none';
+    input.focus();
+    input.select();
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const raw = input.value.trim().replace(/[$,\s]/g, '');
+    let next: number | null;
+    if (raw === '') {
+      next = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n <= 0) {
+        saveBtn.textContent = 'Invalid';
+        setTimeout(() => { saveBtn.textContent = 'Save'; }, 1500);
+        return;
+      }
+      next = n;
+    }
+    saveBtn.disabled = true;
+    saveBtn.textContent = '...';
+    const resp = await chrome.runtime.sendMessage({
+      type: 'UPDATE_THRESHOLD',
+      tracker_id: tracker.id,
+      threshold: next,
+    } satisfies UpdateThresholdMessage) as ExtensionResponse;
+    if (resp.ok && 'tracker' in resp && resp.tracker) {
+      thresholdDisplay.textContent = fmtThreshold(resp.tracker.threshold_price);
+      editRow.classList.add('hidden');
+      editBtn.style.display = '';
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    } else {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Retry';
+    }
+  });
 }
 
-function renderSuccess(trackerId: number) {
+async function renderSuccess(trackerId: number) {
   swap('tpl-success');
   const link = root.querySelector('[data-link]') as HTMLAnchorElement;
   link.href = `https://prices.schultzsolutions.tech/tracker/${trackerId}`;
-  setTimeout(() => window.close(), 2000);
+
+  let userInteracted = false;
+  const projectsContainer = root.querySelector('[data-add-to-project]') as HTMLDivElement;
+  const select = root.querySelector('[data-project-select]') as HTMLSelectElement;
+  const addBtn = root.querySelector('[data-add-project]') as HTMLButtonElement;
+
+  // Start the 2s auto-close timer up-front so the success state still
+  // closes promptly even if LIST_PROJECTS is slow. Defers if user has
+  // started interacting with the picker.
+  setTimeout(() => {
+    if (!userInteracted) window.close();
+  }, 2000);
+
+  // Lazy-load projects list. Hide the section if API returns 0 projects
+  // or fails — failure is non-fatal for the success state.
+  const resp = await chrome.runtime.sendMessage({
+    type: 'LIST_PROJECTS',
+  } satisfies ListProjectsMessage) as ExtensionResponse;
+
+  if (resp.ok && 'projects' in resp && resp.projects.length > 0) {
+    projectsContainer.classList.remove('hidden');
+    for (const p of resp.projects) {
+      const opt = document.createElement('option');
+      opt.value = String(p.id);
+      opt.textContent = p.name;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => {
+      userInteracted = true;
+      if (select.value) addBtn.classList.add('visible');
+      else addBtn.classList.remove('visible');
+    });
+    addBtn.addEventListener('click', async () => {
+      const projectId = Number(select.value);
+      if (!projectId) return;
+      addBtn.disabled = true;
+      addBtn.textContent = 'Adding...';
+      const result = await chrome.runtime.sendMessage({
+        type: 'ADD_TO_PROJECT',
+        project_id: projectId,
+        tracker_id: trackerId,
+      } satisfies AddToProjectMessage) as ExtensionResponse;
+      if (result.ok) {
+        addBtn.textContent = 'Added ✓';
+        setTimeout(() => window.close(), 1000);
+      } else {
+        addBtn.disabled = false;
+        addBtn.textContent = 'Retry';
+      }
+    });
+  }
 }
 
 function renderError(text: string) {

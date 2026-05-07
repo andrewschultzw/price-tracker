@@ -99,6 +99,82 @@ button.ghost, .ghost-button {
 .verdict-pill.buy { background: #10b981; }
 .verdict-pill.wait { background: #f59e0b; }
 .verdict-pill.hold { background: #94a3b8; }
+.project-picker {
+  margin-top: 12px;
+  text-align: left;
+}
+.project-picker-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  display: block;
+}
+.project-picker-select {
+  width: 100%;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 7px 9px;
+  color: #f1f5f9;
+  font-size: 13px;
+  font-family: inherit;
+  margin-bottom: 8px;
+}
+.project-picker-button {
+  display: none;
+}
+.project-picker-button.visible {
+  display: block;
+}
+.threshold-row {
+  margin: 8px 0;
+  padding: 8px;
+  background: #1e293b;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.threshold-label {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.threshold-display {
+  flex: 1;
+  font-size: 13px;
+}
+.threshold-edit-btn {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  width: auto;
+  margin-top: 0;
+}
+.threshold-edit-row {
+  margin: 8px 0;
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.threshold-edit-row.hidden { display: none; }
+.threshold-input {
+  flex: 1;
+  margin-bottom: 0;
+}
+.threshold-save-btn {
+  width: 70px;
+  padding: 7px;
+  margin-top: 0;
+  flex-shrink: 0;
+}
 .loading { padding: 30px 14px; }
 .spinner {
   width: 20px; height: 20px;
