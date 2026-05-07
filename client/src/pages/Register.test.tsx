@@ -30,7 +30,7 @@ describe('Register - Invite Validation', () => {
   });
 
   it('shows inviter name when share_display_name is true', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       json: async () => ({
         valid: true,
         inviter_name: 'Alice',
@@ -48,7 +48,7 @@ describe('Register - Invite Validation', () => {
   });
 
   it('shows "Invited" when inviter_name is null', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       json: async () => ({
         valid: true,
         inviter_name: null,
@@ -66,7 +66,7 @@ describe('Register - Invite Validation', () => {
   });
 
   it('shows "already used" error for used codes', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       json: async () => ({
         valid: false,
         reason: 'already_used',
@@ -83,7 +83,7 @@ describe('Register - Invite Validation', () => {
   });
 
   it('shows "not found" error for unknown codes', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       json: async () => ({
         valid: false,
         reason: 'not_found',
@@ -100,7 +100,7 @@ describe('Register - Invite Validation', () => {
   });
 
   it('shows "expired" error for expired codes', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       json: async () => ({
         valid: false,
         reason: 'expired',
