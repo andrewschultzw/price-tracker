@@ -27,6 +27,10 @@ import PublicProduct from './pages/PublicProduct'
 // users hit the dashboard first; the deal feed is a secondary entry point.
 const CommunityDeals = lazy(() => import('./pages/CommunityDeals'))
 
+// Public anonymous wishlist (/wishlist/:token). Lazy-loaded — most app
+// users won't visit it; gift-givers reach it via direct link.
+const WishlistPublic = lazy(() => import('./pages/WishlistPublic'))
+
 // Everything else is lazy. Each of these becomes its own chunk that
 // the browser only fetches when the user actually navigates there.
 const AddTracker = lazy(() => import('./pages/AddTracker'))
@@ -62,7 +66,7 @@ function App() {
   // there's no header/nav variance for SEO crawlers and so a logged-in user
   // can also share an anonymous link without seeing their own dashboard
   // chrome bleed in.
-  const PUBLIC_PATH_PREFIXES = ['/login', '/register', '/setup', '/p/', '/deals']
+  const PUBLIC_PATH_PREFIXES = ['/login', '/register', '/setup', '/p/', '/deals', '/wishlist/']
   if (PUBLIC_PATH_PREFIXES.some(p => location.pathname === p || location.pathname.startsWith(p))) {
     return (
       <Suspense fallback={<RouteFallback />}>
@@ -72,6 +76,7 @@ function App() {
           <Route path="/setup" element={<Setup />} />
           <Route path="/p/:slug" element={<PublicProduct />} />
           <Route path="/deals" element={<CommunityDeals />} />
+          <Route path="/wishlist/:token" element={<WishlistPublic />} />
         </Routes>
       </Suspense>
     )

@@ -5,6 +5,7 @@ import {
   getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker,
   getTrackerStats, getNotificationHistory,
   getTrackerUrls, addTrackerUrl, deleteTrackerUrl, updateTrackerUrlCondition, getOverlap,
+  setTrackerWishlist,
 } from '../api'
 import type { NotificationHistoryRow } from '../api'
 import type { Tracker, TrackerUrl, TrackerUrlCondition, PriceRecord, Overlap } from '../types'
@@ -306,6 +307,25 @@ export default function TrackerDetail() {
               <span className="truncate">{tracker.url}</span>
               <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
             </a>
+            {/* Wishlist toggle. The PATCH at /api/wishlist/items/:id is the
+                primary mutation path; we reload the tracker after to pick up
+                the new flag value. is_wishlisted comes back from the server
+                as 0/1 — coerce to boolean for the UI state read. */}
+            <button
+              onClick={async () => {
+                const next = !tracker.is_wishlisted
+                await setTrackerWishlist(trackerId, next)
+                await load()
+              }}
+              className={`mt-2 text-xs px-2 py-1 rounded inline-flex items-center gap-1 ${
+                tracker.is_wishlisted
+                  ? 'bg-primary text-white'
+                  : 'bg-surface border border-border text-text-muted hover:border-primary'
+              }`}
+              title={tracker.is_wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+            >
+              {tracker.is_wishlisted ? '🎁 On wishlist' : '+ Add to wishlist'}
+            </button>
           </div>
           <div className="flex-shrink-0">
             <StatusBadge status={tracker.status} />

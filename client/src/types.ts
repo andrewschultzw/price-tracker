@@ -36,6 +36,11 @@ export interface Tracker {
   doorbuster_start_at?: string | null;
   doorbuster_end_at?: string | null;
   doorbuster_interval_minutes?: number | null;
+  // Wishlist toggle (server migration v16). The server stores 0/1 in SQLite;
+  // the JSON response coerces to boolean at the route boundary on writes via
+  // PUT /trackers/:id, but list/detail responses pass the raw 0/1 through —
+  // hence the boolean | number union here. Treat truthy values as "on."
+  is_wishlisted?: boolean | number;
 }
 
 // Listing condition for a per-seller URL. Mirrors the server enum.
