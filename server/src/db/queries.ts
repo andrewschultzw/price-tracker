@@ -699,6 +699,41 @@ export function getTrackerStats(userId: number, sparklineLimit: number = 10): Re
   return result;
 }
 
+/**
+ * Fuzzy search for the authenticated user's trackers by name. Used by
+ * the NL-query OpenClaw skill: "the LG monitor" -> needs to resolve to
+ * a tracker_id. Case-insensitive substring match, ranked by name length
+ * (shorter names that contain the query rank higher — they're more
+ * likely the exact thing the user meant).
+ *
+ * Returns the smallest useful set of fields for disambiguation: id,
+ * name, last_price, ai_verdict_tier. Capped at `limit` (default 5).
+ */
+export function searchTrackersByName(userId: number, q: string, limit: number = 5): Array<{
+  id: number;
+  name: string;
+  last_price: number | null;
+  ai_verdict_tier: 'BUY' | 'WAIT' | 'HOLD' | null;
+}> {
+  const trimmed = q.trim();
+  if (!trimmed) return [];
+  const pattern = '%' + trimmed.toLowerCase() + '%';
+  return getDb().prepare(`
+    SELECT id, name, last_price, ai_verdict_tier
+    FROM trackers
+    WHERE user_id = ?
+      AND status = 'active'
+      AND lower(name) LIKE ?
+    ORDER BY length(name) ASC, name ASC
+    LIMIT ?
+  `).all(userId, pattern, limit) as Array<{
+    id: number;
+    name: string;
+    last_price: number | null;
+    ai_verdict_tier: 'BUY' | 'WAIT' | 'HOLD' | null;
+  }>;
+}
+
 // --- Notifications ---
 
 export function addNotification(

@@ -7,6 +7,7 @@ import {
   updateTrackerUrlCondition,
   getOverlapForTracker, getOverlapCountsForUser,
   getSlugByNormalizedUrl,
+  searchTrackersByName,
 } from '../db/queries.js';
 import { checkTracker, checkTrackerUrl } from '../scheduler/cron.js';
 import { extractPrice } from '../scraper/extractor.js';
@@ -77,6 +78,21 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/overlap-counts', (req: Request, res: Response) => {
   const counts = getOverlapCountsForUser(req.user!.userId);
   res.json(counts);
+});
+
+// Fuzzy tracker search by name. Used by the NL-query OpenClaw skill to
+// resolve a free-text reference ("the LG monitor") to a tracker_id.
+// Declared BEFORE /:id so Express's pattern matcher doesn't capture
+// "search" as the :id param.
+router.get('/search', (req: Request, res: Response) => {
+  const q = String(req.query.q ?? '').trim();
+  if (!q) {
+    res.status(400).json({ error: 'Query parameter q is required' });
+    return;
+  }
+  const limit = req.query.limit ? Math.min(Number(req.query.limit) || 5, 20) : 5;
+  const results = searchTrackersByName(req.user!.userId, q, limit);
+  res.json({ query: q, results });
 });
 
 router.post('/', (req: Request, res: Response) => {
