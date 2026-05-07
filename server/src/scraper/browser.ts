@@ -66,11 +66,14 @@ export async function fetchPageContent(url: string): Promise<FetchResult> {
 
     let response;
     try {
-      // 60s ceiling. Retailers like Best Buy often take 35-50s to reach
-      // domcontentloaded under HTTP/1.1 (we forced this in browser launch
-      // args to dodge ERR_HTTP2_PROTOCOL_ERROR). 30s was too tight; 60s
-      // accommodates the slow ones without bloating happy-path latency.
-      response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      // Use 'commit' (just first-byte received) instead of 'domcontentloaded'.
+      // Some retailers (notably Best Buy) keep the network busy with bot-detection
+      // and analytics scripts well past the actual content load, so domcontentloaded
+      // never fires within any reasonable timeout. Price data comes from server-
+      // rendered JSON-LD which lands in the initial HTML, so we don't need
+      // domcontentloaded — just the response. The post-goto wait below gives
+      // dynamic content a chance to render for sites that need it.
+      response = await page.goto(url, { waitUntil: 'commit', timeout: 30000 });
     } catch (err) {
       // Playwright throws on network errors, DNS failures, and timeouts.
       // These are transient — classify as retryable.
@@ -91,8 +94,11 @@ export async function fetchPageContent(url: string): Promise<FetchResult> {
       }
     }
 
-    // Wait a bit for JS to render prices
-    await page.waitForTimeout(2000);
+    // Wait for JS to render prices. 5s is enough for any retailer to populate
+    // dynamic content on top of the server-rendered HTML; longer would dilute
+    // happy-path scrape throughput. 'commit' navigation gets us here within
+    // ~1s for slow sites, so total page time is bounded at ~6s in practice.
+    await page.waitForTimeout(5000);
 
     const html = await page.content();
 
