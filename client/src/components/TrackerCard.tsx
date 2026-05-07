@@ -1,11 +1,28 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Clock, RefreshCw, BellOff, TrendingDown, Store, Users } from 'lucide-react'
+import { ExternalLink, Clock, RefreshCw, BellOff, TrendingDown, Store, Users, Zap } from 'lucide-react'
 import type { Tracker } from '../types'
 import StatusBadge from './StatusBadge'
 import Sparkline from './Sparkline'
 import { VerdictPill } from './VerdictPill'
 import { checkTracker } from '../api'
 import { useState } from 'react'
+
+/**
+ * Mirrors the server-side isDoorbusterActive() helper in queries.ts. The
+ * feature is only "on" when all three doorbuster fields are populated AND
+ * `now` falls inside [start, end]. Anything else returns false so the
+ * badge stays hidden.
+ */
+function isDoorbusterActiveClient(tracker: Tracker): boolean {
+  if (!tracker.doorbuster_start_at || !tracker.doorbuster_end_at || !tracker.doorbuster_interval_minutes) {
+    return false
+  }
+  const now = new Date()
+  const start = new Date(tracker.doorbuster_start_at)
+  const end = new Date(tracker.doorbuster_end_at)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false
+  return now >= start && now <= end
+}
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return 'Never'
@@ -73,7 +90,18 @@ export default function TrackerCard({ tracker, sparklineData, minPrice = null, o
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
-          <h3 className="text-text font-semibold text-base truncate">{tracker.name}</h3>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3 className="text-text font-semibold text-base truncate">{tracker.name}</h3>
+            {isDoorbusterActiveClient(tracker) && (
+              <span
+                className="inline-flex items-center gap-0.5 text-[10px] font-medium bg-warning/15 text-warning rounded px-1.5 py-0.5 flex-shrink-0"
+                title={`Doorbuster mode active until ${new Date(tracker.doorbuster_end_at!).toLocaleString()} — checking every ${tracker.doorbuster_interval_minutes} min`}
+              >
+                <Zap className="w-3 h-3" />
+                Doorbuster
+              </span>
+            )}
+          </div>
           {overlapCount !== undefined && overlapCount > 0 && (
             <div className="inline-flex items-center gap-1 text-xs text-text-muted bg-surface-hover rounded-full px-2 py-0.5 mt-1">
               <Users className="w-3 h-3" />

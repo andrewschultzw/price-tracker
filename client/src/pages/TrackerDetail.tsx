@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Download, Plus, X, Store, Users, TrendingDown } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Download, Plus, X, Store, Users, TrendingDown, Zap } from 'lucide-react'
 import {
   getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker,
   getTrackerStats, getNotificationHistory,
@@ -38,6 +38,30 @@ import useTitle from '../useTitle'
 // in. The chart area shows a brief loading state during that window.
 const PriceChart = lazy(() => import('../components/PriceChart'))
 
+/**
+ * Convert an ISO timestamp (UTC) to the value format an
+ * <input type="datetime-local"> expects (YYYY-MM-DDTHH:mm in LOCAL time).
+ * Returns '' for null/undefined/invalid.
+ */
+function isoToDateTimeLocal(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/**
+ * Convert a datetime-local input value (LOCAL time, no timezone) to an
+ * ISO 8601 string (UTC). Returns null for empty input.
+ */
+function dateTimeLocalToIso(local: string): string | null {
+  if (!local) return null
+  const d = new Date(local)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toISOString()
+}
+
 export default function TrackerDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -58,6 +82,13 @@ export default function TrackerDetail() {
   const [editThreshold, setEditThreshold] = useState('')
   const [editInterval, setEditInterval] = useState('')
   const [overlap, setOverlap] = useState<Overlap | null>(null)
+  // Doorbuster mode editor state. Local strings (datetime-local format);
+  // converted to ISO at save. Empty string = unset.
+  const [doorbusterStart, setDoorbusterStart] = useState('')
+  const [doorbusterEnd, setDoorbusterEnd] = useState('')
+  const [doorbusterInterval, setDoorbusterInterval] = useState('')
+  const [doorbusterError, setDoorbusterError] = useState<string | null>(null)
+  const [doorbusterSaving, setDoorbusterSaving] = useState(false)
 
   const trackerId = Number(id)
   useTitle(tracker?.name || 'Tracker')
@@ -77,6 +108,12 @@ export default function TrackerDetail() {
       setAlerts(notifs)
       setSellers(sellerRows)
       setOverlap(overlapData)
+      // Seed doorbuster editor inputs from the latest tracker state.
+      setDoorbusterStart(isoToDateTimeLocal(t.doorbuster_start_at))
+      setDoorbusterEnd(isoToDateTimeLocal(t.doorbuster_end_at))
+      setDoorbusterInterval(
+        t.doorbuster_interval_minutes != null ? String(t.doorbuster_interval_minutes) : ''
+      )
       const stat = stats[trackerId]
       if (stat?.min_price != null && stat?.min_price_at != null) {
         setAllTimeLow({ price: stat.min_price, at: stat.min_price_at })
@@ -182,6 +219,51 @@ export default function TrackerDetail() {
     } as Partial<Tracker>)
     setEditing(false)
     await load()
+  }
+
+  const handleSaveDoorbuster = async () => {
+    setDoorbusterError(null)
+    const startIso = dateTimeLocalToIso(doorbusterStart)
+    const endIso = dateTimeLocalToIso(doorbusterEnd)
+    const intervalNum = doorbusterInterval ? parseInt(doorbusterInterval) : NaN
+    if (!startIso || !endIso || !Number.isFinite(intervalNum) || intervalNum < 1) {
+      setDoorbusterError('All three fields are required; interval must be at least 1 minute.')
+      return
+    }
+    if (new Date(startIso) >= new Date(endIso)) {
+      setDoorbusterError('Start must be before end.')
+      return
+    }
+    setDoorbusterSaving(true)
+    try {
+      await updateTracker(trackerId, {
+        doorbuster_start_at: startIso,
+        doorbuster_end_at: endIso,
+        doorbuster_interval_minutes: intervalNum,
+      } as Partial<Tracker>)
+      await load()
+    } catch (err) {
+      setDoorbusterError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDoorbusterSaving(false)
+    }
+  }
+
+  const handleClearDoorbuster = async () => {
+    setDoorbusterError(null)
+    setDoorbusterSaving(true)
+    try {
+      await updateTracker(trackerId, {
+        doorbuster_start_at: null,
+        doorbuster_end_at: null,
+        doorbuster_interval_minutes: null,
+      } as Partial<Tracker>)
+      await load()
+    } catch (err) {
+      setDoorbusterError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDoorbusterSaving(false)
+    }
   }
 
   const startEdit = () => {
@@ -450,6 +532,103 @@ export default function TrackerDetail() {
         {sellerError && (
           <div className="mt-2 text-xs text-danger bg-danger/10 rounded-lg px-3 py-2">
             {sellerError}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Zap className="w-5 h-5 text-warning" />
+          <h2 className="text-lg font-semibold">Doorbuster mode</h2>
+          {(() => {
+            // Inline status banner (matches the card-badge logic on TrackerCard).
+            const start = tracker.doorbuster_start_at ? new Date(tracker.doorbuster_start_at) : null
+            const end = tracker.doorbuster_end_at ? new Date(tracker.doorbuster_end_at) : null
+            const interval = tracker.doorbuster_interval_minutes
+            if (start && end && interval) {
+              const now = new Date()
+              if (now >= start && now <= end) {
+                return (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium bg-warning/15 text-warning rounded-full px-2 py-0.5 ml-1">
+                    <Zap className="w-3 h-3" /> Active until {end.toLocaleString()}
+                  </span>
+                )
+              }
+              if (now < start) {
+                return (
+                  <span className="text-xs text-text-muted ml-1">
+                    Scheduled to start {start.toLocaleString()}
+                  </span>
+                )
+              }
+              return (
+                <span className="text-xs text-text-muted ml-1">
+                  Ended {end.toLocaleString()}
+                </span>
+              )
+            }
+            return null
+          })()}
+        </div>
+        <p className="text-text-muted text-xs mb-3">
+          During the window, this tracker is checked at the accelerated cadence below
+          (e.g., every 3 min) instead of its usual {tracker.check_interval_minutes >= 60
+            ? `${tracker.check_interval_minutes / 60}h`
+            : `${tracker.check_interval_minutes}m`} interval. Outside the window, normal scheduling applies.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+          <label className="text-xs text-text-muted">
+            Start
+            <input
+              type="datetime-local"
+              value={doorbusterStart}
+              onChange={e => setDoorbusterStart(e.target.value)}
+              className="block w-full mt-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-xs text-text-muted">
+            End
+            <input
+              type="datetime-local"
+              value={doorbusterEnd}
+              onChange={e => setDoorbusterEnd(e.target.value)}
+              className="block w-full mt-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-xs text-text-muted">
+            Interval (minutes)
+            <input
+              type="number"
+              min={1}
+              step={1}
+              placeholder="3"
+              value={doorbusterInterval}
+              onChange={e => setDoorbusterInterval(e.target.value)}
+              className="block w-full mt-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleSaveDoorbuster}
+            disabled={doorbusterSaving}
+            className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {doorbusterSaving ? 'Saving...' : 'Save doorbuster'}
+          </button>
+          {(tracker.doorbuster_start_at || tracker.doorbuster_end_at || tracker.doorbuster_interval_minutes) && (
+            <button
+              onClick={handleClearDoorbuster}
+              disabled={doorbusterSaving}
+              className="px-4 py-2 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              Clear doorbuster
+            </button>
+          )}
+        </div>
+        {doorbusterError && (
+          <div className="mt-2 text-xs text-danger bg-danger/10 rounded-lg px-3 py-2">
+            {doorbusterError}
           </div>
         )}
       </div>

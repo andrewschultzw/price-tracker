@@ -233,3 +233,121 @@ describe('PATCH /api/trackers/:id/urls/:urlId — condition update', () => {
     expect(res.status).toBe(404);
   });
 });
+
+async function makeAppWithUser(userId: number): Promise<express.Express> {
+  const trackerRoutes = (await import('./trackers.js')).default;
+  const app = express();
+  app.use(express.json());
+  app.use('/api/trackers', (req, _res, next) => {
+    (req as { user?: { userId: number; role: string } }).user = { userId, role: 'user' };
+    next();
+  }, trackerRoutes);
+  return app;
+}
+
+function seedUserAndTracker(): { userId: number; trackerId: number } {
+  const db = getDb();
+  const userId = Number(db.prepare(
+    `INSERT INTO users (email, password_hash, display_name, role, is_active) VALUES ('t@x.com','h','T','user',1)`
+  ).run().lastInsertRowid);
+  const trackerId = Number(db.prepare(
+    `INSERT INTO trackers (name, url, user_id, threshold_price, status, check_interval_minutes, jitter_minutes)
+     VALUES ('T','https://x.example/p',?,100,'active',60,0)`
+  ).run(userId).lastInsertRowid);
+  // Backing tracker_urls row keeps the seller list non-empty for any later call.
+  db.prepare(
+    `INSERT INTO tracker_urls (tracker_id, url, position) VALUES (?, 'https://x.example/p', 0)`
+  ).run(trackerId);
+  return { userId, trackerId };
+}
+
+describe('Doorbuster — PUT /api/trackers/:id', () => {
+  beforeEach(() => {
+    resetCrypto();
+    initSettingsCrypto(randomBytes(32).toString('base64'));
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    _setDbForTesting(db);
+    initializeSchema();
+  });
+
+  it('accepts all three doorbuster fields and persists them', async () => {
+    const { userId, trackerId } = seedUserAndTracker();
+    const start = '2026-11-28T05:00:00.000Z';
+    const end = '2026-11-29T01:00:00.000Z';
+    const res = await request(await makeAppWithUser(userId))
+      .put(`/api/trackers/${trackerId}`)
+      .send({
+        doorbuster_start_at: start,
+        doorbuster_end_at: end,
+        doorbuster_interval_minutes: 3,
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.doorbuster_start_at).toBe(start);
+    expect(res.body.doorbuster_end_at).toBe(end);
+    expect(res.body.doorbuster_interval_minutes).toBe(3);
+
+    // Round-trip: GET also returns them.
+    const get = await request(await makeAppWithUser(userId)).get(`/api/trackers/${trackerId}`);
+    expect(get.status).toBe(200);
+    expect(get.body.doorbuster_start_at).toBe(start);
+    expect(get.body.doorbuster_end_at).toBe(end);
+    expect(get.body.doorbuster_interval_minutes).toBe(3);
+  });
+
+  it('rejects mixed state — only doorbuster_start_at set → 400', async () => {
+    const { userId, trackerId } = seedUserAndTracker();
+    const res = await request(await makeAppWithUser(userId))
+      .put(`/api/trackers/${trackerId}`)
+      .send({ doorbuster_start_at: '2026-11-28T00:00:00Z' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects mixed state — start + end set, interval missing → 400', async () => {
+    const { userId, trackerId } = seedUserAndTracker();
+    const res = await request(await makeAppWithUser(userId))
+      .put(`/api/trackers/${trackerId}`)
+      .send({
+        doorbuster_start_at: '2026-11-28T00:00:00Z',
+        doorbuster_end_at: '2026-11-28T20:00:00Z',
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('all three set to null → 200, clears them (round-trip null check)', async () => {
+    const { userId, trackerId } = seedUserAndTracker();
+    // First, set them.
+    await request(await makeAppWithUser(userId))
+      .put(`/api/trackers/${trackerId}`)
+      .send({
+        doorbuster_start_at: '2026-11-28T00:00:00Z',
+        doorbuster_end_at: '2026-11-28T20:00:00Z',
+        doorbuster_interval_minutes: 3,
+      });
+    // Then clear them by passing all three as null.
+    const res = await request(await makeAppWithUser(userId))
+      .put(`/api/trackers/${trackerId}`)
+      .send({
+        doorbuster_start_at: null,
+        doorbuster_end_at: null,
+        doorbuster_interval_minutes: null,
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.doorbuster_start_at).toBeNull();
+    expect(res.body.doorbuster_end_at).toBeNull();
+    expect(res.body.doorbuster_interval_minutes).toBeNull();
+  });
+
+  it('rejects doorbuster_interval_minutes < 1', async () => {
+    const { userId, trackerId } = seedUserAndTracker();
+    const res = await request(await makeAppWithUser(userId))
+      .put(`/api/trackers/${trackerId}`)
+      .send({
+        doorbuster_start_at: '2026-11-28T00:00:00Z',
+        doorbuster_end_at: '2026-11-28T20:00:00Z',
+        doorbuster_interval_minutes: 0,
+      });
+    expect(res.status).toBe(400);
+  });
+});
+

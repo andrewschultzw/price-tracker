@@ -34,6 +34,30 @@ export interface Tracker {
   ai_summary_updated_at: number | null;
   ai_signals_json: string | null;
   ai_failure_count: number;
+  // Doorbuster mode (migration v14). All three are nullable; the feature is
+  // only "on" when all three are set. When `now` is between start and end,
+  // the scheduler uses doorbuster_interval_minutes instead of
+  // check_interval_minutes (+jitter). See isDoorbusterActive().
+  doorbuster_start_at: string | null;
+  doorbuster_end_at: string | null;
+  doorbuster_interval_minutes: number | null;
+}
+
+/**
+ * True when `now` is inside the configured doorbuster window for this tracker.
+ * All three of doorbuster_start_at / _end_at / _interval_minutes must be set;
+ * otherwise the feature is OFF for this tracker. The route layer guarantees
+ * the all-or-nothing invariant on writes; this helper is a final safety net
+ * for partially-populated rows (legacy or hand-edited DB state).
+ */
+export function isDoorbusterActive(tracker: Tracker, now: Date = new Date()): boolean {
+  if (!tracker.doorbuster_start_at || !tracker.doorbuster_end_at || !tracker.doorbuster_interval_minutes) {
+    return false;
+  }
+  const start = new Date(tracker.doorbuster_start_at);
+  const end = new Date(tracker.doorbuster_end_at);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+  return now >= start && now <= end;
 }
 
 /**
@@ -218,6 +242,12 @@ export function updateTracker(id: number, data: Partial<{
   last_error: string | null;
   consecutive_failures: number;
   status: string;
+  // Doorbuster mode — see migration v14 + isDoorbusterActive(). Pass `null`
+  // to clear (the dynamic SET below treats null as "set to NULL", undefined
+  // as "leave alone"). The three fields are atomic at the route layer.
+  doorbuster_start_at: string | null;
+  doorbuster_end_at: string | null;
+  doorbuster_interval_minutes: number | null;
 }>, userId?: number): Tracker | undefined {
   const fields: string[] = [];
   const values: Record<string, unknown> = { id };
@@ -249,12 +279,27 @@ export function deleteTracker(id: number, userId: number): boolean {
 }
 
 export function getDueTrackers(): Tracker[] {
+  // The CASE expression switches between the doorbuster cadence and the
+  // normal (interval + jitter) cadence based on whether `now` falls inside
+  // the configured doorbuster window. All three doorbuster fields must be
+  // set for the accelerated path to apply; otherwise we fall through to the
+  // existing scheduling behavior unchanged.
   return getDb().prepare(`
     SELECT * FROM trackers
     WHERE status = 'active'
     AND (
       last_checked_at IS NULL
-      OR datetime(last_checked_at, '+' || (check_interval_minutes + jitter_minutes) || ' minutes') <= datetime('now')
+      OR datetime(
+           last_checked_at,
+           '+' || CASE
+             WHEN doorbuster_interval_minutes IS NOT NULL
+               AND doorbuster_start_at IS NOT NULL
+               AND doorbuster_end_at IS NOT NULL
+               AND datetime('now') BETWEEN datetime(doorbuster_start_at) AND datetime(doorbuster_end_at)
+             THEN doorbuster_interval_minutes
+             ELSE (check_interval_minutes + jitter_minutes)
+           END || ' minutes'
+         ) <= datetime('now')
     )
   `).all() as Tracker[];
 }
@@ -275,6 +320,11 @@ export interface DueTrackerUrl extends TrackerUrl {
  * already handles transient failures).
  */
 export function getDueTrackerUrls(): DueTrackerUrl[] {
+  // Per-seller cadence inherits from the parent tracker. When the parent's
+  // doorbuster window is active and all three doorbuster fields are set,
+  // every seller under it accelerates to the doorbuster interval. Outside
+  // the window we fall through to the existing (interval + jitter)
+  // behavior, byte-for-byte unchanged.
   return getDb().prepare(`
     SELECT tu.*,
            t.check_interval_minutes as tracker_check_interval_minutes,
@@ -284,7 +334,17 @@ export function getDueTrackerUrls(): DueTrackerUrl[] {
     WHERE t.status != 'paused' AND tu.status != 'paused'
     AND (
       tu.last_checked_at IS NULL
-      OR datetime(tu.last_checked_at, '+' || (t.check_interval_minutes + t.jitter_minutes) || ' minutes') <= datetime('now')
+      OR datetime(
+           tu.last_checked_at,
+           '+' || CASE
+             WHEN t.doorbuster_interval_minutes IS NOT NULL
+               AND t.doorbuster_start_at IS NOT NULL
+               AND t.doorbuster_end_at IS NOT NULL
+               AND datetime('now') BETWEEN datetime(t.doorbuster_start_at) AND datetime(t.doorbuster_end_at)
+             THEN t.doorbuster_interval_minutes
+             ELSE (t.check_interval_minutes + t.jitter_minutes)
+           END || ' minutes'
+         ) <= datetime('now')
     )
   `).all() as DueTrackerUrl[];
 }
