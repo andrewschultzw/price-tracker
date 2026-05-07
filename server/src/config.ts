@@ -28,6 +28,12 @@ export const config = {
   jwtAccessExpirySeconds: 900,       // 15 minutes
   jwtRefreshExpiryDays: 30,
   bcryptRounds: 12,
+  // Per-user invite quotas. Default 3 unused/active invites per non-admin
+  // user; admins bypass entirely. Default expiry is 30 days when callers
+  // omit `expires_at`. See:
+  // docs/superpowers/specs/2026-05-06-per-user-invite-quotas-design.md
+  defaultInviteQuota: 3,
+  defaultInviteExpiryDays: 30,
   // Outbound email (Gmail SMTP). All five values required for the email
   // channel to be usable; if any is missing, email sends throw a clear
   // "email channel not configured" error and the Settings UI shows a
