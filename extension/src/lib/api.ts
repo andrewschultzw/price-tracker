@@ -95,3 +95,37 @@ export async function createTracker(payload: TrackerCreatePayload): Promise<Trac
 export async function testConnection(): Promise<void> {
   await listTrackers();
 }
+
+export interface ProjectSummary {
+  id: number;
+  name: string;
+  status: 'active' | 'archived';
+  target_total: number;
+}
+
+export async function listProjects(): Promise<ProjectSummary[]> {
+  const data = await request<unknown>('/api/projects?status=active', { method: 'GET' });
+  if (!Array.isArray(data)) {
+    throw new ApiError('UNKNOWN', 'Projects response is not an array');
+  }
+  return data as ProjectSummary[];
+}
+
+export async function addTrackerToProject(projectId: number, trackerId: number): Promise<void> {
+  await request(`/api/projects/${projectId}/trackers`, {
+    method: 'POST',
+    body: JSON.stringify({ tracker_id: trackerId }),
+  });
+}
+
+export async function updateTrackerThreshold(
+  trackerId: number,
+  threshold: number | null,
+): Promise<Tracker> {
+  const data = await request<unknown>(`/api/trackers/${trackerId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ threshold_price: threshold }),
+  });
+  assertTrackerShape(data);
+  return data;
+}

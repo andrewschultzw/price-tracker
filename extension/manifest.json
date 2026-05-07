@@ -9,11 +9,20 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["activeTab", "contextMenus", "storage"],
+  "permissions": ["activeTab", "tabs", "contextMenus", "storage"],
   "host_permissions": ["https://prices.schultzsolutions.tech/*"],
   "background": {
     "service_worker": "src/background/service-worker.ts",
     "type": "module"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+T",
+        "mac": "Alt+Shift+T"
+      },
+      "description": "Open Price Tracker popup"
+    }
   },
   "action": {
     "default_popup": "src/popup/popup.html",

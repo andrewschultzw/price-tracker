@@ -46,6 +46,16 @@
       <div class="check-icon">✓</div>
       <div class="title">Tracking now</div>
       <p class="muted">First scrape will run within the next cron tick.</p>
+
+      <!-- Project picker — populated on mount, hidden if no projects -->
+      <div data-add-to-project class="hidden project-picker">
+        <label class="project-picker-label">Add to bundle (optional)</label>
+        <select data-project-select class="project-picker-select">
+          <option value="">— None —</option>
+        </select>
+        <button data-add-project class="ghost-button project-picker-button">Add to bundle</button>
+      </div>
+
       <a data-link class="ghost-button" target="_blank">View tracker →</a>
       <div class="muted small">closes in 2s…</div>
     </div>
@@ -69,6 +79,18 @@
         <span data-verdict class="verdict-pill hidden"></span>
       </div>
       <p class="muted" data-reason></p>
+
+      <!-- Threshold edit affordance -->
+      <div class="threshold-row">
+        <span class="threshold-label">Threshold</span>
+        <span data-threshold-display class="threshold-display">—</span>
+        <button data-edit-threshold class="threshold-edit-btn">Edit</button>
+      </div>
+      <div data-threshold-edit class="hidden threshold-edit-row">
+        <input data-threshold-input type="text" placeholder="$0.00" class="threshold-input" />
+        <button data-save-threshold class="threshold-save-btn">Save</button>
+      </div>
+
       <a data-link class="ghost-button" target="_blank">Open in Price Tracker →</a>
     </div>
   </template>
