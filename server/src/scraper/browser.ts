@@ -66,7 +66,11 @@ export async function fetchPageContent(url: string): Promise<FetchResult> {
 
     let response;
     try {
-      response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      // 60s ceiling. Retailers like Best Buy often take 35-50s to reach
+      // domcontentloaded under HTTP/1.1 (we forced this in browser launch
+      // args to dodge ERR_HTTP2_PROTOCOL_ERROR). 30s was too tight; 60s
+      // accommodates the slow ones without bloating happy-path latency.
+      response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     } catch (err) {
       // Playwright throws on network errors, DNS failures, and timeouts.
       // These are transient — classify as retryable.
