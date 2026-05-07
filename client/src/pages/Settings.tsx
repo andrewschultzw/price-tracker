@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Save, Send, CheckCircle, XCircle, MessageSquare, Bell, Webhook, Mail, Users } from 'lucide-react'
 import { getSettings, updateSettings, testWebhook, testNtfy, testGenericWebhook, testEmail } from '../api'
 import useTitle from '../useTitle'
@@ -359,7 +360,7 @@ export default function SettingsPage() {
             <span className="text-sm">Share my biggest drops with the community deal feed</span>
           </label>
           <p className="text-xs text-text-muted ml-6">
-            Anonymous. Other users see the price + product, never your name. Default off.
+            Anonymous. Other users see the price + product, never your name. Default off. View the public deal feed at <Link to="/deals" className="text-primary hover:underline">/deals</Link>.
           </p>
         </div>
         <button

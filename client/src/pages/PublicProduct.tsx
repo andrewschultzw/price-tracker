@@ -158,6 +158,12 @@ function ProductView({ product }: { product: PublicProduct }) {
         Aggregated daily-low across all sellers tracked by Price Tracker users. Want
         alerts for this product? <Link to="/login" className="text-primary hover:underline">Sign in</Link>.
       </p>
+
+      <div className="mt-6 pt-4 border-t border-border text-center">
+        <Link to="/deals" className="text-text-muted hover:text-primary text-sm">
+          See trending deals across the community →
+        </Link>
+      </div>
     </div>
   );
 }
