@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
-import { BarChart3, Plus, Settings as SettingsIcon, Shield, LogOut, Menu, X, Inbox, Package } from 'lucide-react'
+import { BarChart3, Plus, Settings as SettingsIcon, Shield, LogOut, Menu, X, Inbox, Package, TrendingUp } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
@@ -104,6 +104,7 @@ function App() {
           <div className="hidden md:flex items-center gap-2">
             {navLink('/', 'Dashboard', <BarChart3 className="w-4 h-4" />)}
             {navLink('/add', 'Add Tracker', <Plus className="w-4 h-4" />)}
+            {navLink('/deals', 'Deals', <TrendingUp className="w-4 h-4" />)}
             {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
             {navLink('/projects', 'Projects', <Package className="w-4 h-4" />)}
             {navLink('/settings', 'Settings', <SettingsIcon className="w-4 h-4" />)}
@@ -139,6 +140,7 @@ function App() {
             <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-1">
               {navLink('/', 'Dashboard', <BarChart3 className="w-4 h-4" />)}
               {navLink('/add', 'Add Tracker', <Plus className="w-4 h-4" />)}
+              {navLink('/deals', 'Deals', <TrendingUp className="w-4 h-4" />)}
               {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
               {navLink('/projects', 'Projects', <Package className="w-4 h-4" />)}
               {navLink('/settings', 'Settings', <SettingsIcon className="w-4 h-4" />)}
