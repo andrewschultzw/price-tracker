@@ -85,7 +85,20 @@ export async function fetchPageContent(url: string): Promise<FetchResult> {
       const status = response.status();
       if (status >= 400 && status < 500) {
         // Client errors (404, 403, 410, etc.) are deterministic — the page
-        // isn't coming back just because we asked again.
+        // isn't coming back just because we asked again. But a 403 from a
+        // known WAF server header means the retailer is blanket-blocking
+        // our egress IP, which is a distinct state from "this product page
+        // doesn't exist" — surface it specifically so the scheduler can
+        // park the seller in 'blocked' status instead of treating it as
+        // flaky scrape failures.
+        if (isRetailerBlock(status, response.headers())) {
+          throw new ScrapeError(
+            `Retailer WAF blocked request to ${url} (HTTP ${status})`,
+            false,
+            status,
+            true,
+          );
+        }
         throw new ScrapeError(`HTTP ${status} from ${url}`, false, status);
       }
       if (status >= 500) {
@@ -157,6 +170,33 @@ export function isBotCheckPage(html: string, finalUrl: string): boolean {
     // invalid URL, don't block on it
   }
 
+  return false;
+}
+
+/**
+ * Detect a retailer-WAF blanket block based on the response headers.
+ * Currently triggered by:
+ *  - Akamai Bot Manager (Server: AkamaiGHost on a 4xx) — what Home Depot
+ *    and Best Buy use to filter homelab-IP traffic at the edge.
+ *  - Cloudflare's bot mitigation (Server: cloudflare + 403). Less precise
+ *    on its own because some legitimate Cloudflare-fronted product pages
+ *    return 403 for other reasons (e.g., region locks), but in
+ *    combination with the status check it's a reasonable proxy.
+ *
+ * Conservative on purpose: anything we mis-classify as a retailer-block
+ * gets a less-useful UX (the seller silently goes to 'blocked' instead
+ * of an error alert), so we only flag the patterns we've actually
+ * observed in production scrapes.
+ */
+export function isRetailerBlock(status: number, headers: Record<string, string>): boolean {
+  if (status !== 403 && status !== 429) return false;
+  const server = (headers['server'] || '').toLowerCase();
+  if (server.includes('akamaighost')) return true;
+  // Cloudflare's challenge / block page surfaces both `server: cloudflare`
+  // and a `cf-mitigated` response header. The latter is the strongest
+  // signal we're being filtered by their bot management, not just hitting
+  // a generic 403 on a CF-fronted site.
+  if (server === 'cloudflare' && headers['cf-mitigated']) return true;
   return false;
 }
 

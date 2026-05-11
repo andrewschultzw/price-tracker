@@ -22,7 +22,7 @@ export interface BasketMember {
   tracker_id: number;
   tracker_name: string;
   last_price: number | null;
-  tracker_status: 'active' | 'paused' | 'error';
+  tracker_status: 'active' | 'paused' | 'error' | 'blocked';
   per_item_ceiling: number | null;
   position: number;
   // Surfaced for the project detail view (set by AI Buyer's Assistant).

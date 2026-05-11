@@ -47,7 +47,7 @@ function seedUser(): number {
   ).run().lastInsertRowid);
 }
 
-function seedTracker(userId: number, name: string, lastPrice: number | null, status: 'active' | 'paused' | 'error' = 'active'): number {
+function seedTracker(userId: number, name: string, lastPrice: number | null, status: 'active' | 'paused' | 'error' | 'blocked' = 'active'): number {
   return Number(getDb().prepare(
     `INSERT INTO trackers (name, url, user_id, threshold_price, status, check_interval_minutes, jitter_minutes, last_price)
      VALUES (?, ?, ?, 100, ?, 60, 0, ?)`

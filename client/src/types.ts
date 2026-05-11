@@ -10,7 +10,7 @@ export interface Tracker {
   last_checked_at: string | null;
   last_error: string | null;
   consecutive_failures: number;
-  status: 'active' | 'paused' | 'error';
+  status: 'active' | 'paused' | 'error' | 'blocked';
   created_at: string;
   updated_at: string;
   // Aggregates populated by the admin + user tracker list endpoints.
@@ -57,7 +57,7 @@ export interface TrackerUrl {
   last_checked_at: string | null;
   last_error: string | null;
   consecutive_failures: number;
-  status: 'active' | 'paused' | 'error';
+  status: 'active' | 'paused' | 'error' | 'blocked';
   condition: TrackerUrlCondition;
   created_at: string;
   updated_at: string;
@@ -136,7 +136,7 @@ export interface BasketMember {
   tracker_id: number;
   tracker_name: string;
   last_price: number | null;
-  tracker_status: 'active' | 'paused' | 'error';
+  tracker_status: 'active' | 'paused' | 'error' | 'blocked';
   per_item_ceiling: number | null;
   position: number;
   ai_verdict_tier: 'BUY' | 'WAIT' | 'HOLD' | null;

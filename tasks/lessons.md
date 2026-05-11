@@ -1,5 +1,21 @@
 # Lessons Learned
 
+## 2026-05-11: Retailer-WAF IP blocks (Home Depot 403)
+
+### A 403 with `Server: AkamaiGHost` on the BARE HOMEPAGE is an IP-reputation block, not a scraper bug
+**What happened:** A new Home Depot tracker failed 3 consecutive scrapes with `HTTP 403`. First instinct was to debug user-agent / fingerprint detection. Diagnostic curls from CT 302 showed every URL on `homedepot.com` (including the bare `/` homepage) returning 403 regardless of headers — `Server: AkamaiGHost`, body is Akamai's standard "Access Denied" page with an `errors.edgesuite.net` reference URL. This is the same class of issue Best Buy already has (memory `feedback_pricetracker_bestbuy_blocked.md`): Akamai has the homelab egress IP on a low-reputation list and blanket-rejects.
+
+**Diagnostic shortcut:** When a scrape fails 403, before opening the extraction code, curl the retailer's HOMEPAGE from the scraper's egress IP with a real Chrome UA. If the homepage 403s too, the problem is at the network/WAF layer — no headers/fingerprint trick will fix it. Don't waste time on stealth Playwright when the WAF has already decided your IP is hostile.
+
+**Rule:** Detect Akamai/CF retailer blocks specifically (response header `Server: AkamaiGHost` on 403/429, or `Server: cloudflare` + `cf-mitigated` on 403). Mark those sellers as a distinct `status='blocked'` instead of letting them churn through `consecutive_failures`. Stop scheduling re-checks; surface a clear "Retailer blocked" UI state; allow manual "Check Now" to test if the block lifts later. Maintain a known-blocked-host list so new trackers for those domains land in the right state immediately rather than waiting for 3 failed cron ticks. See `server/src/scraper/blocked-retailers.ts`.
+
+### SQLite CHECK constraints can't be ALTERed; rebuild-the-table cascades through FKs; `db.unsafeMode(true)` + `PRAGMA writable_schema` is the safe path
+**What happened:** Migration v17 needed to widen the `status` CHECK constraint on `trackers` and `tracker_urls` to admit a new `'blocked'` value. First attempt followed the v11 pattern (CREATE _new, INSERT...SELECT, DROP, RENAME). The `DROP TABLE trackers` step cascaded through child tables' `ON DELETE CASCADE` (tracker_urls.tracker_id) and `ON DELETE SET NULL` (price_history.tracker_url_id, notifications.tracker_url_id) FKs — wiping pre-seeded test rows. Worse, `db.pragma('foreign_keys = OFF')` inside a migration is a no-op because **SQLite refuses to change the `foreign_keys` pragma mid-transaction** (`runMigrations` wraps every migration in a `db.transaction(...)`).
+
+**Rule:** For CHECK-constraint widening that doesn't change row format on disk, skip the rebuild. Use `db.unsafeMode(true)` (better-sqlite3) + `PRAGMA writable_schema = ON` and `UPDATE sqlite_schema SET sql = replace(sql, old_check, new_check) WHERE ...` directly. Bump `PRAGMA schema_version = current+1` to invalidate SQLite's prepared-statement cache, then `db.unsafeMode(false)`. Idempotent: fresh DBs whose CREATE statement already has the new CHECK don't match the WHERE clause and the UPDATE is a no-op. This is the SQLite-recommended pattern for constraint-only changes and doesn't disturb child rows.
+
+**Anti-pattern to remember:** `db.pragma('foreign_keys = OFF')` inside `db.transaction(() => migration.up())` silently does nothing. If you ever need to disable FKs for a migration, the pragma has to be flipped BEFORE the transaction starts — which means restructuring `runMigrations` or building a non-transactional migration variant.
+
 ## 2026-04-18: OpenClaw skill integration
 
 ### OpenClaw skill files use `{{env.X}}` template substitution, not shell `$VAR`

@@ -14,6 +14,22 @@ Deployed and live at `prices.schultzsolutions.tech` (CT 302, `192.168.1.166:3100
 
 ## Open items
 
+### In flight — 2026-05-11
+
+- [x] **Retailer-blocked status (Akamai 403 / Cloudflare 403 etc.)** ~~New Home Depot tracker hit `HTTP 403 from www.homedepot.com` on all 3 scrape attempts.~~ **Done 2026-05-11:** diagnosis confirmed Akamai (`server: AkamaiGHost`) blanket-blocking CT 302's egress IP `167.253.135.140` — homepage curl 403s too, same class as Best Buy. First-class `'blocked'` status now lives end-to-end. 38 new tests, 764+115 passing.
+
+  Shipped:
+  - [x] Migration v17 widens status CHECK via `db.unsafeMode(true)` + `PRAGMA writable_schema` + `UPDATE sqlite_schema` (rebuild-the-table approach hit FK cascade issues — `foreign_keys` pragma is a no-op inside a transaction). Lessons captured.
+  - [x] `schema.ts` fresh-install schema + TS unions updated in `queries.ts` / `projects/types.ts` / client `types.ts`.
+  - [x] New `isRetailerBlock(status, headers)` in `browser.ts` matches `AkamaiGHost` (403/429) and `cloudflare` + `cf-mitigated` (403). Throws `ScrapeError` with new `retailerBlocked: true` flag.
+  - [x] `checkTrackerUrl` error handler: `retailerBlocked` → `status='blocked'`, resets `consecutive_failures`, suppresses error alert, logs at warn.
+  - [x] `getDueTrackerUrls` filters `tu.status NOT IN ('paused', 'blocked')` — cron stops re-checking. Manual "Check Now" still works (in case the block lifts).
+  - [x] `refreshTrackerAggregates` rolls all-blocked → `'blocked'`; mixed (blocked + active) stays `'active'` so the working seller's price still surfaces.
+  - [x] Known-blocked-host list (`homedepot.com`, `bestbuy.com`) in `scraper/blocked-retailers.ts`. `createTracker` and `addTrackerUrl` auto-mark sellers from those hosts as `'blocked'` at insert time.
+  - [x] `StatusBadge` adds amber `"Retailer blocked"` badge (ShieldOff icon). `isErrored()` excludes blocked sellers (server's `errored_seller_count` SQL already excluded them because we reset `consecutive_failures` to 0).
+  - [x] Tests: scraper detection (Akamai 403/429 + Cloudflare cf-mitigated), migration v17 (CHECK widening + rejection of unknown values + row preservation), aggregate roll-up, auto-block on creation, host-match safety (case, substring lookalikes).
+  - [x] `tasks/lessons.md` updated with both patterns (WAF IP-block diagnosis shortcut + SQLite writable_schema migration trick).
+
 ### Priority: next big bets
 
 - [x] **AI Buyer's Assistant.** ~~Claude API integration that turns the price chart into an advisor.~~ **Done 2026-05-04:** rules-judge / LLM-narrate pattern. Pure signals + verdict (zero IO, fully unit-tested), Anthropic Haiku 4.5 client wrapper with retry/validation/kill switch, ephemeral-cached prompt builders with hallucination guard, generators that compose all the pieces. Wired into the cron path as fire-and-forget on price change; alert copy across all 4 channels with 3s timeout fallback to plain template; nightly backfill cron for summaries. New env: `AI_ENABLED` (default false), `ANTHROPIC_API_KEY`, `AI_MODEL`. Migration v8 adds 8 AI columns to `trackers`. UI: BUY/WAIT/HOLD verdict pill on every card, AIInsightsCard above the chart on TrackerDetail. Server tests 280 → 364 (+84). Estimated cost ~$0.20/month at current scale. Spec: `docs/superpowers/specs/2026-05-04-ai-buyers-assistant-design.md`. Plan: `docs/superpowers/plans/2026-05-04-ai-buyers-assistant.md`. [PR #11](https://github.com/andrewschultzw/price-tracker/pull/11).

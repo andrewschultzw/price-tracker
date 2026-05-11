@@ -19,6 +19,12 @@ export class ScrapeError extends Error {
     message: string,
     public readonly retryable: boolean,
     public readonly httpStatus?: number,
+    // True when the failure is a retailer WAF blanket-blocking our IP
+    // (Akamai 403, Cloudflare 1020, etc.). The scheduler treats this as a
+    // distinct state — sellers get marked status='blocked' and skipped on
+    // future ticks rather than counted as flaky errors. Never retryable:
+    // the next attempt is the same IP hitting the same WAF.
+    public readonly retailerBlocked: boolean = false,
   ) {
     super(message);
     this.name = 'ScrapeError';

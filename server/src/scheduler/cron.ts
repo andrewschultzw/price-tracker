@@ -19,6 +19,8 @@ import {
 } from '../db/queries.js';
 import type { Tracker, TrackerUrl } from '../db/queries.js';
 import { extractPrice } from '../scraper/extractor.js';
+import { ScrapeError } from '../scraper/retry.js';
+import { RETAILER_BLOCKED_ERROR_MESSAGE } from '../scraper/blocked-retailers.js';
 import {
   isPlausibilityGuardSuspicious,
   computePlausibilityBaseline,
@@ -487,6 +489,39 @@ export async function checkTrackerUrl(
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
+
+      // Retailer WAF blanket-blocking our IP is a distinct state from
+      // "the scrape flaked": no retry is going to clear it, and
+      // counting it as a flaky failure would (a) eventually trip the
+      // error-alert spam path, and (b) make stat counters lie about
+      // how many trackers are actually broken. Move the seller straight
+      // to 'blocked' with a friendly message, leave consecutive_failures
+      // alone, suppress the error alert. Manual "Check Now" can still
+      // re-test if the block lifts.
+      if (err instanceof ScrapeError && err.retailerBlocked) {
+        updateTrackerUrl(seller.id, {
+          last_checked_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+          last_error: RETAILER_BLOCKED_ERROR_MESSAGE,
+          status: 'blocked',
+          // Reset the failure counter so a seller that flipped from
+          // 'error' (real scrape failures) to 'blocked' (WAF block) is
+          // no longer counted in errored_seller_count or "Errors" UI.
+          // Blocked is a distinct state, not an error condition.
+          consecutive_failures: 0,
+        });
+        refreshTrackerAggregates(tracker.id);
+        logger.warn(
+          {
+            trackerId: tracker.id,
+            trackerUrlId: seller.id,
+            sellerUrl: seller.url,
+            httpStatus: err.httpStatus,
+          },
+          'Seller marked blocked — retailer WAF rejected request',
+        );
+        return;
+      }
+
       const failures = seller.consecutive_failures + 1;
       const newStatus = failures >= config.maxConsecutiveFailures ? 'error' : seller.status;
 
