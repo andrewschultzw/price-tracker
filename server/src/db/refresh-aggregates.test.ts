@@ -180,6 +180,47 @@ describe('refreshTrackerAggregates', () => {
       expect(getTrackerById(tracker.id)!.status).toBe('active');
     });
 
+    it("sets status='blocked' only when ALL sellers are blocked", () => {
+      const userId = seedTestUser();
+      const tracker = createTracker({
+        name: 'All blocked',
+        url: 'https://a.example.com/1',
+        user_id: userId,
+      });
+      const primary = getTrackerUrlsForTracker(tracker.id)[0];
+      updateTrackerUrl(primary.id, { status: 'blocked', last_error: 'WAF blocked' });
+
+      const s2 = addTrackerUrl(tracker.id, 'https://b.example.com/2');
+      updateTrackerUrl(s2.id, { status: 'blocked', last_error: 'WAF blocked' });
+
+      refreshTrackerAggregates(tracker.id);
+      expect(getTrackerById(tracker.id)!.status).toBe('blocked');
+    });
+
+    it("mixed blocked + active → status='active' (the working seller wins)", () => {
+      // The user added a Home Depot seller (blocked) plus an Amazon
+      // seller (active). The tracker as a whole still has a working
+      // price source — hide the blocked one in the badge logic, not by
+      // hiding the whole tracker.
+      const userId = seedTestUser();
+      const tracker = createTracker({
+        name: 'Mixed block',
+        url: 'https://a.example.com/1',
+        user_id: userId,
+      });
+      const primary = getTrackerUrlsForTracker(tracker.id)[0];
+      updateTrackerUrl(primary.id, { status: 'blocked', last_error: 'WAF blocked' });
+
+      const s2 = addTrackerUrl(tracker.id, 'https://b.example.com/2');
+      updateTrackerUrl(s2.id, { status: 'active', last_price: 42 });
+
+      refreshTrackerAggregates(tracker.id);
+      const refreshed = getTrackerById(tracker.id)!;
+      expect(refreshed.status).toBe('active');
+      // Working seller's price still surfaces.
+      expect(refreshed.last_price).toBe(42);
+    });
+
     it("mixed paused + errored → status='active' (defensive fallthrough)", () => {
       // Not a realistic state but the function should not crash and
       // should fall through to 'active' rather than picking one of them.

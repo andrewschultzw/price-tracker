@@ -526,6 +526,58 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 17,
+    description: "Add 'blocked' to status CHECK on trackers and tracker_urls",
+    up: () => {
+      const db = getDb();
+      // SQLite cannot ALTER a CHECK constraint via regular DDL. The
+      // "rebuild the table" pattern (used by v11 for the channel CHECK)
+      // forces a DROP TABLE, which cascades through ON DELETE CASCADE /
+      // SET NULL foreign keys on child rows — and pragma `foreign_keys`
+      // can't be flipped mid-transaction (SQLite no-ops the change),
+      // so the rebuild would silently lose tracker_url_id association
+      // on price_history and notifications.
+      //
+      // The SQLite-blessed alternative for constraint-only changes that
+      // don't affect on-disk row format is to PRAGMA writable_schema and
+      // UPDATE sqlite_schema directly. better-sqlite3 normally blocks
+      // sqlite_schema writes, but exposes db.unsafeMode(true) for
+      // exactly this scenario. The new DDL string is parsed on the
+      // next connection; bumping schema_version forces invalidation.
+      const run = (sql: string): void => { db.prepare(sql).run(); };
+
+      const oldCheck = `CHECK(status IN ('active', 'paused', 'error'))`;
+      const newCheck = `CHECK(status IN ('active', 'paused', 'error', 'blocked'))`;
+
+      const currentVersion = (db.pragma('schema_version') as { schema_version: number }[])[0].schema_version;
+
+      db.unsafeMode(true);
+      try {
+        run('PRAGMA writable_schema = ON');
+        try {
+          // Patch any table whose stored DDL still uses the narrower
+          // CHECK. Fresh DBs created from the current schema.ts already
+          // have the wider one, so this UPDATE may match 0 rows on a
+          // fresh install — idempotent and harmless.
+          db.prepare(
+            `UPDATE sqlite_schema
+               SET sql = replace(sql, @oldCheck, @newCheck)
+               WHERE type = 'table'
+                 AND name IN ('trackers', 'tracker_urls')
+                 AND sql LIKE '%' || @oldCheck || '%'`,
+          ).run({ oldCheck, newCheck });
+        } finally {
+          run('PRAGMA writable_schema = OFF');
+        }
+        // Bump schema_version so SQLite re-parses the DDL on next use
+        // and any prepared-statement cache invalidates.
+        run(`PRAGMA schema_version = ${currentVersion + 1}`);
+      } finally {
+        db.unsafeMode(false);
+      }
+    },
+  },
 ];
 
 export function runMigrations(): void {

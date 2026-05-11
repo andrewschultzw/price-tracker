@@ -3,6 +3,10 @@ import { normalizeTrackerUrl } from '../lib/normalize-url.js';
 import { buildSlug } from '../lib/build-slug.js';
 import { randomBytes, createHash } from 'crypto';
 import { logger } from '../logger.js';
+import {
+  isBlockedRetailerHost,
+  RETAILER_BLOCKED_ERROR_MESSAGE,
+} from '../scraper/blocked-retailers.js';
 
 export interface Tracker {
   id: number;
@@ -21,7 +25,10 @@ export interface Tracker {
   last_checked_at: string | null;
   last_error: string | null;
   consecutive_failures: number;
-  status: 'active' | 'paused' | 'error';
+  // 'blocked' means the retailer's WAF blanket-blocks our egress IP
+  // (Akamai 403 / Cloudflare bot-mitigation) — distinct from 'error'
+  // because retries won't help. The scheduler skips blocked sellers.
+  status: 'active' | 'paused' | 'error' | 'blocked';
   created_at: string;
   updated_at: string;
   user_id: number | null;
@@ -98,7 +105,9 @@ export interface TrackerUrl {
   consecutive_failures: number;
   pending_confirmation_price: number | null;
   pending_confirmation_at: string | null;
-  status: 'active' | 'paused' | 'error';
+  // 'blocked' means the retailer's WAF blanket-blocks our egress IP.
+  // See Tracker.status for the same enum on the parent table.
+  status: 'active' | 'paused' | 'error' | 'blocked';
   condition: TrackerUrlCondition;
   created_at: string;
   updated_at: string;
@@ -218,9 +227,24 @@ export function createTracker(data: {
       user_id: data.user_id,
     });
     const trackerId = Number(result.lastInsertRowid);
-    db.prepare(`INSERT INTO tracker_urls (tracker_id, url, position) VALUES (?, ?, 0)`).run(trackerId, data.url);
+    // Known-blocked retailer host? Mark the seller (and via aggregation,
+    // the tracker) as 'blocked' on insert so the UI shows the right state
+    // immediately rather than failing through 3 cron ticks first.
+    if (isBlockedRetailerHost(data.url)) {
+      db.prepare(
+        `INSERT INTO tracker_urls (tracker_id, url, position, status, last_error)
+         VALUES (?, ?, 0, 'blocked', ?)`,
+      ).run(trackerId, data.url, RETAILER_BLOCKED_ERROR_MESSAGE);
+    } else {
+      db.prepare(`INSERT INTO tracker_urls (tracker_id, url, position) VALUES (?, ?, 0)`).run(trackerId, data.url);
+    }
     return getTrackerById(trackerId, data.user_id)!;
   })();
+
+  // Roll the (possibly 'blocked') seller status up to the tracker row.
+  // No-op when the seller is 'active' (the trackers row's defaults match
+  // the aggregate output); needed when the seller landed as 'blocked'.
+  refreshTrackerAggregates(tracker.id);
 
   // Best-effort: also stamp a public-product slug for this normalized URL.
   // First-tracker-wins on the display name (INSERT OR IGNORE inside the helper).
@@ -339,7 +363,7 @@ export function getDueTrackerUrls(): DueTrackerUrl[] {
            t.user_id as tracker_user_id
     FROM tracker_urls tu
     INNER JOIN trackers t ON t.id = tu.tracker_id
-    WHERE t.status != 'paused' AND tu.status != 'paused'
+    WHERE t.status != 'paused' AND tu.status NOT IN ('paused', 'blocked')
     AND (
       tu.last_checked_at IS NULL
       OR datetime(
@@ -422,9 +446,23 @@ export function addTrackerUrl(
     'SELECT COALESCE(MAX(position), -1) as mp FROM tracker_urls WHERE tracker_id = ?',
   ).get(trackerId) as { mp: number };
   const nextPos = maxPos.mp + 1;
+  // Mirror createTracker(): if this URL points at a known-blocked retailer
+  // host, mark the seller as 'blocked' on insert so the UI is correct
+  // immediately and the scheduler doesn't try (and fail) on it. Caller
+  // (route layer) should refreshTrackerAggregates() after this so the
+  // parent tracker's status rolls up.
+  const blocked = isBlockedRetailerHost(url);
   const result = db.prepare(
-    'INSERT INTO tracker_urls (tracker_id, url, position, condition) VALUES (?, ?, ?, ?)',
-  ).run(trackerId, url, nextPos, condition);
+    `INSERT INTO tracker_urls (tracker_id, url, position, condition, status, last_error)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    trackerId,
+    url,
+    nextPos,
+    condition,
+    blocked ? 'blocked' : 'active',
+    blocked ? RETAILER_BLOCKED_ERROR_MESSAGE : null,
+  );
   return getTrackerUrlById(Number(result.lastInsertRowid))!;
 }
 
@@ -548,9 +586,14 @@ export function refreshTrackerAggregates(trackerId: number): void {
     .pop() ?? null;
 
   const statuses = new Set(sellers.map(s => s.status));
-  let aggStatus: 'active' | 'paused' | 'error';
+  let aggStatus: 'active' | 'paused' | 'error' | 'blocked';
+  // Single-status roll-ups are easy. Mixed states (some active + some
+  // blocked) prefer 'active' so the tracker stays live and shows the
+  // working seller's price — one of N sellers being WAF-blocked
+  // shouldn't hide the others.
   if (statuses.size === 1 && statuses.has('error')) aggStatus = 'error';
   else if (statuses.size === 1 && statuses.has('paused')) aggStatus = 'paused';
+  else if (statuses.size === 1 && statuses.has('blocked')) aggStatus = 'blocked';
   else aggStatus = 'active';
 
   const firstError = sellers.find(s => s.last_error != null)?.last_error ?? null;
