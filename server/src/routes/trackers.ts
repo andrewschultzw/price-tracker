@@ -11,6 +11,11 @@ import {
 } from '../db/queries.js';
 import { checkTracker, checkTrackerUrl } from '../scheduler/cron.js';
 import { extractPrice } from '../scraper/extractor.js';
+import {
+  affiliateTracker,
+  affiliateTrackers,
+  affiliateUrlOnObjects,
+} from '../lib/serialize-affiliate.js';
 
 const router = Router();
 
@@ -62,7 +67,7 @@ const updateSchema = z
 
 router.get('/', (req: Request, res: Response) => {
   const trackers = getAllTrackers(req.user!.userId);
-  res.json(trackers);
+  res.json(affiliateTrackers(trackers));
 });
 
 router.get('/sparklines', (req: Request, res: Response) => {
@@ -102,7 +107,7 @@ router.post('/', (req: Request, res: Response) => {
     return;
   }
   const tracker = createTracker({ ...parsed.data, user_id: req.user!.userId });
-  res.status(201).json(tracker);
+  res.status(201).json(affiliateTracker(tracker));
 });
 
 router.get('/:id', (req: Request, res: Response) => {
@@ -111,7 +116,7 @@ router.get('/:id', (req: Request, res: Response) => {
     res.status(404).json({ error: 'Tracker not found' });
     return;
   }
-  res.json(tracker);
+  res.json(affiliateTracker(tracker));
 });
 
 router.get('/:id/public-slug', (req: Request, res: Response) => {
@@ -146,7 +151,7 @@ router.put('/:id', (req: Request, res: Response) => {
     res.status(404).json({ error: 'Tracker not found' });
     return;
   }
-  res.json(tracker);
+  res.json(affiliateTracker(tracker));
 });
 
 router.delete('/:id', (req: Request, res: Response) => {
@@ -168,7 +173,7 @@ router.post('/:id/check', async (req: Request, res: Response) => {
   try {
     await checkTracker(tracker.id);
     const updated = getTrackerById(tracker.id, req.user!.userId);
-    res.json(updated);
+    res.json(updated ? affiliateTracker(updated) : updated);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: msg });
@@ -204,7 +209,7 @@ router.get('/:id/urls', (req: Request, res: Response) => {
     res.status(404).json({ error: 'Tracker not found' });
     return;
   }
-  res.json(getTrackerUrlsForTracker(tracker.id));
+  res.json(affiliateUrlOnObjects(getTrackerUrlsForTracker(tracker.id)));
 });
 
 // Add a seller URL to a tracker
@@ -234,7 +239,7 @@ router.post('/:id/urls', async (req: Request, res: Response) => {
   }
 
   const updated = getTrackerUrlsForTracker(tracker.id);
-  res.status(201).json(updated);
+  res.status(201).json(affiliateUrlOnObjects(updated));
 });
 
 // Update a seller URL's condition (new/warehouse/refurb/open_box)
@@ -276,7 +281,7 @@ router.delete('/:id/urls/:urlId', (req: Request, res: Response) => {
   // Re-aggregate — if we just deleted the seller that had the lowest
   // price, the tracker's displayed price needs to update.
   refreshTrackerAggregates(tracker.id);
-  res.json(getTrackerUrlsForTracker(tracker.id));
+  res.json(affiliateUrlOnObjects(getTrackerUrlsForTracker(tracker.id)));
 });
 
 // Test scrape without saving

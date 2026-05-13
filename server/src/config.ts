@@ -63,6 +63,15 @@ export const config = {
   webPushVapidPublic: process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '',
   webPushVapidPrivate: process.env.WEB_PUSH_VAPID_PRIVATE_KEY || '',
   webPushSubject: process.env.WEB_PUSH_SUBJECT || '',
+  // Amazon Associates affiliate tag. When set, all Amazon URLs the
+  // API returns get `?tag=<tag>` appended on the way out. Empty
+  // string disables the feature (no rewrite, no disclosure footer).
+  // Compliance: rewritten URLs are sent to UI and public pages only.
+  // Email channel is NOT tagged (Amazon ToS section 5(b) prohibits
+  // affiliate links in email); push channels (Discord/ntfy/webhook/
+  // web_push) currently also skip the rewrite to keep notification
+  // bodies copy-pasteable, but could opt in later.
+  amazonAffiliateTag: process.env.AMAZON_AFFILIATE_TAG || '',
 };
 
 if (config.isProduction && !process.env.JWT_SECRET) {
@@ -88,4 +97,14 @@ export function isEmailConfigured(): boolean {
  */
 export function isWebPushConfigured(): boolean {
   return !!(config.webPushVapidPublic && config.webPushVapidPrivate && config.webPushSubject);
+}
+
+/**
+ * True when the Amazon Associates tag is configured. The API
+ * serialization layer skips the rewrite when this is false; the
+ * client renders the disclosure footer only when this is true (via
+ * the public `/api/config/public` endpoint).
+ */
+export function isAmazonAffiliateConfigured(): boolean {
+  return config.amazonAffiliateTag.trim() !== '';
 }

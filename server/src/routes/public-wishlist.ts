@@ -7,6 +7,7 @@ import {
   deleteWishlistClaim,
 } from '../db/queries.js';
 import { logger } from '../logger.js';
+import { affiliateUrlOnObjects } from '../lib/serialize-affiliate.js';
 
 /**
  * Anonymous, token-gated wishlist routes for gift-givers. NO auth — these
@@ -35,7 +36,7 @@ router.get('/:token', (req: Request, res: Response) => {
   res.set('Cache-Control', 'public, max-age=60');
   res.json({
     display_name: data.share_display_name_on ? data.display_name : null,
-    items: data.items,
+    items: affiliateUrlOnObjects(data.items),
   });
 });
 
