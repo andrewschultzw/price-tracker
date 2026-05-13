@@ -1,5 +1,5 @@
 import { getStoredToken } from '../lib/api.js';
-import { unsupportedReason } from '../lib/url-guard.js';
+import { unsupportedReason, blockedRetailerReason } from '../lib/url-guard.js';
 import type {
   ExtensionResponse,
   CreateMessage,
@@ -31,6 +31,15 @@ async function main() {
   // can fix from here, just open a product page.
   const unsupported = unsupportedReason(tab.url);
   if (unsupported) { renderUnsupported(unsupported); return; }
+
+  // Guard retailers whose WAF blanket-blocks our egress IP (Home Depot,
+  // Best Buy). The user can still technically submit the form, but the
+  // server would just mark the seller status='blocked' on creation and
+  // they'd never get a price. Cleaner to short-circuit here with the
+  // specific "this retailer blocks our scraper" message so they can
+  // try a different retailer for the same item.
+  const blocked = blockedRetailerReason(tab.url);
+  if (blocked) { renderUnsupported(blocked); return; }
 
   const dup: ExtensionResponse = await chrome.runtime.sendMessage({
     type: 'CHECK_DUP', url: tab.url,

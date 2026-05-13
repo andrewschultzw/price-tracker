@@ -16,10 +16,28 @@ import { useEffect, useState } from 'react'
  */
 export interface PublicConfig {
   amazon_affiliate_enabled: boolean
+  /**
+   * The affiliate tag string when configured, null otherwise. Public
+   * because it's appended to every Amazon URL we serve — exposing it
+   * here doesn't leak anything that isn't already in the click path.
+   * Surfaced in the Settings UI so the user can confirm their
+   * Associates ID is wired without SSHing into the host.
+   */
+  amazon_affiliate_tag: string | null
 }
 
 let cached: PublicConfig | null = null
 let inflight: Promise<PublicConfig> | null = null
+
+/**
+ * Reset the module-level cache. Tests should call this in `beforeEach`
+ * (or via a shared setup hook) so a fetch from one test doesn't bleed
+ * into the next. Not a public API — exported for tests only.
+ */
+export function _resetPublicConfigCacheForTests(): void {
+  cached = null
+  inflight = null
+}
 
 function fetchOnce(): Promise<PublicConfig> {
   if (cached) return Promise.resolve(cached)

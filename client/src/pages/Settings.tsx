@@ -7,6 +7,7 @@ import { WebPushSettings } from '../components/WebPushSettings'
 import { ConnectedAppsCard } from '../components/ConnectedAppsCard'
 import { InvitesCard } from '../components/InvitesCard'
 import { WishlistCard } from '../components/WishlistCard'
+import { AffiliateStatusCard } from '../components/AffiliateStatusCard'
 
 type ChannelKey = 'discord' | 'ntfy' | 'webhook' | 'email' | 'web_push'
 
@@ -377,6 +378,8 @@ export default function SettingsPage() {
           {savedCommunity ? 'Saved!' : savingCommunity ? 'Saving...' : 'Save'}
         </button>
       </div>
+
+      <AffiliateStatusCard />
     </div>
   )
 }
