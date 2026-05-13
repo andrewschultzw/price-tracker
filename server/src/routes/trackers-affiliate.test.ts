@@ -128,17 +128,41 @@ describe('Amazon affiliate tag — route serialization', () => {
     expect(neweggSeller?.url).toBe('https://newegg.com/p/X');
   });
 
-  it('feature off (empty tag) — Amazon URLs come through as-is', async () => {
+  it('feature off (empty tag) — Amazon URLs still get canonicalized, just no tag', async () => {
+    // Canonicalization is independent of the affiliate feature: the
+    // user benefits from clean URLs whether or not monetization is on.
+    // Seed a URL with search noise to exercise canonicalization
+    // separately from the tag path.
     config.amazonAffiliateTag = '';
     const u = seedUser();
-    seedAmazonTracker(u);
+    getDb().prepare(
+      `INSERT INTO trackers (name, url, user_id, status, check_interval_minutes, jitter_minutes)
+       VALUES ('T', 'https://www.amazon.com/Some-Slug/dp/B01N5IB20Q/ref=sr_1_2?crid=xyz&keywords=foo', ?, 'active', 60, 0)`,
+    ).run(u);
     const app = await makeApp();
     const res = await request(app)
       .get('/api/trackers')
       .set('Cookie', authCookie(u));
     expect(res.status).toBe(200);
     const trackers = res.body as Array<{ url: string }>;
-    // No `?tag=` appended when the feature is off.
-    expect(trackers[0].url).toBe('https://www.amazon.com/dp/B01');
+    // No `?tag=` (feature off) but the noise is gone.
+    expect(trackers[0].url).toBe('https://www.amazon.com/dp/B01N5IB20Q');
+  });
+
+  it('canonicalizes + tags in one pass — search-noise URLs land clean', async () => {
+    const u = seedUser();
+    getDb().prepare(
+      `INSERT INTO trackers (name, url, user_id, status, check_interval_minutes, jitter_minutes)
+       VALUES ('T',
+               'https://www.amazon.com/Crocs-Unisex-Classic/dp/B0FF2RJ11H/ref=sr_1_3?crid=UZR6&keywords=crocs&qid=1778&sr=8-3',
+               ?, 'active', 60, 0)`,
+    ).run(u);
+    const app = await makeApp();
+    const res = await request(app)
+      .get('/api/trackers')
+      .set('Cookie', authCookie(u));
+    expect(res.status).toBe(200);
+    const trackers = res.body as Array<{ url: string }>;
+    expect(trackers[0].url).toBe('https://www.amazon.com/dp/B0FF2RJ11H?tag=mytag-20');
   });
 });
