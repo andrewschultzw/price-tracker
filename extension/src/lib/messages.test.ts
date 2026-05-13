@@ -6,6 +6,7 @@ import {
   isListProjects,
   isAddToProject,
   isUpdateThreshold,
+  isStartPicker,
 } from './messages.js';
 
 describe('message type guards', () => {
@@ -35,5 +36,12 @@ describe('message type guards', () => {
     expect(isAddToProject({ type: 'ADD_TO_PROJECT', project_id: '1', tracker_id: 2 })).toBe(false);
     expect(isAddToProject({ type: 'ADD_TO_PROJECT', project_id: 1 })).toBe(false);
     expect(isUpdateThreshold({ type: 'UPDATE_THRESHOLD', tracker_id: 1, threshold: 'cheap' })).toBe(false);
+  });
+
+  it('isStartPicker', () => {
+    expect(isStartPicker({ type: 'START_PICKER' })).toBe(true);
+    expect(isStartPicker({ type: 'CREATE' })).toBe(false);
+    expect(isStartPicker(null)).toBe(false);
+    expect(isStartPicker({ })).toBe(false);
   });
 });

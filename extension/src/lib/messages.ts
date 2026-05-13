@@ -30,13 +30,26 @@ export interface UpdateThresholdMessage {
   threshold: number | null;
 }
 
+/**
+ * Asks the background to inject the element-picker content script into
+ * the currently active tab. Popup fires this when the user clicks
+ * "Pick price element"; background uses chrome.scripting.executeScript
+ * (riding on the activeTab permission granted at click time). The
+ * popup then closes — the content script writes the result into
+ * chrome.storage.session, which the popup reads on its next open.
+ */
+export interface StartPickerMessage {
+  type: 'START_PICKER';
+}
+
 export type ExtensionMessage =
   | CheckDupMessage
   | CreateMessage
   | TestConnectionMessage
   | ListProjectsMessage
   | AddToProjectMessage
-  | UpdateThresholdMessage;
+  | UpdateThresholdMessage
+  | StartPickerMessage;
 
 export interface CheckDupResponse {
   ok: true;
@@ -67,6 +80,10 @@ export interface UpdateThresholdResponse {
   tracker: Tracker;
 }
 
+export interface StartPickerResponse {
+  ok: true;
+}
+
 export type ErrorCode =
   | 'NO_TOKEN' | 'UNAUTHORIZED' | 'NETWORK' | 'SERVER'
   | 'VALIDATION' | 'CONFLICT' | 'NOT_IMPLEMENTED' | 'UNKNOWN';
@@ -84,6 +101,7 @@ export type ExtensionResponse =
   | ListProjectsResponse
   | AddToProjectResponse
   | UpdateThresholdResponse
+  | StartPickerResponse
   | ErrorResponse;
 
 export function isCheckDup(msg: unknown): msg is CheckDupMessage {
@@ -120,4 +138,8 @@ export function isUpdateThreshold(msg: unknown): msg is UpdateThresholdMessage {
     typeof m.tracker_id === 'number' &&
     (m.threshold === null || typeof m.threshold === 'number')
   );
+}
+
+export function isStartPicker(msg: unknown): msg is StartPickerMessage {
+  return !!msg && typeof msg === 'object' && (msg as { type: unknown }).type === 'START_PICKER';
 }

@@ -7,9 +7,25 @@ import type {
   ListProjectsMessage,
   AddToProjectMessage,
   UpdateThresholdMessage,
+  StartPickerMessage,
   ErrorCode,
 } from '../lib/messages.js';
 import type { TrackerCreatePayload, Tracker } from '../types/api.js';
+
+/**
+ * Mirror of the result the content-script picker writes into
+ * chrome.storage.session under `pickedSelector`. Defined here (and
+ * NOT imported from the content script) because the popup is bundled
+ * separately and importing from a content-script entry would pull in
+ * @medv/finder pointlessly.
+ */
+interface PickedSelector {
+  url: string;
+  selector: string;
+  matchedText: string | null;
+  tagName: string;
+  pickedAt: number;
+}
 
 const root = document.getElementById('root')!;
 
@@ -50,7 +66,7 @@ async function main() {
     return;
   }
 
-  renderForm(tab.url, tab.title ?? '');
+  void renderForm(tab.url, tab.title ?? '');
 }
 
 function renderUnsupported(reason: string) {
@@ -65,7 +81,7 @@ function renderNoToken() {
   });
 }
 
-function renderForm(url: string, title: string) {
+async function renderForm(url: string, title: string) {
   swap('tpl-form');
   const host = root.querySelector('.host')!;
   host.textContent = formatHost(url);
@@ -75,10 +91,63 @@ function renderForm(url: string, title: string) {
   const $threshold = root.querySelector('[data-field="threshold"]') as HTMLInputElement;
   const $css = root.querySelector('[data-field="css"]') as HTMLInputElement;
   const $interval = root.querySelector('[data-field="interval"]') as HTMLInputElement;
+  const $pickButton = root.querySelector('[data-action="pick-element"]') as HTMLButtonElement | null;
+  const $pickStatus = root.querySelector('[data-pick-status]') as HTMLDivElement | null;
   $name.value = title;
   $url.value = url;
   $name.focus();
   $name.select();
+
+  // Pre-fill CSS selector + matched-text hint when the user previously
+  // ran the element picker on this exact URL. chrome.storage.session is
+  // cleared on browser close so this only fires within the same session
+  // as the pick; we also URL-match defensively so opening the popup on
+  // a different tab doesn't grab someone else's selector.
+  try {
+    const stored = await chrome.storage.session.get(['pickedSelector']);
+    const picked = stored.pickedSelector as PickedSelector | undefined;
+    if (picked && picked.url === url) {
+      $css.value = picked.selector;
+      // Open the Advanced details so the pre-filled selector is visible.
+      const $advanced = root.querySelector('.advanced') as HTMLDetailsElement | null;
+      if ($advanced) $advanced.open = true;
+      if ($pickStatus) {
+        $pickStatus.classList.remove('hidden');
+        $pickStatus.textContent = picked.matchedText
+          ? `Picked from page — matched "${picked.matchedText}"`
+          : `Picked from page — no price-shape match, double-check`;
+      }
+      // One-shot: consume the picked selector so it doesn't auto-fill on
+      // subsequent reopens. User can re-pick if they want a different one.
+      await chrome.storage.session.remove('pickedSelector');
+    }
+  } catch {
+    // storage.session may be unavailable in very locked-down profiles;
+    // pre-fill is best-effort and the form still works without it.
+  }
+
+  if ($pickButton) {
+    $pickButton.addEventListener('click', async () => {
+      $pickButton.disabled = true;
+      const msg: StartPickerMessage = { type: 'START_PICKER' };
+      const resp = await chrome.runtime.sendMessage(msg) as ExtensionResponse;
+      if (resp.ok) {
+        // Picker is now active on the page — close the popup so the
+        // user can interact with the host page. Their pick will land
+        // in chrome.storage.session and pre-fill the CSS field the
+        // next time they open the popup.
+        window.close();
+      } else {
+        $pickButton.disabled = false;
+        if ($pickStatus) {
+          $pickStatus.classList.remove('hidden');
+          $pickStatus.textContent = resp.detail
+            ? `Couldn't start picker: ${resp.detail}`
+            : `Couldn't start picker.`;
+        }
+      }
+    });
+  }
 
   const $error = root.querySelector('[data-error]') as HTMLDivElement;
 

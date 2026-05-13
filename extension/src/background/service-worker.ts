@@ -5,6 +5,7 @@ import {
   isListProjects,
   isAddToProject,
   isUpdateThreshold,
+  isStartPicker,
 } from '../lib/messages.js';
 import {
   testConnection,
@@ -153,6 +154,34 @@ async function dispatch(msg: unknown): Promise<ExtensionResponse> {
       const tracker = await updateTrackerThreshold(msg.tracker_id, msg.threshold);
       await invalidateTrackerCache();
       return { ok: true, tracker };
+    }
+    if (isStartPicker(msg)) {
+      // Inject the picker content script into the user's active tab.
+      // activeTab + scripting permissions cover this: no broad
+      // host_permissions needed — the user clicked our button on this
+      // very tab, which is the modern MV3 idiom.
+      //
+      // The picker.ts source lives in the manifest's content_scripts
+      // array (with a never-matching pattern, so it doesn't auto-
+      // inject). @crxjs bundles it into a content-hashed file under
+      // assets/; we read that path from the live manifest at runtime
+      // rather than hard-coding it.
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return { ok: false, error: 'UNKNOWN', detail: 'No active tab' };
+      const pickerJs = chrome.runtime.getManifest().content_scripts?.[0]?.js?.[0];
+      if (!pickerJs) {
+        return { ok: false, error: 'UNKNOWN', detail: 'Picker bundle not found in manifest' };
+      }
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: [pickerJs],
+        });
+        return { ok: true };
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { ok: false, error: 'UNKNOWN', detail };
+      }
     }
     return { ok: false, error: 'NOT_IMPLEMENTED' };
   } catch (err) {
