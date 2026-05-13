@@ -22,6 +22,7 @@ import Setup from './pages/Setup'
 // Public product pages — anonymous /p/<slug> SEO surface. Eagerly imported
 // since the entire route IS the page; no benefit to a chunk split here.
 import PublicProduct from './pages/PublicProduct'
+import AffiliateDisclosure from './components/AffiliateDisclosure'
 
 // Community deals — anonymous /deals public feed. Lazy-loaded since most
 // users hit the dashboard first; the deal feed is a secondary entry point.
@@ -69,16 +70,19 @@ function App() {
   const PUBLIC_PATH_PREFIXES = ['/login', '/register', '/setup', '/p/', '/deals', '/wishlist/']
   if (PUBLIC_PATH_PREFIXES.some(p => location.pathname === p || location.pathname.startsWith(p))) {
     return (
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/setup" element={<Setup />} />
-          <Route path="/p/:slug" element={<PublicProduct />} />
-          <Route path="/deals" element={<CommunityDeals />} />
-          <Route path="/wishlist/:token" element={<WishlistPublic />} />
-        </Routes>
-      </Suspense>
+      <>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/setup" element={<Setup />} />
+            <Route path="/p/:slug" element={<PublicProduct />} />
+            <Route path="/deals" element={<CommunityDeals />} />
+            <Route path="/wishlist/:token" element={<WishlistPublic />} />
+          </Routes>
+        </Suspense>
+        <AffiliateDisclosure />
+      </>
     )
   }
 
@@ -166,7 +170,7 @@ function App() {
           </div>
         )}
       </nav>
-      <main className="max-w-6xl mx-auto px-4 py-6">
+      <main className="max-w-6xl mx-auto px-4 py-6 min-h-[calc(100vh-8rem)]">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -184,6 +188,7 @@ function App() {
           </Routes>
         </Suspense>
       </main>
+      <AffiliateDisclosure />
     </div>
   )
 }

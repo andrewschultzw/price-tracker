@@ -3,7 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { resolve } from 'path';
-import { config, isWebPushConfigured } from './config.js';
+import { config, isWebPushConfigured, isAmazonAffiliateConfigured } from './config.js';
 import { initializeSchema } from './db/schema.js';
 import { closeDb } from './db/connection.js';
 import { authMiddleware, adminMiddleware } from './auth/middleware.js';
@@ -95,6 +95,17 @@ app.use('/api/public', publicProductRoutes);
 // Sitemap at root path so search engines can discover it via robots.txt
 // without needing the /api prefix.
 app.get('/sitemap.xml', sitemapHandler);
+
+// Public config endpoint — exposes booleans the client needs at boot
+// to render compliance UI (Amazon Associates disclosure footer when
+// affiliate tagging is on). No auth: rendered on public pages too,
+// and the values aren't sensitive (the actual tag stays server-side).
+app.get('/api/public/config', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json({
+    amazon_affiliate_enabled: isAmazonAffiliateConfigured(),
+  });
+});
 
 // Protected API routes
 app.use('/api/trackers', apiKeyMiddleware, authMiddleware, trackerRoutes);
