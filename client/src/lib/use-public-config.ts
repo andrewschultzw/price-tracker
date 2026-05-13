@@ -29,6 +29,16 @@ export interface PublicConfig {
 let cached: PublicConfig | null = null
 let inflight: Promise<PublicConfig> | null = null
 
+/**
+ * Reset the module-level cache. Tests should call this in `beforeEach`
+ * (or via a shared setup hook) so a fetch from one test doesn't bleed
+ * into the next. Not a public API — exported for tests only.
+ */
+export function _resetPublicConfigCacheForTests(): void {
+  cached = null
+  inflight = null
+}
+
 function fetchOnce(): Promise<PublicConfig> {
   if (cached) return Promise.resolve(cached)
   if (inflight) return inflight
