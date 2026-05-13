@@ -103,6 +103,19 @@
     </div>
   </template>
 
+  <!-- Shown when the active tab isn't a normal http(s) product page —
+       chrome://, about:, file://, javascript:, or pages whose URL has
+       no real hostname (e.g., chrome://settings returns 'settings' as
+       hostname). Distinct from tpl-error because there's nothing to
+       retry; the user just needs to navigate to a real product URL. -->
+  <template id="tpl-unsupported">
+    <div class="header"><strong>Can't track this page</strong></div>
+    <div class="body">
+      <p class="muted" data-msg></p>
+      <p class="muted small">Open a product page on a retailer site (Amazon, Newegg, etc.) and click the extension again.</p>
+    </div>
+  </template>
+
   <script type="module" src="popup.ts"></script>
 </body>
 </html>

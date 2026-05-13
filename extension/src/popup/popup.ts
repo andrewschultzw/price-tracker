@@ -1,4 +1,5 @@
 import { getStoredToken } from '../lib/api.js';
+import { unsupportedReason } from '../lib/url-guard.js';
 import type {
   ExtensionResponse,
   CreateMessage,
@@ -21,6 +22,16 @@ async function main() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.url) { renderError('Could not read the active tab.'); return; }
 
+  // Guard non-product URLs (chrome://, about:, file://, javascript:, and
+  // URLs whose "hostname" isn't a real DNS name like `chrome://settings`
+  // returning 'settings'). Without this, the form pre-fills with the
+  // garbage URL, the user clicks Add, the server rejects with 400, and
+  // they see a generic validation error. Show a clear "can't track"
+  // state instead — no retry button because there's nothing the user
+  // can fix from here, just open a product page.
+  const unsupported = unsupportedReason(tab.url);
+  if (unsupported) { renderUnsupported(unsupported); return; }
+
   const dup: ExtensionResponse = await chrome.runtime.sendMessage({
     type: 'CHECK_DUP', url: tab.url,
   } satisfies CheckDupMessage);
@@ -31,6 +42,11 @@ async function main() {
   }
 
   renderForm(tab.url, tab.title ?? '');
+}
+
+function renderUnsupported(reason: string) {
+  swap('tpl-unsupported');
+  (root.querySelector('[data-msg]') as HTMLElement).textContent = reason;
 }
 
 function renderNoToken() {
