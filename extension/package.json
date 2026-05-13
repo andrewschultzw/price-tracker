@@ -13,8 +13,12 @@
     "@crxjs/vite-plugin": "^2.0.0-beta.25",
     "@types/chrome": "^0.0.260",
     "@types/node": "^20.10.0",
+    "jsdom": "^29.1.1",
     "typescript": "^5.4.0",
     "vite": "^5.2.0",
     "vitest": "^1.4.0"
+  },
+  "dependencies": {
+    "@medv/finder": "^4.0.2"
   }
 }

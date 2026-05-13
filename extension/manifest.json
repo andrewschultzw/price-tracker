@@ -9,8 +9,15 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["activeTab", "tabs", "contextMenus", "storage"],
+  "permissions": ["activeTab", "tabs", "contextMenus", "storage", "scripting"],
   "host_permissions": ["https://prices.schultzsolutions.tech/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://no-such-host.invalid/*"],
+      "js": ["src/content/picker.ts"],
+      "run_at": "document_idle"
+    }
+  ],
   "background": {
     "service_worker": "src/background/service-worker.ts",
     "type": "module"
