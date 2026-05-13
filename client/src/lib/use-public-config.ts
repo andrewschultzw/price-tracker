@@ -16,6 +16,14 @@ import { useEffect, useState } from 'react'
  */
 export interface PublicConfig {
   amazon_affiliate_enabled: boolean
+  /**
+   * The affiliate tag string when configured, null otherwise. Public
+   * because it's appended to every Amazon URL we serve — exposing it
+   * here doesn't leak anything that isn't already in the click path.
+   * Surfaced in the Settings UI so the user can confirm their
+   * Associates ID is wired without SSHing into the host.
+   */
+  amazon_affiliate_tag: string | null
 }
 
 let cached: PublicConfig | null = null

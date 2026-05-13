@@ -96,14 +96,18 @@ app.use('/api/public', publicProductRoutes);
 // without needing the /api prefix.
 app.get('/sitemap.xml', sitemapHandler);
 
-// Public config endpoint — exposes booleans the client needs at boot
-// to render compliance UI (Amazon Associates disclosure footer when
-// affiliate tagging is on). No auth: rendered on public pages too,
-// and the values aren't sensitive (the actual tag stays server-side).
+// Public config endpoint — exposes flags + non-sensitive values the
+// client needs at boot to render compliance UI (Amazon Associates
+// disclosure footer when affiliate tagging is on) and the Settings
+// page's "Affiliate status" card. No auth: rendered on public pages
+// too, and `amazon_affiliate_tag` is intrinsically public (it's
+// appended to every Amazon URL we serve, so anyone who clicks one
+// sees it anyway).
 app.get('/api/public/config', (_req, res) => {
   res.set('Cache-Control', 'public, max-age=300');
   res.json({
     amazon_affiliate_enabled: isAmazonAffiliateConfigured(),
+    amazon_affiliate_tag: isAmazonAffiliateConfigured() ? config.amazonAffiliateTag : null,
   });
 });
 
