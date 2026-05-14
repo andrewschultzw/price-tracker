@@ -1,5 +1,33 @@
 # Lessons Learned
 
+## 2026-05-14: Scheduled-review issues as a maintenance-loop pattern
+
+### Auto-opened GitHub issues with the diagnostic playbook in the body are the right notification channel for periodic reviews
+**What happened:** A scheduled remote agent opened issue #32 ("2-week plausibility guard log review") with the queries to run baked into the body as a copy-pasteable bash block plus a findings checklist. When the issue surfaced, it got noticed immediately (vs. log dashboards we never check, or weekly email digests). Running the queries took ~2 minutes; posting findings + closing the issue took another minute. Total maintenance-loop friction: ~3 minutes for a meaningful prod-data review that would otherwise sit on a "should look at this" list indefinitely.
+
+**Why it works better than the alternatives:**
+- **GitHub issues grab attention.** They show up in the standard notification feed alongside actual development work, so they're not separable from "real" tasks the way a separate monitoring dashboard is.
+- **The playbook lives WITH the review.** Next quarter's review reads the issue body and re-runs the same commands — no separate runbook to maintain, no "where did we put those queries again" hunt. The issue is the artifact.
+- **Findings get archived in the right place.** Closed issues live in the project's GitHub history, indexed and searchable. Future "did we ever check this?" questions have a one-search answer.
+- **No notification fatigue.** The issue stays open until explicitly closed. Unlike emails or push notifications, it doesn't decay or get buried.
+- **Free schema for "what to review."** The checklist in the issue body forces the reviewer to confirm each finding deliberately, rather than skimming and clicking "looks fine."
+
+**Rule:** Any time-bound prod health check that takes <5 min to run is a candidate for a scheduled-remote-agent issue. Cost: trivial. Benefit: the loop actually closes. Specifically: bake the SSH commands / SQL queries into the issue body (don't link to a separate doc), structure findings as a checklist, mark the issue as auto-opened so future reviewers know to close it after.
+
+**Candidates worth scheduling next:**
+- Monthly DB size + backup integrity check on CT 302 (price-tracker.db size, backup file count, last successful backup timestamp)
+- Quarterly cron load review (scrapes/min over the month, p99 scrape duration, OOM/restart events)
+- Monthly Claude API cost review (when AI features are enabled — current spend vs. budget, failure rates, summary staleness backlog)
+- Quarterly tracker-error audit (sellers stuck in status='error' or status='blocked' > 90 days that the user has forgotten about and should manually delete)
+- Bi-annual dependency audit (npm audit, outdated packages, deprecation warnings)
+
+Pattern for the issue body:
+1. Brief "why this review exists" preamble
+2. Bash block(s) with the commands to run, copy-paste ready
+3. `## Checklist` of findings to confirm
+4. `## Findings` empty section, "Fill in numbers as comments below before closing"
+5. "Auto-opened by a scheduled remote agent. Close this issue when the review is done." footer
+
 ## 2026-05-11: Retailer-WAF IP blocks (Home Depot 403)
 
 ### A 403 with `Server: AkamaiGHost` on the BARE HOMEPAGE is an IP-reputation block, not a scraper bug
