@@ -201,3 +201,61 @@ describe('GET /api/purchases', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('PATCH /api/purchases/:id', () => {
+  it('updates price and quantity', async () => {
+    const userId = seedUser('a@b.com');
+    const trackerId = seedTracker(userId, { last_price: 50 });
+    const created = await request(makeApp())
+      .post(`/api/trackers/${trackerId}/purchases`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: 40 });
+    const id = created.body.purchase.id;
+
+    const res = await request(makeApp())
+      .patch(`/api/purchases/${id}`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: 35, quantity: 2 });
+    expect(res.status).toBe(200);
+    expect(res.body.purchase.purchase_price).toBe(35);
+    expect(res.body.purchase.quantity).toBe(2);
+  });
+
+  it('rejects 404 when the purchase belongs to another user', async () => {
+    const aId = seedUser('a@b.com');
+    const bId = seedUser('b@b.com');
+    const trackerA = seedTracker(aId, { last_price: 50 });
+    const created = await request(makeApp())
+      .post(`/api/trackers/${trackerA}/purchases`)
+      .set('Cookie', authCookie(aId))
+      .send({ purchase_price: 40 });
+    const res = await request(makeApp())
+      .patch(`/api/purchases/${created.body.purchase.id}`)
+      .set('Cookie', authCookie(bId))
+      .send({ purchase_price: 1 });
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects 404 for an unknown purchase id', async () => {
+    const userId = seedUser('a@b.com');
+    const res = await request(makeApp())
+      .patch(`/api/purchases/99999`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: 1 });
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects 400 for invalid body (negative price)', async () => {
+    const userId = seedUser('a@b.com');
+    const trackerId = seedTracker(userId, { last_price: 50 });
+    const created = await request(makeApp())
+      .post(`/api/trackers/${trackerId}/purchases`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: 40 });
+    const res = await request(makeApp())
+      .patch(`/api/purchases/${created.body.purchase.id}`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: -1 });
+    expect(res.status).toBe(400);
+  });
+});

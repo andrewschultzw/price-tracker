@@ -71,3 +71,34 @@ purchasesRouter.get('/', (req: Request, res: Response) => {
   const offset = Math.max(Number(req.query.offset ?? 0) || 0, 0);
   res.json(listPurchases({ user_id: userId, limit, offset }));
 });
+
+const patchSchema = z.object({
+  purchase_price: z.number().nonnegative().optional(),
+  quantity: z.number().int().min(1).optional(),
+  purchased_at: z.string().datetime().optional(),
+  tracker_url_id: z.number().int().nullable().optional(),
+});
+
+// PATCH /api/purchases/:id — partial edit. Cross-user access returns
+// 404 (not 403) so we don't reveal whether a purchase id exists.
+purchasesRouter.patch('/:id', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(404).json({ error: 'purchase not found' });
+  }
+  const existing = getPurchase(id);
+  if (!existing) {
+    return res.status(404).json({ error: 'purchase not found' });
+  }
+  const tracker = getTrackerById(existing.tracker_id, userId);
+  if (!tracker) {
+    return res.status(404).json({ error: 'purchase not found' });
+  }
+  const parsed = patchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'invalid body', details: parsed.error.format() });
+  }
+  const updated = updatePurchase(id, parsed.data);
+  res.json({ purchase: updated });
+});
