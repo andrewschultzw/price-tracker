@@ -578,6 +578,68 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 18,
+    description: "Add purchases table and 'purchased' to trackers.status CHECK",
+    up: () => {
+      const db = getDb();
+
+      // Step 1: Create the new purchases table. Many-to-one with trackers;
+      // tracker_url_id is nullable so deletion of a seller (ON DELETE SET NULL)
+      // doesn't lose the purchase record. first_price is the snapshot of the
+      // earliest observed price at purchase time so savings are stable even
+      // if price_history is pruned later.
+      const runDdl = (sql: string): void => { db.prepare(sql).run(); };
+      runDdl(`CREATE TABLE IF NOT EXISTS purchases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tracker_id INTEGER NOT NULL REFERENCES trackers(id) ON DELETE CASCADE,
+        tracker_url_id INTEGER REFERENCES tracker_urls(id) ON DELETE SET NULL,
+        purchase_price REAL NOT NULL CHECK(purchase_price >= 0),
+        quantity INTEGER NOT NULL DEFAULT 1 CHECK(quantity >= 1),
+        first_price REAL NOT NULL,
+        purchased_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`);
+      runDdl(`CREATE INDEX IF NOT EXISTS idx_purchases_tracker_id ON purchases(tracker_id)`);
+      runDdl(`CREATE INDEX IF NOT EXISTS idx_purchases_purchased_at ON purchases(purchased_at)`);
+
+      // Step 2: Widen the trackers.status CHECK to admit 'purchased'. Same
+      // sqlite_schema patch pattern as v17 (rebuild-the-table cascades
+      // through ON DELETE CASCADE / SET NULL FKs and loses data; see
+      // tasks/lessons.md). Only patches `trackers` — `tracker_urls` keeps
+      // the narrower CHECK because 'purchased' is a tracker-level state.
+      const run = (sql: string): void => { db.prepare(sql).run(); };
+
+      const oldCheck = `CHECK(status IN ('active', 'paused', 'error', 'blocked'))`;
+      const newCheck = `CHECK(status IN ('active', 'paused', 'error', 'blocked', 'purchased'))`;
+
+      const currentVersion = (db.pragma('schema_version') as { schema_version: number }[])[0].schema_version;
+
+      db.unsafeMode(true);
+      try {
+        run('PRAGMA writable_schema = ON');
+        try {
+          // Narrow to the trackers table only — tracker_urls.status keeps
+          // the v17 four-value CHECK. Idempotent: a fresh DB whose schema.ts
+          // already has the wider CHECK won't match the LIKE clause.
+          db.prepare(
+            `UPDATE sqlite_schema
+               SET sql = replace(sql, @oldCheck, @newCheck)
+               WHERE type = 'table'
+                 AND name = 'trackers'
+                 AND sql LIKE '%' || @oldCheck || '%'`,
+          ).run({ oldCheck, newCheck });
+        } finally {
+          run('PRAGMA writable_schema = OFF');
+        }
+        // Bump schema_version so SQLite re-parses the DDL on next use
+        // and any prepared-statement cache invalidates.
+        run(`PRAGMA schema_version = ${currentVersion + 1}`);
+      } finally {
+        db.unsafeMode(false);
+      }
+    },
+  },
 ];
 
 export function runMigrations(): void {
