@@ -22,6 +22,7 @@ import publicProductRoutes, { sitemapHandler } from './routes/public-products.js
 import wishlistRoutes from './routes/wishlist.js';
 import publicWishlistRoutes from './routes/public-wishlist.js';
 import { trackerPurchasesRouter, purchasesRouter } from './routes/purchases.js';
+import { publicSavingsRouter } from './routes/public-savings.js';
 import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { startBackfillCron, stopBackfillCron } from './ai/backfill-cron.js';
@@ -86,6 +87,11 @@ app.use('/api/favicon', faviconRouter);
 // the broader /api/public mount so the more-specific path wins. Spec:
 // docs/superpowers/specs/2026-05-07-wishlist-mode-design.md
 app.use('/api/public/wishlist', publicWishlistRoutes);
+
+// Public site-wide savings rollup — aggregate only, intentionally no PII.
+// Mounted before the broader /api/public mount so the more-specific path
+// wins. Spec: docs/superpowers/specs/2026-05-20-purchased-tracking-design.md
+app.use(publicSavingsRouter);
 
 // Public product pages (intentionally no auth — anonymous CamelCamelCamel-
 // style aggregated price-history. Mount BEFORE the auth-gated routes so
