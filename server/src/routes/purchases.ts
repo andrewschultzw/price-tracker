@@ -62,3 +62,12 @@ trackerPurchasesRouter.post('/:id/purchases', (req: Request, res: Response) => {
   const updatedTracker = getTrackerById(trackerId, userId)!;
   res.status(201).json({ purchase, tracker: updatedTracker });
 });
+
+// GET /api/purchases — paged list of the current user's purchases,
+// newest-first. limit is clamped to [1, 500]; default 50.
+purchasesRouter.get('/', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const limit = Math.min(Math.max(Number(req.query.limit ?? 50) || 50, 1), 500);
+  const offset = Math.max(Number(req.query.offset ?? 0) || 0, 0);
+  res.json(listPurchases({ user_id: userId, limit, offset }));
+});

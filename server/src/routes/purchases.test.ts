@@ -139,3 +139,65 @@ describe('POST /api/trackers/:id/purchases', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('GET /api/purchases', () => {
+  it('returns purchases for the authed user, newest first', async () => {
+    const userId = seedUser('a@b.com');
+    const trackerId = seedTracker(userId, { last_price: 50 });
+    await request(makeApp())
+      .post(`/api/trackers/${trackerId}/purchases`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: 45, purchased_at: '2026-01-01T00:00:00Z' });
+    await request(makeApp())
+      .post(`/api/trackers/${trackerId}/purchases`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: 40, purchased_at: '2026-02-01T00:00:00Z' });
+
+    const res = await request(makeApp())
+      .get('/api/purchases')
+      .set('Cookie', authCookie(userId));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(2);
+    expect(res.body.purchases).toHaveLength(2);
+    expect(res.body.purchases[0].purchase_price).toBe(40);
+    expect(res.body.purchases[1].purchase_price).toBe(45);
+  });
+
+  it("does not return another user's purchases", async () => {
+    const aId = seedUser('a@b.com');
+    const bId = seedUser('b@b.com');
+    const trackerA = seedTracker(aId, { last_price: 50 });
+    await request(makeApp())
+      .post(`/api/trackers/${trackerA}/purchases`)
+      .set('Cookie', authCookie(aId))
+      .send({ purchase_price: 40 });
+    const res = await request(makeApp())
+      .get('/api/purchases')
+      .set('Cookie', authCookie(bId));
+    expect(res.status).toBe(200);
+    expect(res.body.purchases).toHaveLength(0);
+    expect(res.body.total).toBe(0);
+  });
+
+  it('honors limit and offset query params', async () => {
+    const userId = seedUser('a@b.com');
+    const trackerId = seedTracker(userId, { last_price: 50 });
+    for (let i = 0; i < 3; i++) {
+      await request(makeApp())
+        .post(`/api/trackers/${trackerId}/purchases`)
+        .set('Cookie', authCookie(userId))
+        .send({ purchase_price: 10 + i, purchased_at: `2026-0${i + 1}-01T00:00:00Z` });
+    }
+    const res = await request(makeApp())
+      .get('/api/purchases?limit=1&offset=1')
+      .set('Cookie', authCookie(userId));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(3);
+    expect(res.body.purchases).toHaveLength(1);
+  });
+
+  it('requires auth', async () => {
+    const res = await request(makeApp()).get('/api/purchases');
+    expect(res.status).toBe(401);
+  });
+});
