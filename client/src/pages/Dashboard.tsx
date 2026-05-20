@@ -41,6 +41,20 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [])
 
+  // Hooks must run on every render in the same order — keep these above
+  // the loading/empty early returns. Both derivations are cheap (single
+  // pass over the trackers array) so the wasted work on the loading
+  // render is negligible compared with the bug a hooks-order mismatch
+  // causes: React unmounts the whole tree and you get a blank page.
+  const purchasedCount = useMemo(
+    () => trackers.filter(t => t.status === 'purchased').length,
+    [trackers],
+  )
+  const visibleTrackers = useMemo(
+    () => (showPurchased ? trackers : trackers.filter(t => t.status !== 'purchased')),
+    [trackers, showPurchased],
+  )
+
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-text-muted">Loading...</div>
   }
@@ -65,14 +79,6 @@ export default function Dashboard() {
     )
   }
 
-  const purchasedCount = useMemo(
-    () => trackers.filter(t => t.status === 'purchased').length,
-    [trackers],
-  )
-  const visibleTrackers = useMemo(
-    () => (showPurchased ? trackers : trackers.filter(t => t.status !== 'purchased')),
-    [trackers, showPurchased],
-  )
   const { items, totalErrored, totalActive } = buildDashboardLayout(visibleTrackers)
 
   return (
