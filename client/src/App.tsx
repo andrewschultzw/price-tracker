@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
-import { BarChart3, Plus, Settings as SettingsIcon, Shield, LogOut, Menu, X, Inbox, Package, TrendingUp } from 'lucide-react'
+import { BarChart3, Plus, Settings as SettingsIcon, Shield, LogOut, Menu, X, Inbox, Package, TrendingUp, ShoppingBag } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
@@ -45,6 +45,7 @@ const SettingsPage = lazy(() => import('./pages/Settings'))
 const Admin = lazy(() => import('./pages/Admin'))
 const Projects = lazy(() => import('./pages/Projects'))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'))
+const Purchased = lazy(() => import('./pages/Purchased'))
 
 // Shared loading fallback for lazy routes. Matches the inline "Loading..."
 // style the pages themselves use so the transition is visually smooth.
@@ -116,6 +117,7 @@ function App() {
             {navLink('/deals', 'Deals', <TrendingUp className="w-4 h-4" />)}
             {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
             {navLink('/projects', 'Projects', <Package className="w-4 h-4" />)}
+            {navLink('/purchased', 'Purchased', <ShoppingBag className="w-4 h-4" />)}
             {navLink('/settings', 'Settings', <SettingsIcon className="w-4 h-4" />)}
             {user?.role === 'admin' && navLink('/admin', 'Admin', <Shield className="w-4 h-4" />)}
             {user && (
@@ -152,6 +154,7 @@ function App() {
               {navLink('/deals', 'Deals', <TrendingUp className="w-4 h-4" />)}
               {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
               {navLink('/projects', 'Projects', <Package className="w-4 h-4" />)}
+              {navLink('/purchased', 'Purchased', <ShoppingBag className="w-4 h-4" />)}
               {navLink('/settings', 'Settings', <SettingsIcon className="w-4 h-4" />)}
               {user?.role === 'admin' && navLink('/admin', 'Admin', <Shield className="w-4 h-4" />)}
               {user && (
@@ -183,6 +186,7 @@ function App() {
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
             <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
+            <Route path="/purchased" element={<ProtectedRoute><Purchased /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />
           </Routes>
