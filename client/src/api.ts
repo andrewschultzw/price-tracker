@@ -1,4 +1,4 @@
-import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail, WebPushDevice, SubscribePayload, TrackerUrlCondition } from './types';
+import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail, WebPushDevice, SubscribePayload, TrackerUrlCondition, Purchase, PurchaseWithTracker, SavingsSummary } from './types';
 
 const BASE = '/api';
 
@@ -501,5 +501,50 @@ export interface DealFeedResponse {
 export async function getCommunityDeals(): Promise<DealFeedResponse> {
   const r = await fetch('/api/public/deals');
   if (!r.ok) throw new Error(`getCommunityDeals failed: ${r.status}`);
+  return r.json();
+}
+
+// === Purchased tracking + savings rollup ===
+
+export function createPurchase(
+  trackerId: number,
+  body: { purchase_price?: number; quantity?: number; purchased_at?: string; tracker_url_id?: number | null; keep_watching?: boolean },
+): Promise<{ purchase: Purchase; tracker: Tracker }> {
+  return request<{ purchase: Purchase; tracker: Tracker }>(`/trackers/${trackerId}/purchases`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function listPurchases(params: { limit?: number; offset?: number } = {}): Promise<{ purchases: PurchaseWithTracker[]; total: number }> {
+  const q = new URLSearchParams();
+  if (params.limit !== undefined) q.set('limit', String(params.limit));
+  if (params.offset !== undefined) q.set('offset', String(params.offset));
+  const qs = q.toString();
+  return request<{ purchases: PurchaseWithTracker[]; total: number }>(`/purchases${qs ? '?' + qs : ''}`);
+}
+
+export function patchPurchase(
+  id: number,
+  body: { purchase_price?: number; quantity?: number; purchased_at?: string; tracker_url_id?: number | null },
+): Promise<{ purchase: Purchase }> {
+  return request<{ purchase: Purchase }>(`/purchases/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function deletePurchase(id: number): Promise<{ ok: true; tracker: Tracker }> {
+  return request<{ ok: true; tracker: Tracker }>(`/purchases/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * Public, no-auth fetch. Like getPublicProduct, deliberately omits
+ * `credentials: 'include'` — the endpoint is public and we don't want
+ * to send a cookie when it isn't needed.
+ */
+export async function getPublicSavings(): Promise<SavingsSummary> {
+  const r = await fetch('/api/public/savings');
+  if (!r.ok) throw new Error(`getPublicSavings failed: ${r.status}`);
   return r.json();
 }

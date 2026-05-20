@@ -1,4 +1,5 @@
-import { CheckCircle, PauseCircle, AlertCircle, ShieldOff } from 'lucide-react'
+import { CheckCircle, PauseCircle, AlertCircle, ShieldOff, ShoppingBag } from 'lucide-react'
+import type { TrackerStatus } from '../types'
 
 const statusConfig = {
   active: { icon: CheckCircle, label: 'Active', className: 'text-success bg-success/10' },
@@ -10,9 +11,14 @@ const statusConfig = {
   // amber (indigo would clash with the active green-ish palette) to
   // read as "attention needed, but not failing".
   blocked: { icon: ShieldOff, label: 'Retailer blocked', className: 'text-amber-700 bg-amber-100 dark:text-amber-200 dark:bg-amber-900/40' },
+  // 'purchased' = user logged a purchase. Tracker is removed from the
+  // scrape queue (see queries.ts:getDueTrackerUrls) and rendered with
+  // a muted green badge so the dashboard signals "done" without looking
+  // like an alert state.
+  purchased: { icon: ShoppingBag, label: 'Purchased', className: 'text-success bg-success/10' },
 }
 
-export default function StatusBadge({ status }: { status: 'active' | 'paused' | 'error' | 'blocked' }) {
+export default function StatusBadge({ status }: { status: TrackerStatus }) {
   const config = statusConfig[status]
   const Icon = config.icon
   return (
