@@ -46,7 +46,7 @@ describe('PurchaseModal', () => {
     render(<PurchaseModal tracker={tracker} firstPrice={79.99} onClose={() => {}} onSubmit={onSubmit} />);
     fireEvent.click(screen.getByText(/confirm purchase/i));
     expect(onSubmit).toHaveBeenCalled();
-    const arg = onSubmit.mock.calls[0][0] as { purchased_at: string };
+    const arg = (onSubmit.mock.calls[0] as unknown[])[0] as { purchased_at: string };
     // Must be a strict ISO-8601 datetime (the server uses z.string().datetime()
     // which requires the trailing Z).
     expect(arg.purchased_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/);

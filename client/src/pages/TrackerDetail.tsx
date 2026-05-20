@@ -1,14 +1,17 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Download, Plus, X, Store, Users, TrendingDown, Zap } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Download, Plus, X, Store, Users, TrendingDown, Zap, ShoppingBag } from 'lucide-react'
 import {
   getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker,
   getTrackerStats, getNotificationHistory,
   getTrackerUrls, addTrackerUrl, deleteTrackerUrl, updateTrackerUrlCondition, getOverlap,
   setTrackerWishlist,
+  listPurchases, createPurchase,
 } from '../api'
 import type { NotificationHistoryRow } from '../api'
-import type { Tracker, TrackerUrl, TrackerUrlCondition, PriceRecord, Overlap } from '../types'
+import type { Tracker, TrackerUrl, TrackerUrlCondition, PriceRecord, Overlap, Purchase } from '../types'
+import PurchaseModal from '../components/PurchaseModal'
+import PurchasedBanner from '../components/PurchasedBanner'
 
 const CONDITION_OPTIONS: Array<{ value: TrackerUrlCondition; label: string }> = [
   { value: 'new', label: 'New' },
@@ -91,25 +94,34 @@ export default function TrackerDetail() {
   const [doorbusterInterval, setDoorbusterInterval] = useState('')
   const [doorbusterError, setDoorbusterError] = useState<string | null>(null)
   const [doorbusterSaving, setDoorbusterSaving] = useState(false)
+  // Purchase tracking state. `purchases` is filtered client-side from the
+  // user's full purchase list — keeps things simple while volume is low.
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false)
+  const [purchases, setPurchases] = useState<Purchase[]>([])
 
   const trackerId = Number(id)
   useTitle(tracker?.name || 'Tracker')
 
   const load = async () => {
     try {
-      const [t, p, stats, notifs, sellerRows, overlapData] = await Promise.all([
+      const [t, p, stats, notifs, sellerRows, overlapData, purchaseList] = await Promise.all([
         getTracker(trackerId),
         getPriceHistory(trackerId, range),
         getTrackerStats(),
         getNotificationHistory(trackerId, 10),
         getTrackerUrls(trackerId),
         getOverlap(trackerId),
+        // Filter to this tracker's purchases client-side. The server returns
+        // the authed user's whole purchase list, newest first; volume is
+        // expected to stay low enough that a 200-row fetch is acceptable.
+        listPurchases({ limit: 200 }).catch(() => ({ purchases: [], total: 0 })),
       ])
       setTracker(t)
       setPrices(p)
       setAlerts(notifs)
       setSellers(sellerRows)
       setOverlap(overlapData)
+      setPurchases(purchaseList.purchases.filter(pp => pp.tracker_id === trackerId))
       // Seed doorbuster editor inputs from the latest tracker state.
       setDoorbusterStart(isoToDateTimeLocal(t.doorbuster_start_at))
       setDoorbusterEnd(isoToDateTimeLocal(t.doorbuster_end_at))
@@ -439,6 +451,14 @@ export default function TrackerDetail() {
               <button onClick={startEdit} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-surface-hover text-text-muted hover:text-text rounded-lg text-sm font-medium transition-colors">
                 <Pencil className="w-4 h-4" /> Edit
               </button>
+              <button
+                onClick={() => setShowPurchaseModal(true)}
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-success/15 text-success hover:bg-success/25 rounded-lg text-sm font-medium transition-colors"
+                title={purchases.length > 0 ? 'Log another purchase for this tracker' : 'Mark this tracker as purchased'}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                {purchases.length > 0 ? 'Log Another Purchase' : 'Purchased'}
+              </button>
               <button onClick={handleDelete} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-danger/10 text-danger hover:bg-danger/20 rounded-lg text-sm font-medium transition-colors sm:ml-auto">
                 <Trash2 className="w-4 h-4" /> Delete
               </button>
@@ -702,6 +722,14 @@ export default function TrackerDetail() {
 
       <AIInsightsCard tracker={tracker} />
 
+      {tracker.status === 'purchased' && purchases[0] && (
+        <PurchasedBanner
+          purchase={purchases[0]}
+          totalPurchases={purchases.length}
+          onViewAll={() => navigate(`/purchased?tracker=${tracker.id}`)}
+        />
+      )}
+
       <div className="bg-surface border border-border rounded-xl p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 className="text-lg font-semibold">Price History</h2>
@@ -762,6 +790,23 @@ export default function TrackerDetail() {
           </div>
         )}
       </div>
+
+      {showPurchaseModal && (
+        <PurchaseModal
+          tracker={tracker}
+          firstPrice={prices.length > 0 ? prices[0].price : (tracker.last_price ?? 0)}
+          sellers={sellers.map(s => ({ id: s.id, label: s.url }))}
+          onClose={() => setShowPurchaseModal(false)}
+          onSubmit={async (values) => {
+            const { purchase, tracker: updated } = await createPurchase(trackerId, values)
+            setPurchases([purchase, ...purchases])
+            setTracker(updated)
+            // No toast lib in this app — the banner + updated status badge
+            // serve as the confirmation. Reload to refresh stats / sparkline.
+            await load()
+          }}
+        />
+      )}
 
       {alerts.length > 0 && (
         <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mt-6">
