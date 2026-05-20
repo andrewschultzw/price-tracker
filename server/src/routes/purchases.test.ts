@@ -259,3 +259,62 @@ describe('PATCH /api/purchases/:id', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('DELETE /api/purchases/:id', () => {
+  it('removes the purchase and re-activates the tracker if it was the only one', async () => {
+    const userId = seedUser('a@b.com');
+    const trackerId = seedTracker(userId, { last_price: 50 });
+    const created = await request(makeApp())
+      .post(`/api/trackers/${trackerId}/purchases`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: 40 });
+    expect(created.body.tracker.status).toBe('purchased');
+
+    const del = await request(makeApp())
+      .delete(`/api/purchases/${created.body.purchase.id}`)
+      .set('Cookie', authCookie(userId));
+    expect(del.status).toBe(200);
+    expect(del.body.ok).toBe(true);
+    expect(del.body.tracker.status).toBe('active');
+  });
+
+  it('keeps tracker purchased if other purchases remain', async () => {
+    const userId = seedUser('a@b.com');
+    const trackerId = seedTracker(userId, { last_price: 50 });
+    await request(makeApp())
+      .post(`/api/trackers/${trackerId}/purchases`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: 45 });
+    const second = await request(makeApp())
+      .post(`/api/trackers/${trackerId}/purchases`)
+      .set('Cookie', authCookie(userId))
+      .send({ purchase_price: 40 });
+    const del = await request(makeApp())
+      .delete(`/api/purchases/${second.body.purchase.id}`)
+      .set('Cookie', authCookie(userId));
+    expect(del.status).toBe(200);
+    expect(del.body.tracker.status).toBe('purchased');
+  });
+
+  it("rejects 404 when the purchase belongs to another user", async () => {
+    const aId = seedUser('a@b.com');
+    const bId = seedUser('b@b.com');
+    const trackerA = seedTracker(aId, { last_price: 50 });
+    const created = await request(makeApp())
+      .post(`/api/trackers/${trackerA}/purchases`)
+      .set('Cookie', authCookie(aId))
+      .send({ purchase_price: 40 });
+    const res = await request(makeApp())
+      .delete(`/api/purchases/${created.body.purchase.id}`)
+      .set('Cookie', authCookie(bId));
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects 404 for an unknown purchase id', async () => {
+    const userId = seedUser('a@b.com');
+    const res = await request(makeApp())
+      .delete(`/api/purchases/99999`)
+      .set('Cookie', authCookie(userId));
+    expect(res.status).toBe(404);
+  });
+});

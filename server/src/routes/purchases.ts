@@ -102,3 +102,27 @@ purchasesRouter.patch('/:id', (req: Request, res: Response) => {
   const updated = updatePurchase(id, parsed.data);
   res.json({ purchase: updated });
 });
+
+// DELETE /api/purchases/:id — removes the purchase. The queries-layer
+// deletePurchase() handles auto-reactivation: if this was the only
+// purchase on a 'purchased' tracker, the tracker flips back to 'active'
+// so the scheduler picks it up again. We return the tracker post-delete
+// so the client can update its local state without a refetch.
+purchasesRouter.delete('/:id', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(404).json({ error: 'purchase not found' });
+  }
+  const existing = getPurchase(id);
+  if (!existing) {
+    return res.status(404).json({ error: 'purchase not found' });
+  }
+  const tracker = getTrackerById(existing.tracker_id, userId);
+  if (!tracker) {
+    return res.status(404).json({ error: 'purchase not found' });
+  }
+  deletePurchase(id);
+  const updatedTracker = getTrackerById(existing.tracker_id, userId)!;
+  res.json({ ok: true, tracker: updatedTracker });
+});
