@@ -13,6 +13,8 @@ import {
   getSavingsSummary,
   createTracker,
   getTrackerById,
+  getDueTrackers,
+  getDueTrackerUrls,
 } from './queries.js';
 
 /**
@@ -157,5 +159,34 @@ describe('purchase queries', () => {
       expect(u.purchase_price).toBe(30);
       expect(u.quantity).toBe(2);
     });
+  });
+});
+
+describe('scheduler excludes purchased trackers', () => {
+  it('getDueTrackers does not return purchased trackers', () => {
+    const userId = seedUser();
+    const t = createTracker({ url: 'https://example.com/sched-a', user_id: userId, name: 'A' });
+    setLastPrice(t.id, 50);
+    createPurchase(t.id, { purchase_price: 40 }, { keep_watching: false });
+    const due = getDueTrackers();
+    expect(due.find(d => d.id === t.id)).toBeUndefined();
+  });
+
+  it('keep_watching trackers DO appear in due-list', () => {
+    const userId = seedUser();
+    const t = createTracker({ url: 'https://example.com/sched-b', user_id: userId, name: 'B' });
+    setLastPrice(t.id, 50);
+    createPurchase(t.id, { purchase_price: 40 }, { keep_watching: true });
+    const due = getDueTrackers();
+    expect(due.find(d => d.id === t.id)).toBeDefined();
+  });
+
+  it('getDueTrackerUrls excludes purchased trackers', () => {
+    const userId = seedUser();
+    const t = createTracker({ url: 'https://example.com/sched-c', user_id: userId, name: 'C' });
+    setLastPrice(t.id, 50);
+    createPurchase(t.id, { purchase_price: 40 }, { keep_watching: false });
+    const due = getDueTrackerUrls();
+    expect(due.find(d => d.tracker_id === t.id)).toBeUndefined();
   });
 });

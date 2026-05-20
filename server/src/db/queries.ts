@@ -418,7 +418,7 @@ export function getDueTrackerUrls(): DueTrackerUrl[] {
            t.user_id as tracker_user_id
     FROM tracker_urls tu
     INNER JOIN trackers t ON t.id = tu.tracker_id
-    WHERE t.status != 'paused' AND tu.status NOT IN ('paused', 'blocked')
+    WHERE t.status NOT IN ('paused', 'purchased') AND tu.status NOT IN ('paused', 'blocked')
     AND (
       tu.last_checked_at IS NULL
       OR datetime(
