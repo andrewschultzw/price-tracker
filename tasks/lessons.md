@@ -121,3 +121,12 @@ Pattern for the issue body:
 **What happened:** Multiple deploy issues (DB path, systemd config, env var loading) all stemmed from undocumented tribal knowledge about how CT 302 is set up.
 
 **Rule:** Create and maintain a `docs/deployment.md` covering the service config, env var source, DB location, backup strategy, and deploy process. Review it before any feature that changes the deploy surface.
+
+### React hooks must be called above every early return
+**What happened:** PR #41 added two `useMemo` calls to `Dashboard.tsx`, placed after the existing `if (loading) return …` and `if (trackers.length === 0) return …` early returns. The first render (loading=true) called fewer hooks than the second render (data loaded). React threw `Rendered more hooks than during the previous render` and — with no ErrorBoundary above the page — unmounted the entire tree, leaving users with a blank body-background screen after login. Type-check + unit tests passed because no test exercised the loading→loaded transition; the existing Dashboard tests only covered the empty state.
+
+**Rule 1:** When adding any new hook to an existing component, scan for early-return statements between the existing hooks and the new hook. Either move the hook above the returns, or refactor the returns to happen after all hooks.
+
+**Rule 2:** Component tests must cover both the loading state AND the loaded state — exercising the path where state transitions cause additional hooks to run. A test that only renders the empty/loading case will silently miss a hooks-order regression.
+
+**Rule 3:** UI changes need a real browser smoke before merging, not just `tsc` + `vitest`. The plan deferred "Manual UI exercise" to post-merge; that was the gap.
