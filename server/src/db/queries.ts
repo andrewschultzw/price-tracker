@@ -28,7 +28,9 @@ export interface Tracker {
   // 'blocked' means the retailer's WAF blanket-blocks our egress IP
   // (Akamai 403 / Cloudflare bot-mitigation) — distinct from 'error'
   // because retries won't help. The scheduler skips blocked sellers.
-  status: 'active' | 'paused' | 'error' | 'blocked';
+  // 'purchased' is a tracker-level state set by the purchase-log feature;
+  // the scheduler excludes it from scrape candidates (see getDueTrackerUrls).
+  status: 'active' | 'paused' | 'error' | 'blocked' | 'purchased';
   created_at: string;
   updated_at: string;
   user_id: number | null;
@@ -149,6 +151,59 @@ export interface NotificationHistoryRow extends NotificationRecord {
   // URL of the specific seller that triggered the alert, if known.
   // (Historical pre-migration rows may have this null.)
   seller_url: string | null;
+}
+
+// --- Purchases (migration v18) ---
+
+// One row per purchase event. Many-to-one with trackers. `first_price`
+// snapshots the earliest observed price at purchase time so savings stay
+// stable even if price_history is pruned later. `tracker_url_id` is
+// nullable because deleting a seller (ON DELETE SET NULL) shouldn't lose
+// the purchase record.
+export interface Purchase {
+  id: number;
+  tracker_id: number;
+  tracker_url_id: number | null;
+  purchase_price: number;
+  quantity: number;
+  first_price: number;
+  purchased_at: string;
+  created_at: string;
+}
+
+// Used by the admin /purchased list view — joins the tracker row so the
+// UI can show product name + URL without a second round-trip.
+export interface PurchaseWithTracker extends Purchase {
+  tracker_name: string;
+  tracker_url: string;
+  seller_label: string | null;
+}
+
+// Caller-supplied fields when logging a purchase. The route layer fills
+// in `purchase_price` from tracker.last_price if omitted; `purchased_at`
+// defaults to now; `quantity` defaults to 1; `tracker_url_id` is optional.
+export interface PurchaseInput {
+  purchase_price: number;
+  quantity?: number;
+  purchased_at?: string;
+  tracker_url_id?: number | null;
+}
+
+// Public-savings rollup. `since` is the earliest purchased_at (or null
+// when there are no purchases yet). `monthly` is sorted oldest-first.
+export interface SavingsSummary {
+  total_saved: number;
+  purchase_count: number;
+  since: string | null;
+  monthly: Array<{ month: string; saved: number }>;
+}
+
+// Per-purchase savings, clamped at $0 so paying ABOVE first_price doesn't
+// produce negative savings on the rollup. Quantity scales the delta.
+export function savingsForPurchase(
+  p: Pick<Purchase, 'first_price' | 'purchase_price' | 'quantity'>,
+): number {
+  return Math.max(0, (p.first_price - p.purchase_price) * p.quantity);
 }
 
 // --- Trackers ---
@@ -586,7 +641,7 @@ export function refreshTrackerAggregates(trackerId: number): void {
     .pop() ?? null;
 
   const statuses = new Set(sellers.map(s => s.status));
-  let aggStatus: 'active' | 'paused' | 'error' | 'blocked';
+  let aggStatus: 'active' | 'paused' | 'error' | 'blocked' | 'purchased';
   // Single-status roll-ups are easy. Mixed states (some active + some
   // blocked) prefer 'active' so the tracker stays live and shows the
   // working seller's price — one of N sellers being WAF-blocked
