@@ -21,6 +21,8 @@ import webPushRoutes from './routes/web-push.js';
 import publicProductRoutes, { sitemapHandler } from './routes/public-products.js';
 import wishlistRoutes from './routes/wishlist.js';
 import publicWishlistRoutes from './routes/public-wishlist.js';
+import { trackerPurchasesRouter, purchasesRouter } from './routes/purchases.js';
+import { publicSavingsRouter } from './routes/public-savings.js';
 import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { startBackfillCron, stopBackfillCron } from './ai/backfill-cron.js';
@@ -86,6 +88,11 @@ app.use('/api/favicon', faviconRouter);
 // docs/superpowers/specs/2026-05-07-wishlist-mode-design.md
 app.use('/api/public/wishlist', publicWishlistRoutes);
 
+// Public site-wide savings rollup — aggregate only, intentionally no PII.
+// Mounted before the broader /api/public mount so the more-specific path
+// wins. Spec: docs/superpowers/specs/2026-05-20-purchased-tracking-design.md
+app.use(publicSavingsRouter);
+
 // Public product pages (intentionally no auth — anonymous CamelCamelCamel-
 // style aggregated price-history. Mount BEFORE the auth-gated routes so
 // no middleware accidentally gates access). Spec:
@@ -114,6 +121,8 @@ app.get('/api/public/config', (_req, res) => {
 // Protected API routes
 app.use('/api/trackers', apiKeyMiddleware, authMiddleware, trackerRoutes);
 app.use('/api/trackers', apiKeyMiddleware, authMiddleware, priceRoutes);
+app.use('/api/trackers', apiKeyMiddleware, authMiddleware, trackerPurchasesRouter);
+app.use('/api/purchases', apiKeyMiddleware, authMiddleware, purchasesRouter);
 app.use('/api/settings/api-tokens', apiKeyMiddleware, authMiddleware, apiTokenRoutes);
 app.use('/api/settings', apiKeyMiddleware, authMiddleware, settingsRoutes);
 app.use('/api/invites', apiKeyMiddleware, authMiddleware, inviteRoutes);

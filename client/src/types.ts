@@ -1,3 +1,8 @@
+// Server-side tracker.status union. 'purchased' was added with the
+// purchased-tracking feature — extends scheduling so purchased trackers
+// stop being scraped while keeping their history intact.
+export type TrackerStatus = 'active' | 'paused' | 'error' | 'blocked' | 'purchased';
+
 export interface Tracker {
   id: number;
   name: string;
@@ -10,7 +15,7 @@ export interface Tracker {
   last_checked_at: string | null;
   last_error: string | null;
   consecutive_failures: number;
-  status: 'active' | 'paused' | 'error' | 'blocked';
+  status: TrackerStatus;
   created_at: string;
   updated_at: string;
   // Aggregates populated by the admin + user tracker list endpoints.
@@ -175,4 +180,43 @@ export interface SubscribePayload {
   endpoint: string;
   keys: { p256dh: string; auth: string };
   device_label?: string;
+}
+
+// === Purchased tracking + savings rollup ===
+
+export interface Purchase {
+  id: number;
+  tracker_id: number;
+  tracker_url_id: number | null;
+  purchase_price: number;
+  quantity: number;
+  first_price: number;
+  purchased_at: string;
+  created_at: string;
+}
+
+// API response shape for GET /api/purchases. The server aliases
+// `tracker_urls.url AS seller_label`, so `seller_label` is the raw
+// URL string — derive a human label client-side via `new URL(...).hostname`.
+export interface PurchaseWithTracker extends Purchase {
+  tracker_name: string;
+  tracker_url: string;
+  seller_label: string | null;
+}
+
+export interface SavingsSummary {
+  total_saved: number;
+  purchase_count: number;
+  since: string | null;
+  monthly: Array<{ month: string; saved: number }>;
+}
+
+/**
+ * Computed savings for a single purchase. Mirrors the server's
+ * `savingsForPurchase` helper. Clamps negatives to $0 so a buyer who
+ * paid more than the first observed price doesn't show as "negative
+ * savings" — the UI treats this as "no savings recorded".
+ */
+export function savedAmount(p: Pick<Purchase, 'first_price' | 'purchase_price' | 'quantity'>): number {
+  return Math.max(0, (p.first_price - p.purchase_price) * p.quantity);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Package } from 'lucide-react'
 import { getTrackers, getTrackerStats, getSettings, getOverlapCounts } from '../api'
@@ -17,6 +17,10 @@ export default function Dashboard() {
   const [notificationsConfigured, setNotificationsConfigured] = useState(true)
   const [overlapCounts, setOverlapCounts] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
+  // Purchased trackers are hidden by default — the dashboard is for "what
+  // am I still watching". Users can re-surface them via the toggle to
+  // review past wins or correct a mistaken purchase log.
+  const [showPurchased, setShowPurchased] = useState(false)
   useTitle('Dashboard')
 
   const load = async () => {
@@ -61,7 +65,15 @@ export default function Dashboard() {
     )
   }
 
-  const { items, totalErrored, totalActive } = buildDashboardLayout(trackers)
+  const purchasedCount = useMemo(
+    () => trackers.filter(t => t.status === 'purchased').length,
+    [trackers],
+  )
+  const visibleTrackers = useMemo(
+    () => (showPurchased ? trackers : trackers.filter(t => t.status !== 'purchased')),
+    [trackers, showPurchased],
+  )
+  const { items, totalErrored, totalActive } = buildDashboardLayout(visibleTrackers)
 
   return (
     <div>
@@ -74,13 +86,25 @@ export default function Dashboard() {
             {totalErrored > 0 && <span className="text-danger"> &middot; {totalErrored} error{totalErrored !== 1 ? 's' : ''}</span>}
           </p>
         </div>
-        <Link
-          to="/add"
-          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors no-underline"
-        >
-          <Plus className="w-4 h-4" />
-          Add Tracker
-        </Link>
+        <div className="flex items-center gap-3">
+          {purchasedCount > 0 && (
+            <label className="flex items-center gap-2 text-sm text-text-muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showPurchased}
+                onChange={e => setShowPurchased(e.target.checked)}
+              />
+              Show purchased ({purchasedCount})
+            </label>
+          )}
+          <Link
+            to="/add"
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors no-underline"
+          >
+            <Plus className="w-4 h-4" />
+            Add Tracker
+          </Link>
+        </div>
       </div>
 
       <StatCards trackers={trackers} />
@@ -96,6 +120,7 @@ export default function Dashboard() {
               onUpdate={load}
               notificationsConfigured={notificationsConfigured}
               overlapCount={overlapCounts[item.tracker.id] ?? 0}
+              isPurchased={item.tracker.status === 'purchased'}
             />
           ) : (
             <CategoryCard

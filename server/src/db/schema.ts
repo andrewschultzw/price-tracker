@@ -34,7 +34,7 @@ export function initializeSchema(): void {
       last_checked_at TEXT,
       last_error TEXT,
       consecutive_failures INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'error', 'blocked')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'error', 'blocked', 'purchased')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -98,6 +98,24 @@ export function initializeSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_notifications_tracker_id ON notifications(tracker_id);
     -- idx_notifications_tracker_url_id lives in migration v4 for the same
     -- reason as idx_price_history_tracker_url_id above.
+
+    -- Purchase log. Many-to-one with trackers; tracker_url_id is nullable so
+    -- a deleted seller (ON DELETE SET NULL) doesn't lose the purchase record.
+    -- first_price snapshots the earliest observed price so savings are stable
+    -- even if price_history is pruned later. Money columns are REAL to match
+    -- existing price_history.price storage.
+    CREATE TABLE IF NOT EXISTS purchases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tracker_id INTEGER NOT NULL REFERENCES trackers(id) ON DELETE CASCADE,
+      tracker_url_id INTEGER REFERENCES tracker_urls(id) ON DELETE SET NULL,
+      purchase_price REAL NOT NULL CHECK(purchase_price >= 0),
+      quantity INTEGER NOT NULL DEFAULT 1 CHECK(quantity >= 1),
+      first_price REAL NOT NULL,
+      purchased_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_purchases_tracker_id ON purchases(tracker_id);
+    CREATE INDEX IF NOT EXISTS idx_purchases_purchased_at ON purchases(purchased_at);
 
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,

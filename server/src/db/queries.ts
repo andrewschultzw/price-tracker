@@ -28,7 +28,9 @@ export interface Tracker {
   // 'blocked' means the retailer's WAF blanket-blocks our egress IP
   // (Akamai 403 / Cloudflare bot-mitigation) — distinct from 'error'
   // because retries won't help. The scheduler skips blocked sellers.
-  status: 'active' | 'paused' | 'error' | 'blocked';
+  // 'purchased' is a tracker-level state set by the purchase-log feature;
+  // the scheduler excludes it from scrape candidates (see getDueTrackerUrls).
+  status: 'active' | 'paused' | 'error' | 'blocked' | 'purchased';
   created_at: string;
   updated_at: string;
   user_id: number | null;
@@ -149,6 +151,59 @@ export interface NotificationHistoryRow extends NotificationRecord {
   // URL of the specific seller that triggered the alert, if known.
   // (Historical pre-migration rows may have this null.)
   seller_url: string | null;
+}
+
+// --- Purchases (migration v18) ---
+
+// One row per purchase event. Many-to-one with trackers. `first_price`
+// snapshots the earliest observed price at purchase time so savings stay
+// stable even if price_history is pruned later. `tracker_url_id` is
+// nullable because deleting a seller (ON DELETE SET NULL) shouldn't lose
+// the purchase record.
+export interface Purchase {
+  id: number;
+  tracker_id: number;
+  tracker_url_id: number | null;
+  purchase_price: number;
+  quantity: number;
+  first_price: number;
+  purchased_at: string;
+  created_at: string;
+}
+
+// Used by the admin /purchased list view — joins the tracker row so the
+// UI can show product name + URL without a second round-trip.
+export interface PurchaseWithTracker extends Purchase {
+  tracker_name: string;
+  tracker_url: string;
+  seller_label: string | null;
+}
+
+// Caller-supplied fields when logging a purchase. The route layer fills
+// in `purchase_price` from tracker.last_price if omitted; `purchased_at`
+// defaults to now; `quantity` defaults to 1; `tracker_url_id` is optional.
+export interface PurchaseInput {
+  purchase_price: number;
+  quantity?: number;
+  purchased_at?: string;
+  tracker_url_id?: number | null;
+}
+
+// Public-savings rollup. `since` is the earliest purchased_at (or null
+// when there are no purchases yet). `monthly` is sorted oldest-first.
+export interface SavingsSummary {
+  total_saved: number;
+  purchase_count: number;
+  since: string | null;
+  monthly: Array<{ month: string; saved: number }>;
+}
+
+// Per-purchase savings, clamped at $0 so paying ABOVE first_price doesn't
+// produce negative savings on the rollup. Quantity scales the delta.
+export function savingsForPurchase(
+  p: Pick<Purchase, 'first_price' | 'purchase_price' | 'quantity'>,
+): number {
+  return Math.max(0, (p.first_price - p.purchase_price) * p.quantity);
 }
 
 // --- Trackers ---
@@ -363,7 +418,7 @@ export function getDueTrackerUrls(): DueTrackerUrl[] {
            t.user_id as tracker_user_id
     FROM tracker_urls tu
     INNER JOIN trackers t ON t.id = tu.tracker_id
-    WHERE t.status != 'paused' AND tu.status NOT IN ('paused', 'blocked')
+    WHERE t.status NOT IN ('paused', 'purchased') AND tu.status NOT IN ('paused', 'blocked')
     AND (
       tu.last_checked_at IS NULL
       OR datetime(
@@ -586,7 +641,7 @@ export function refreshTrackerAggregates(trackerId: number): void {
     .pop() ?? null;
 
   const statuses = new Set(sellers.map(s => s.status));
-  let aggStatus: 'active' | 'paused' | 'error' | 'blocked';
+  let aggStatus: 'active' | 'paused' | 'error' | 'blocked' | 'purchased';
   // Single-status roll-ups are easy. Mixed states (some active + some
   // blocked) prefer 'active' so the tracker stays live and shows the
   // working seller's price — one of N sellers being WAF-blocked
@@ -1756,6 +1811,193 @@ export function isTrackerInUsersWishlist(
     'SELECT is_wishlisted FROM trackers WHERE id = ? AND user_id = ?',
   ).get(trackerId, userId) as { is_wishlisted: number } | undefined;
   return !!row && row.is_wishlisted === 1;
+}
+
+// --- Purchases (migration v18) ---
+
+/**
+ * Log a purchase against a tracker. Snapshots first_price from the earliest
+ * price_history row (the price we first saw this product at). If no history
+ * exists, falls back to tracker.last_price; last resort, uses purchase_price
+ * itself so first_price is never NULL.
+ *
+ * When opts.keep_watching is false, the tracker's status moves to
+ * 'purchased' — the scheduler then excludes it from scrape candidates (see
+ * getDueTrackerUrls). keep_watching=true leaves the tracker active so the
+ * user can buy the same item again at a better price later.
+ */
+export function createPurchase(
+  tracker_id: number,
+  input: PurchaseInput,
+  opts: { keep_watching: boolean },
+): Purchase {
+  const db = getDb();
+  const tracker = getTrackerById(tracker_id);
+  if (!tracker) throw new Error(`tracker not found: ${tracker_id}`);
+
+  // Earliest observed price — the column on price_history is `scraped_at`.
+  const earliest = db.prepare(
+    `SELECT price FROM price_history WHERE tracker_id = ? ORDER BY scraped_at ASC, id ASC LIMIT 1`,
+  ).get(tracker_id) as { price: number } | undefined;
+
+  let first_price: number;
+  if (earliest) {
+    first_price = earliest.price;
+  } else if (tracker.last_price != null) {
+    first_price = tracker.last_price;
+  } else {
+    first_price = input.purchase_price;
+  }
+
+  const purchased_at = input.purchased_at ?? new Date().toISOString();
+  const quantity = input.quantity ?? 1;
+  const tracker_url_id = input.tracker_url_id ?? null;
+
+  const row = db.prepare(
+    `INSERT INTO purchases (tracker_id, tracker_url_id, purchase_price, quantity, first_price, purchased_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     RETURNING *`,
+  ).get(
+    tracker_id,
+    tracker_url_id,
+    input.purchase_price,
+    quantity,
+    first_price,
+    purchased_at,
+  ) as Purchase;
+
+  const newStatus = opts.keep_watching ? 'active' : 'purchased';
+  db.prepare(`UPDATE trackers SET status = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(newStatus, tracker_id);
+
+  const saved = savingsForPurchase(row);
+  logger.info(
+    { tracker_id, purchase_id: row.id, saved, keep_watching: opts.keep_watching },
+    'purchase_logged',
+  );
+
+  return row;
+}
+
+export function getPurchase(id: number): Purchase | undefined {
+  return getDb()
+    .prepare(`SELECT * FROM purchases WHERE id = ?`)
+    .get(id) as Purchase | undefined;
+}
+
+/**
+ * Paged list of purchases for a user, joined with the parent tracker for
+ * display. `seller_label` is currently the seller URL — we don't yet store
+ * a human-readable retailer name per seller. Sorted most-recent-first.
+ */
+export function listPurchases(args: {
+  user_id: number;
+  limit?: number;
+  offset?: number;
+}): { purchases: PurchaseWithTracker[]; total: number } {
+  const limit = args.limit ?? 50;
+  const offset = args.offset ?? 0;
+  const db = getDb();
+
+  const rows = db.prepare(
+    `SELECT p.*, t.name AS tracker_name, t.url AS tracker_url, tu.url AS seller_label
+     FROM purchases p
+     JOIN trackers t ON t.id = p.tracker_id
+     LEFT JOIN tracker_urls tu ON tu.id = p.tracker_url_id
+     WHERE t.user_id = ?
+     ORDER BY p.purchased_at DESC, p.id DESC
+     LIMIT ? OFFSET ?`,
+  ).all(args.user_id, limit, offset) as PurchaseWithTracker[];
+
+  const { total } = db.prepare(
+    `SELECT COUNT(*) AS total
+       FROM purchases p
+       JOIN trackers t ON t.id = p.tracker_id
+      WHERE t.user_id = ?`,
+  ).get(args.user_id) as { total: number };
+
+  return { purchases: rows, total };
+}
+
+/**
+ * Patch a subset of purchase fields. Missing keys are left alone. Returns
+ * the updated row. No-op patches just return the current row.
+ */
+export function updatePurchase(
+  id: number,
+  patch: Partial<Pick<Purchase, 'purchase_price' | 'quantity' | 'purchased_at' | 'tracker_url_id'>>,
+): Purchase {
+  const db = getDb();
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (patch.purchase_price !== undefined) { sets.push('purchase_price = ?'); values.push(patch.purchase_price); }
+  if (patch.quantity       !== undefined) { sets.push('quantity = ?');       values.push(patch.quantity); }
+  if (patch.purchased_at   !== undefined) { sets.push('purchased_at = ?');   values.push(patch.purchased_at); }
+  if (patch.tracker_url_id !== undefined) { sets.push('tracker_url_id = ?'); values.push(patch.tracker_url_id); }
+  if (sets.length === 0) return getPurchase(id)!;
+  values.push(id);
+  return db.prepare(
+    `UPDATE purchases SET ${sets.join(', ')} WHERE id = ? RETURNING *`,
+  ).get(...values) as Purchase;
+}
+
+/**
+ * Delete a purchase by id. If this was the last purchase on its tracker
+ * AND the tracker is currently 'purchased', revert it to 'active' so the
+ * scheduler picks it back up — otherwise a user who logs and then undoes
+ * a purchase ends up with a permanently paused tracker.
+ */
+export function deletePurchase(id: number): void {
+  const db = getDb();
+  const p = getPurchase(id);
+  if (!p) return;
+  db.prepare(`DELETE FROM purchases WHERE id = ?`).run(id);
+  const remaining = db.prepare(
+    `SELECT COUNT(*) AS n FROM purchases WHERE tracker_id = ?`,
+  ).get(p.tracker_id) as { n: number };
+  if (remaining.n === 0) {
+    db.prepare(
+      `UPDATE trackers SET status = 'active', updated_at = datetime('now')
+       WHERE id = ? AND status = 'purchased'`,
+    ).run(p.tracker_id);
+  }
+}
+
+/**
+ * Site-wide savings rollup. Sums savingsForPurchase() across all rows.
+ * Monthly buckets use the YYYY-MM prefix of purchased_at; the array is
+ * sorted oldest-first so a chart can render left-to-right. Total is
+ * rounded to two decimals so the public footer doesn't show $123.4500001.
+ * No user-scoping — this is the public aggregate.
+ */
+export function getSavingsSummary(): SavingsSummary {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT first_price, purchase_price, quantity, purchased_at FROM purchases`,
+  ).all() as Array<Pick<Purchase, 'first_price' | 'purchase_price' | 'quantity' | 'purchased_at'>>;
+
+  let total_saved = 0;
+  let earliest: string | null = null;
+  const byMonth = new Map<string, number>();
+
+  for (const r of rows) {
+    const saved = savingsForPurchase(r);
+    total_saved += saved;
+    const month = r.purchased_at.slice(0, 7);
+    byMonth.set(month, (byMonth.get(month) ?? 0) + saved);
+    if (earliest === null || r.purchased_at < earliest) earliest = r.purchased_at;
+  }
+
+  const monthly = [...byMonth.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, saved]) => ({ month, saved: Math.round(saved * 100) / 100 }));
+
+  return {
+    total_saved: Math.round(total_saved * 100) / 100,
+    purchase_count: rows.length,
+    since: earliest,
+    monthly,
+  };
 }
 
 
