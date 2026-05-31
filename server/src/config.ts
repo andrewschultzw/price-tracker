@@ -72,6 +72,13 @@ export const config = {
   // web_push) currently also skip the rewrite to keep notification
   // bodies copy-pasteable, but could opt in later.
   amazonAffiliateTag: process.env.AMAZON_AFFILIATE_TAG || '',
+  // Buy-on-trigger (autonomous purchasing v1). armExpiryHours: how long an
+  // armed/approved intent stays actionable before the expiry sweep retires
+  // it. reArmCooldownHours: after an intent expires or is marked
+  // not-completed, suppress re-arming the same tracker for this long so a
+  // deal sitting below threshold doesn't nag every cron tick.
+  armExpiryHours: parseInt(process.env.ARM_EXPIRY_HOURS || '24', 10),
+  reArmCooldownHours: parseInt(process.env.RE_ARM_COOLDOWN_HOURS || '24', 10),
 };
 
 if (config.isProduction && !process.env.JWT_SECRET) {
