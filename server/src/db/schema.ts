@@ -35,6 +35,11 @@ export function initializeSchema(): void {
       last_error TEXT,
       consecutive_failures INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'error', 'blocked', 'purchased')),
+      -- Buy-arm feature (migration v19). buy_armed=1 enables autonomous
+      -- purchasing when the price hits threshold. buy_quantity controls how
+      -- many units to attempt to purchase.
+      buy_armed INTEGER NOT NULL DEFAULT 0 CHECK(buy_armed IN (0,1)),
+      buy_quantity INTEGER NOT NULL DEFAULT 1 CHECK(buy_quantity >= 1),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -116,6 +121,30 @@ export function initializeSchema(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_purchases_tracker_id ON purchases(tracker_id);
     CREATE INDEX IF NOT EXISTS idx_purchases_purchased_at ON purchases(purchased_at);
+
+    -- Buy-arm purchase intents (migration v19). One row per arm event;
+    -- tracks the lifecycle from 'armed' through approval, execution, and
+    -- resolution. token is a short-lived secret used by the confirmation
+    -- webhook so only the intended action can trigger a purchase.
+    CREATE TABLE IF NOT EXISTS purchase_intents (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      tracker_id       INTEGER NOT NULL REFERENCES trackers(id) ON DELETE CASCADE,
+      tracker_url_id   INTEGER REFERENCES tracker_urls(id) ON DELETE SET NULL,
+      asin             TEXT NOT NULL,
+      price_at_arm     REAL NOT NULL CHECK(price_at_arm >= 0),
+      threshold_at_arm REAL NOT NULL,
+      quantity         INTEGER NOT NULL DEFAULT 1 CHECK(quantity >= 1),
+      token            TEXT NOT NULL UNIQUE,
+      status           TEXT NOT NULL DEFAULT 'armed'
+                         CHECK(status IN ('armed','approved','purchased','not_completed','expired','canceled')),
+      purchase_id      INTEGER REFERENCES purchases(id) ON DELETE SET NULL,
+      created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+      approved_at      TEXT,
+      resolved_at      TEXT,
+      expires_at       TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_purchase_intents_tracker_id ON purchase_intents(tracker_id);
+    CREATE INDEX IF NOT EXISTS idx_purchase_intents_status ON purchase_intents(status);
 
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
