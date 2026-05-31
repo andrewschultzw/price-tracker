@@ -5,7 +5,7 @@ import { _setDbForTesting, getDb } from '../db/connection.js';
 import { initializeSchema } from '../db/schema.js';
 import { initSettingsCrypto, _resetForTests as resetCrypto } from '../crypto/settings-crypto.js';
 import { maybeArmPurchase } from './cron.js';
-import { getOpenIntentForTracker, createIntent } from '../db/purchase-intents.js';
+import { getOpenIntentForTracker, createIntent, approveIntent, resolveIntentNotCompleted } from '../db/purchase-intents.js';
 
 let trackerId: number;
 let sellerId: number;
@@ -58,5 +58,16 @@ describe('maybeArmPurchase', () => {
     seed({ buy_armed: 1, url: 'https://www.amazon.com/dp/B07XYZ1234' });
     createIntent({ tracker_id: trackerId, tracker_url_id: sellerId, asin: 'B07XYZ1234', price_at_arm: 80, threshold_at_arm: 100, quantity: 1, expires_at: '2999-01-01 00:00:00' });
     expect(await maybeArmPurchase(trackerId, 79.99, sellerRow(), noChannels)).toBe(false);
+  });
+
+  it('does not re-arm within the cooldown window after a terminal intent', async () => {
+    seed({ buy_armed: 1, url: 'https://www.amazon.com/dp/B07XYZ1234' });
+    const intent = createIntent({ tracker_id: trackerId, tracker_url_id: sellerId, asin: 'B07XYZ1234', price_at_arm: 80, threshold_at_arm: 100, quantity: 1, expires_at: '2999-01-01 00:00:00' });
+    // approve then mark not-completed → resolved_at = now → cooldown active
+    approveIntent(intent.id);
+    resolveIntentNotCompleted(intent.id);
+    const armed = await maybeArmPurchase(trackerId, 79.99, sellerRow(), noChannels);
+    expect(armed).toBe(false);
+    expect(getOpenIntentForTracker(trackerId)).toBeUndefined();
   });
 });

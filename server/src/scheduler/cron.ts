@@ -33,15 +33,14 @@ import { sendWebPushPriceAlert } from '../notifications/web-push.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { isAmazonStorefrontUrl, extractAmazonAsin } from '../lib/affiliate.js';
-import { buildAmazonCartUrl } from '../lib/buy-arm.js';
 import { getOpenIntentForTracker, getMostRecentTerminalIntent, createIntent } from '../db/purchase-intents.js';
 import { firePurchaseArm } from '../notifications/purchase-arm.js';
-
-const PUBLIC_ORIGIN = 'https://prices.schultzsolutions.tech';
 import { generateVerdictForTracker, generateAlertCopy, computeSignalsAndVerdictForTracker } from '../ai/generators.js';
 import { computeConfidence } from '../ai/confidence.js';
 import type { Confidence } from '../ai/confidence.js';
 import { evaluateAndFireForProject } from '../projects/firer.js';
+
+const PUBLIC_ORIGIN = 'https://prices.schultzsolutions.tech';
 
 const queue = new PQueue({ concurrency: config.maxConcurrentScrapes });
 let task: cron.ScheduledTask | null = null;
@@ -158,6 +157,11 @@ export async function maybeArmPurchase(
 
   const expires_at = new Date(Date.now() + config.armExpiryHours * 3600 * 1000)
     .toISOString().replace('T', ' ').slice(0, 19);
+  // Intent is created before the notification so the token is available in
+  // buyUrl. If firePurchaseArm throws (e.g. all channels error), the intent
+  // is left 'armed' and the expiry sweep retires it; the next cron tick's
+  // open-intent guard prevents double-arming, and after expiry the tracker
+  // falls through to a normal price alert. Intentional — no compensation needed.
   const intent = createIntent({
     tracker_id: trackerId,
     tracker_url_id: seller.id,
@@ -191,7 +195,11 @@ async function firePriceAlerts(
   // Buy-on-trigger: an eligible armed tracker arms a purchase instead of a
   // price alert. Returning [] means the caller's addNotification loop records
   // nothing — the purchase_intents row is this event's record.
-  if (await maybeArmPurchase(alertTracker.id, currentPrice, seller, channels)) {
+  // Cheap gate first: skip the arm-decision DB read entirely for the common
+  // unarmed case. maybeArmPurchase re-fetches the tracker for the fields it
+  // needs only when we actually might arm.
+  if (alertTracker.buy_armed === 1 &&
+      await maybeArmPurchase(alertTracker.id, currentPrice, seller, channels)) {
     return [];
   }
 
