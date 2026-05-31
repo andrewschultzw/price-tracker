@@ -97,6 +97,7 @@ describe('purchase_intents state machine', () => {
 
   it('does not double-open: getOpenIntentForTracker returns the live one only', () => {
     const a = createIntent(baseInput());
+    approveIntent(a.id);
     resolveIntentNotCompleted(a.id);
     const b = createIntent(baseInput());
     expect(getOpenIntentForTracker(trackerId)?.id).toBe(b.id);

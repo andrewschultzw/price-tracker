@@ -117,12 +117,16 @@ export function resolveIntentPurchased(id: number): { intent: PurchaseIntent; pu
 
 /** approved -> not_completed. Tracker stays active + armed; re-arm cooldown begins. */
 export function resolveIntentNotCompleted(id: number): PurchaseIntent {
+  // Gate strictly on 'approved' to match resolveIntentPurchased and the
+  // documented state machine (not_completed is only reachable from approved;
+  // the armed disarm path is 'canceled'). The route already enforces this —
+  // this is the last line of defense.
   const res = getDb().prepare(
     `UPDATE purchase_intents SET status = 'not_completed', resolved_at = datetime('now')
-      WHERE id = ? AND status IN ('armed','approved')`,
+      WHERE id = ? AND status = 'approved'`,
   ).run(id);
   if (res.changes === 0) {
-    throw new Error(`resolveIntentNotCompleted: intent ${id} is not in an open state`);
+    throw new Error(`resolveIntentNotCompleted: intent ${id} is not in 'approved' state`);
   }
   logger.info({ intent_id: id }, 'purchase_intent_resolved_not_completed');
   return byId(id);
