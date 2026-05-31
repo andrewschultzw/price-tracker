@@ -10,6 +10,7 @@ import {
   runSummaryBackfillSweep,
   runVerdictBackfillSweep,
 } from './backfill-cron.js';
+import { createIntent } from '../db/purchase-intents.js';
 import type { ClaudeResponse } from './client.js';
 
 const mockClient = vi.fn<[unknown], Promise<ClaudeResponse>>();
@@ -174,6 +175,66 @@ describe('runVerdictBackfillSweep', () => {
     });
     const out = await runVerdictBackfillSweep();
     expect(out.attempted).toBe(50);
+  });
+});
+
+describe('runBackfillSweep — expiry sweep', () => {
+  it('expires armed intents whose window has elapsed', async () => {
+    const db = getDb();
+    // Seed a minimal user + tracker for the foreign-key constraint.
+    db.prepare(`INSERT INTO users (email, password_hash, display_name) VALUES ('ei@x.com', 'h', 'ei')`).run();
+    const userId = (db.prepare(`SELECT id FROM users WHERE email='ei@x.com'`).get() as { id: number }).id;
+    db.prepare(
+      `INSERT INTO trackers (name, url, user_id, threshold_price, check_interval_minutes, jitter_minutes, buy_armed, last_price)
+       VALUES ('EI', 'https://amazon.com/dp/B000000001', ?, 100, 60, 0, 1, 79.99)`,
+    ).run(userId);
+    const trackerId = (db.prepare(`SELECT id FROM trackers WHERE name='EI'`).get() as { id: number }).id;
+
+    // Create an intent already past its expiry window.
+    const intent = createIntent({
+      tracker_id: trackerId,
+      tracker_url_id: null,
+      asin: 'B000000001',
+      price_at_arm: 79.99,
+      threshold_at_arm: 100,
+      quantity: 1,
+      expires_at: '2000-01-01 00:00:00', // far in the past
+    });
+    expect(intent.status).toBe('armed');
+
+    // runBackfillSweep runs the expiry sweep as part of the nightly job.
+    process.env.AI_ENABLED = 'false'; // don't need real AI for this test
+    await runBackfillSweep();
+
+    const updated = db.prepare(`SELECT status FROM purchase_intents WHERE id=?`).get(intent.id) as { status: string };
+    expect(updated.status).toBe('expired');
+  });
+
+  it('does not expire armed intents that are still within their window', async () => {
+    const db = getDb();
+    db.prepare(`INSERT INTO users (email, password_hash, display_name) VALUES ('ef@x.com', 'h', 'ef')`).run();
+    const userId = (db.prepare(`SELECT id FROM users WHERE email='ef@x.com'`).get() as { id: number }).id;
+    db.prepare(
+      `INSERT INTO trackers (name, url, user_id, threshold_price, check_interval_minutes, jitter_minutes, buy_armed, last_price)
+       VALUES ('EF', 'https://amazon.com/dp/B000000002', ?, 100, 60, 0, 1, 79.99)`,
+    ).run(userId);
+    const trackerId = (db.prepare(`SELECT id FROM trackers WHERE name='EF'`).get() as { id: number }).id;
+
+    const intent = createIntent({
+      tracker_id: trackerId,
+      tracker_url_id: null,
+      asin: 'B000000002',
+      price_at_arm: 79.99,
+      threshold_at_arm: 100,
+      quantity: 1,
+      expires_at: '2999-01-01 00:00:00', // far in the future
+    });
+
+    process.env.AI_ENABLED = 'false';
+    await runBackfillSweep();
+
+    const updated = db.prepare(`SELECT status FROM purchase_intents WHERE id=?`).get(intent.id) as { status: string };
+    expect(updated.status).toBe('armed'); // untouched
   });
 });
 

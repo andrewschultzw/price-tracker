@@ -2,6 +2,7 @@
 import cron from 'node-cron';
 import { getTrackersWithStaleSummary, getTrackersWithStaleOrMissingVerdict } from '../db/queries.js';
 import { generateSummaryForTracker, generateVerdictForTracker } from './generators.js';
+import { expireStaleIntents } from '../db/purchase-intents.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
@@ -49,6 +50,11 @@ export async function runVerdictBackfillSweep(): Promise<{ attempted: number }> 
 export async function runBackfillSweep(): Promise<{ attempted: number }> {
   const verdict = await runVerdictBackfillSweep();
   const summary = await runSummaryBackfillSweep();
+
+  // Retire armed/approved purchase intents whose window elapsed.
+  const expiredIntents = expireStaleIntents();
+  if (expiredIntents > 0) logger.info({ expired: expiredIntents }, 'nightly_purchase_intent_expiry');
+
   return { attempted: verdict.attempted + summary.attempted };
 }
 
