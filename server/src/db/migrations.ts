@@ -663,7 +663,7 @@ const migrations: Migration[] = [
         tracker_url_id   INTEGER REFERENCES tracker_urls(id) ON DELETE SET NULL,
         asin             TEXT NOT NULL,
         price_at_arm     REAL NOT NULL CHECK(price_at_arm >= 0),
-        threshold_at_arm REAL NOT NULL,
+        threshold_at_arm REAL NOT NULL CHECK(threshold_at_arm >= 0),
         quantity         INTEGER NOT NULL DEFAULT 1 CHECK(quantity >= 1),
         token            TEXT NOT NULL UNIQUE,
         status           TEXT NOT NULL DEFAULT 'armed'

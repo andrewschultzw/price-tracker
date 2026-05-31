@@ -74,4 +74,20 @@ describe('migration v19 — buy-arm columns + purchase_intents', () => {
     ins('dup');
     expect(() => ins('dup')).toThrow();
   });
+
+  it('rejects buy_armed = 2 via the CHECK', () => {
+    initializeSchema();
+    const tId = seedTracker();
+    expect(() => {
+      getDb().prepare(`UPDATE trackers SET buy_armed = 2 WHERE id = ?`).run(tId);
+    }).toThrow();
+  });
+
+  it('rejects buy_quantity = 0 via the CHECK', () => {
+    initializeSchema();
+    const tId = seedTracker();
+    expect(() => {
+      getDb().prepare(`UPDATE trackers SET buy_quantity = 0 WHERE id = ?`).run(tId);
+    }).toThrow();
+  });
 });
