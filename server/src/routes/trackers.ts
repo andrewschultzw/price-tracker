@@ -44,6 +44,10 @@ const updateSchema = z
     // PATCH /api/wishlist/items/:id is the primary flow but PUT here keeps
     // bulk-updates working uniformly.
     is_wishlisted: z.boolean().optional(),
+    // Autonomous purchasing (migration v19). buy_armed arms/disarms the
+    // buy-on-trigger flow; buy_quantity sets the Amazon cart quantity (min 1).
+    buy_armed: z.boolean().optional(),
+    buy_quantity: z.number().int().min(1).optional(),
   })
   .refine(
     data => {
@@ -139,13 +143,14 @@ router.put('/:id', (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  // is_wishlisted comes in as boolean from the client but is stored as 0/1
-  // in SQLite; coerce at the boundary so the rest of the data shape passes
-  // through to updateTracker unchanged.
-  const { is_wishlisted, ...rest } = parsed.data;
-  const data = is_wishlisted === undefined
-    ? rest
-    : { ...rest, is_wishlisted: is_wishlisted ? 1 : 0 };
+  // is_wishlisted and buy_armed come in as booleans from the client but are
+  // stored as 0/1 in SQLite; coerce at the boundary so the rest of the data
+  // shape passes through to updateTracker unchanged.
+  // buy_quantity is a plain number (min 1 enforced by zod) — no coercion needed.
+  const { is_wishlisted, buy_armed, ...rest } = parsed.data;
+  const data: Record<string, unknown> = { ...rest };
+  if (is_wishlisted !== undefined) data.is_wishlisted = is_wishlisted ? 1 : 0;
+  if (buy_armed !== undefined) data.buy_armed = buy_armed ? 1 : 0;
   const tracker = updateTracker(Number(req.params.id), data, req.user!.userId);
   if (!tracker) {
     res.status(404).json({ error: 'Tracker not found' });
