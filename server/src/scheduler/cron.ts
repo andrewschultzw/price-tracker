@@ -32,6 +32,12 @@ import { sendEmailPriceAlert, sendEmailErrorAlert } from '../notifications/email
 import { sendWebPushPriceAlert } from '../notifications/web-push.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { isAmazonStorefrontUrl, extractAmazonAsin } from '../lib/affiliate.js';
+import { buildAmazonCartUrl } from '../lib/buy-arm.js';
+import { getOpenIntentForTracker, getMostRecentTerminalIntent, createIntent } from '../db/purchase-intents.js';
+import { firePurchaseArm } from '../notifications/purchase-arm.js';
+
+const PUBLIC_ORIGIN = 'https://prices.schultzsolutions.tech';
 import { generateVerdictForTracker, generateAlertCopy, computeSignalsAndVerdictForTracker } from '../ai/generators.js';
 import { computeConfidence } from '../ai/confidence.js';
 import type { Confidence } from '../ai/confidence.js';
@@ -120,6 +126,55 @@ function buildAlertTracker(tracker: Tracker, seller: TrackerUrl, currentPrice: n
 }
 
 /**
+ * Buy-on-trigger arm decision. Runs AFTER the plausibility guard (every
+ * firePriceAlerts call site is post-guard), so a $0/implausible misread
+ * never arms a purchase. Returns true when it armed (caller suppresses the
+ * normal price alert); false to fall through to normal alerting.
+ */
+export async function maybeArmPurchase(
+  trackerId: number,
+  currentPrice: number,
+  seller: TrackerUrl,
+  channels: EnabledChannels,
+): Promise<boolean> {
+  const tracker = getTrackerById(trackerId);
+  if (!tracker || tracker.buy_armed !== 1 || !tracker.threshold_price) return false;
+  if (!isAmazonStorefrontUrl(seller.url)) return false;
+
+  const asin =
+    extractAmazonAsin(seller.url) ??
+    (tracker.normalized_url ? extractAmazonAsin(tracker.normalized_url) : null);
+  if (!asin) return false;
+
+  if (getOpenIntentForTracker(trackerId)) return false; // one-open-intent invariant
+
+  // Re-arm cooldown: don't immediately re-arm after expired/not_completed.
+  const recent = getMostRecentTerminalIntent(trackerId);
+  if (recent) {
+    const ref = recent.resolved_at ?? recent.expires_at;
+    const elapsedMs = Date.now() - new Date(ref.replace(' ', 'T') + 'Z').getTime();
+    if (elapsedMs < config.reArmCooldownHours * 3600 * 1000) return false;
+  }
+
+  const expires_at = new Date(Date.now() + config.armExpiryHours * 3600 * 1000)
+    .toISOString().replace('T', ' ').slice(0, 19);
+  const intent = createIntent({
+    tracker_id: trackerId,
+    tracker_url_id: seller.id,
+    asin,
+    price_at_arm: currentPrice,
+    threshold_at_arm: tracker.threshold_price,
+    quantity: tracker.buy_quantity ?? 1,
+    expires_at,
+  });
+
+  const buyUrl = `${PUBLIC_ORIGIN}/buy/${intent.token}`;
+  await firePurchaseArm(tracker.name, currentPrice, tracker.threshold_price, buyUrl, channels, tracker.user_id!);
+  logger.info({ tracker_id: trackerId, intent_id: intent.id, asin }, 'purchase_armed');
+  return true;
+}
+
+/**
  * Fire price alerts for every enabled channel that isn't currently in
  * cooldown for this (tracker, seller, channel). Cooldown duration is
  * resolved per-channel from user settings, falling back to
@@ -133,6 +188,13 @@ async function firePriceAlerts(
   seller: TrackerUrl,
   bypassCooldown: boolean,
 ): Promise<string[]> {
+  // Buy-on-trigger: an eligible armed tracker arms a purchase instead of a
+  // price alert. Returning [] means the caller's addNotification loop records
+  // nothing — the purchase_intents row is this event's record.
+  if (await maybeArmPurchase(alertTracker.id, currentPrice, seller, channels)) {
+    return [];
+  }
+
   const userId = alertTracker.user_id!;
   const tasks: { name: ChannelName; promise: Promise<boolean> }[] = [];
 
