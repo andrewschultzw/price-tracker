@@ -208,6 +208,39 @@ export async function sendNtfyBasketAlert(
   return true;
 }
 
+export async function sendNtfyPurchaseArm(
+  trackerName: string,
+  currentPrice: number,
+  threshold: number,
+  buyUrl: string,
+  ntfyUrl: string,
+  ntfyToken?: string,
+): Promise<boolean> {
+  let target: NtfyTarget;
+  try {
+    target = parseNtfyUrl(ntfyUrl);
+  } catch (err) {
+    logger.error({ err }, 'Invalid ntfy URL for purchase-arm');
+    return false;
+  }
+
+  const result = await publish(target.base, {
+    topic: target.topic,
+    title: `Ready to buy: ${trackerName}`,
+    message: `${trackerName} hit $${currentPrice.toFixed(2)} (limit $${threshold.toFixed(2)}).`,
+    priority: 4,
+    tags: ['shopping_cart'],
+    click: buyUrl,
+  }, ntfyToken);
+
+  if (!result.ok) {
+    logger.error({ error: result.error }, 'ntfy purchase-arm failed');
+    return false;
+  }
+  logger.info({ trackerName, price: currentPrice }, 'ntfy purchase-arm sent');
+  return true;
+}
+
 /**
  * Unlike the price/error alerts, the test function returns the actual error
  * string so the Settings page can display it instead of a bare "Failed".
