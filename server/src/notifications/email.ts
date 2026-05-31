@@ -267,6 +267,43 @@ export async function sendEmailBasketAlert(
 }
 
 /**
+ * Send a purchase-arm notification. `title` and `plainText` come from
+ * `purchaseArmContent()` in purchase-arm.ts so the copy stays canonical
+ * and consistent across all channels.
+ */
+export async function sendEmailPurchaseArm(
+  trackerName: string,
+  currentPrice: number,
+  buyUrl: string,
+  recipient: string,
+  title: string,
+  plainText: string,
+): Promise<boolean> {
+  const html = `<!doctype html>
+<html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a1a; max-width: 520px; margin: 0 auto; padding: 24px;">
+  <h2 style="margin: 0 0 8px 0; font-size: 18px;">${escapeHtml(title)}</h2>
+  <div style="font-size: 28px; font-weight: 700; color: #16a34a; margin: 8px 0 16px 0;">${formatMoney(currentPrice)}</div>
+  <p style="color: #374151;">${escapeHtml(plainText)}</p>
+  <a href="${escapeAttr(buyUrl)}" style="display: inline-block; background: #16a34a; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: 500;">Review &amp; buy</a>
+</body></html>`;
+
+  try {
+    await getTransport().sendMail({
+      from: config.smtpFrom,
+      to: recipient,
+      subject: title,
+      text: plainText,
+      html,
+    });
+    logger.info({ trackerName, price: currentPrice }, 'Email purchase arm sent');
+    return true;
+  } catch (err) {
+    logger.error({ err, trackerName }, 'Email purchase arm failed');
+    return false;
+  }
+}
+
+/**
  * Settings page "Send test email" endpoint backing. Returns the same
  * {ok, error} shape the other channels' test helpers use so the UI
  * branch is uniform.

@@ -10,6 +10,7 @@ import {
   searchTrackersByName,
 } from '../db/queries.js';
 import { checkTracker, checkTrackerUrl } from '../scheduler/cron.js';
+import { cancelOpenIntentsForTracker } from '../db/purchase-intents.js';
 import { extractPrice } from '../scraper/extractor.js';
 import {
   affiliateTracker,
@@ -155,6 +156,11 @@ router.put('/:id', (req: Request, res: Response) => {
   if (!tracker) {
     res.status(404).json({ error: 'Tracker not found' });
     return;
+  }
+  // On explicit disarm, cancel any open (armed/approved) intent so the /buy
+  // link stops working immediately — don't wait for the 24-h expiry sweep.
+  if (parsed.data.buy_armed === false) {
+    cancelOpenIntentsForTracker(Number(req.params.id));
   }
   res.json(affiliateTracker(tracker));
 });

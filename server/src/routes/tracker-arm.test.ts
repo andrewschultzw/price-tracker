@@ -6,6 +6,7 @@ import request from 'supertest';
 import { _setDbForTesting, getDb } from '../db/connection.js';
 import { initializeSchema } from '../db/schema.js';
 import { initSettingsCrypto, _resetForTests as resetCrypto } from '../crypto/settings-crypto.js';
+import { createIntent, getOpenIntentForTracker } from '../db/purchase-intents.js';
 
 // Stub side-effect-heavy dependencies so the route tests stay fast and
 // deterministic. We're exercising the HTTP/validation/persistence layer only.
@@ -112,5 +113,41 @@ describe('PUT /api/trackers/:id — buy_armed / buy_quantity', () => {
       .prepare('SELECT buy_armed FROM trackers WHERE id = ?')
       .get(trackerId) as { buy_armed: number };
     expect(disarmed.buy_armed).toBe(0);
+  });
+
+  it('disarming cancels any open purchase intent — status becomes canceled, getOpenIntentForTracker returns undefined', async () => {
+    const { userId, trackerId } = seedUserAndTracker();
+    const app = await makeAppWithUser(userId);
+
+    // Arm the tracker.
+    await request(app)
+      .put(`/api/trackers/${trackerId}`)
+      .send({ buy_armed: true });
+
+    // Create an open intent (simulates what firePurchaseArm would do on a cron tick).
+    const intent = createIntent({
+      tracker_id: trackerId,
+      tracker_url_id: null,
+      asin: 'B0ARMTEST',
+      price_at_arm: 79.99,
+      threshold_at_arm: 99,
+      quantity: 1,
+      expires_at: new Date(Date.now() + 86_400_000).toISOString().replace('T', ' ').slice(0, 19),
+    });
+    expect(getOpenIntentForTracker(trackerId)?.id).toBe(intent.id);
+
+    // Disarm — should cancel the open intent.
+    const res = await request(app)
+      .put(`/api/trackers/${trackerId}`)
+      .send({ buy_armed: false });
+
+    expect(res.status).toBe(200);
+
+    // Intent should now be canceled and no longer open.
+    expect(getOpenIntentForTracker(trackerId)).toBeUndefined();
+    const row = getDb()
+      .prepare('SELECT status FROM purchase_intents WHERE id = ?')
+      .get(intent.id) as { status: string };
+    expect(row.status).toBe('canceled');
   });
 });

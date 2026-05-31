@@ -1,6 +1,8 @@
 import { sendDiscordPurchaseArm } from './discord.js';
 import { sendNtfyPurchaseArm } from './ntfy.js';
 import { sendWebPushPurchaseArm } from './web-push.js';
+import { sendEmailPurchaseArm } from './email.js';
+import { sendGenericPurchaseArm } from './webhook.js';
 import type { EnabledChannels } from '../scheduler/cron.js';
 import { logger } from '../logger.js';
 
@@ -24,6 +26,7 @@ export async function firePurchaseArm(
   channels: EnabledChannels,
   userId: number,
 ): Promise<string[]> {
+  const { title, body } = purchaseArmContent(trackerName, currentPrice, threshold, buyUrl);
   const tasks: { name: string; p: Promise<boolean> }[] = [];
 
   if (channels.discord) {
@@ -34,6 +37,12 @@ export async function firePurchaseArm(
   }
   if (channels.web_push) {
     tasks.push({ name: 'web_push', p: sendWebPushPurchaseArm(trackerName, currentPrice, threshold, buyUrl, userId) });
+  }
+  if (channels.email) {
+    tasks.push({ name: 'email', p: sendEmailPurchaseArm(trackerName, currentPrice, buyUrl, channels.email, title, body) });
+  }
+  if (channels.webhook) {
+    tasks.push({ name: 'webhook', p: sendGenericPurchaseArm(trackerName, currentPrice, threshold, buyUrl, channels.webhook, body) });
   }
 
   const results = await Promise.all(tasks.map(t => t.p));

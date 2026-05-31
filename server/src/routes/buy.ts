@@ -56,8 +56,12 @@ buyRouter.post('/:token/approve', (req: Request, res: Response) => {
   if (!['armed', 'approved'].includes(found.intent.status)) {
     return res.status(409).json({ error: `cannot approve a ${found.intent.status} intent` });
   }
-  const intent = approveIntent(found.intent.id);
-  res.json({ cartUrl: buildAmazonCartUrl(intent.asin, intent.quantity, config.amazonAffiliateTag) });
+  try {
+    const intent = approveIntent(found.intent.id);
+    res.json({ cartUrl: buildAmazonCartUrl(intent.asin, intent.quantity, config.amazonAffiliateTag) });
+  } catch {
+    return res.status(409).json({ error: 'intent state changed; please reload' });
+  }
 });
 
 const resolveSchema = z.object({ outcome: z.enum(['purchased', 'not_completed']) });
@@ -73,10 +77,14 @@ buyRouter.post('/:token/resolve', (req: Request, res: Response) => {
   const parsed = resolveSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'invalid body' });
 
-  if (parsed.data.outcome === 'purchased') {
-    const { intent, purchase } = resolveIntentPurchased(found.intent.id);
-    return res.json({ intent: { status: intent.status }, purchase });
+  try {
+    if (parsed.data.outcome === 'purchased') {
+      const { intent, purchase } = resolveIntentPurchased(found.intent.id);
+      return res.json({ intent: { status: intent.status }, purchase });
+    }
+    const intent = resolveIntentNotCompleted(found.intent.id);
+    res.json({ intent: { status: intent.status } });
+  } catch {
+    return res.status(409).json({ error: 'intent state changed; please reload' });
   }
-  const intent = resolveIntentNotCompleted(found.intent.id);
-  res.json({ intent: { status: intent.status } });
 });

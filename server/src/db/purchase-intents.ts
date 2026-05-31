@@ -132,6 +132,17 @@ export function resolveIntentNotCompleted(id: number): PurchaseIntent {
   return byId(id);
 }
 
+/** Cancel any open (armed/approved) intent for a tracker — e.g. when the owner
+ *  disarms it. Returns the number of intents canceled. */
+export function cancelOpenIntentsForTracker(trackerId: number): number {
+  const res = getDb().prepare(
+    `UPDATE purchase_intents SET status = 'canceled', resolved_at = datetime('now')
+      WHERE tracker_id = ? AND status IN ('armed','approved')`,
+  ).run(trackerId);
+  if (res.changes > 0) logger.info({ tracker_id: trackerId, canceled: res.changes }, 'purchase_intents_canceled_on_disarm');
+  return res.changes;
+}
+
 /** Sweep: armed/approved intents past expires_at -> expired. Returns count. */
 export function expireStaleIntents(nowIso?: string): number {
   const now = nowIso ?? new Date().toISOString().replace('T', ' ').slice(0, 19);
