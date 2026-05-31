@@ -46,6 +46,11 @@ export interface Tracker {
   // PUT /trackers/:id, but list/detail responses pass the raw 0/1 through —
   // hence the boolean | number union here. Treat truthy values as "on."
   is_wishlisted?: boolean | number;
+  // Autonomous purchasing / buy-arm fields (server migration v19).
+  // buy_armed: 1 when an active purchase intent exists, 0 otherwise.
+  // buy_quantity: how many units to buy when the arm fires.
+  buy_armed?: number;
+  buy_quantity?: number;
 }
 
 // Listing condition for a per-seller URL. Mirrors the server enum.

@@ -538,6 +538,65 @@ export function deletePurchase(id: number): Promise<{ ok: true; tracker: Tracker
   return request<{ ok: true; tracker: Tracker }>(`/purchases/${id}`, { method: 'DELETE' });
 }
 
+// === Autonomous purchasing (buy-arm) ===
+
+/**
+ * Arm or disarm the autonomous-purchase intent for a tracker.
+ * Uses the shared request() helper so auth + token-refresh are handled
+ * automatically — mirrors how updateTracker is written.
+ */
+export const setTrackerArm = (id: number, buy_armed: boolean, buy_quantity?: number) =>
+  request<Tracker>(`/trackers/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(buy_quantity === undefined ? { buy_armed } : { buy_armed, buy_quantity }),
+  });
+
+export interface BuyIntentView {
+  intent: {
+    status: string;
+    asin: string;
+    price_at_arm: number;
+    threshold_at_arm: number;
+    quantity: number;
+    expires_at: string;
+  };
+  tracker: { id: number; name: string };
+  cartUrl: string | null;
+}
+
+/**
+ * Fetch a buy-intent confirmation page payload by token.
+ * Like the other buy/* helpers, this is an authenticated route so we
+ * include credentials; we use raw fetch (like listApiTokens) rather than
+ * request() because we need a distinct 404-specific throw vs the generic
+ * error path.
+ */
+export async function getBuyIntent(token: string): Promise<BuyIntentView> {
+  const r = await fetch(`/api/buy/${encodeURIComponent(token)}`, { credentials: 'include' });
+  if (r.status === 404) throw new Error('NOT_FOUND');
+  if (!r.ok) throw new Error(`getBuyIntent failed: ${r.status}`);
+  return r.json();
+}
+
+export async function approveBuyIntent(token: string): Promise<{ cartUrl: string }> {
+  const r = await fetch(`/api/buy/${encodeURIComponent(token)}/approve`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!r.ok) throw new Error(`approve failed: ${r.status}`);
+  return r.json();
+}
+
+export async function resolveBuyIntent(token: string, outcome: 'purchased' | 'not_completed'): Promise<void> {
+  const r = await fetch(`/api/buy/${encodeURIComponent(token)}/resolve`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ outcome }),
+  });
+  if (!r.ok) throw new Error(`resolve failed: ${r.status}`);
+}
+
 /**
  * Public, no-auth fetch. Like getPublicProduct, deliberately omits
  * `credentials: 'include'` — the endpoint is public and we don't want

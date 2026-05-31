@@ -47,6 +47,7 @@ const Projects = lazy(() => import('./pages/Projects'))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'))
 const Purchased = lazy(() => import('./pages/Purchased'))
 const Savings = lazy(() => import('./pages/Savings'))
+const Buy = lazy(() => import('./pages/Buy'))
 
 // Shared loading fallback for lazy routes. Matches the inline "Loading..."
 // style the pages themselves use so the transition is visually smooth.
@@ -189,6 +190,7 @@ function App() {
             <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
             <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
             <Route path="/purchased" element={<ProtectedRoute><Purchased /></ProtectedRoute>} />
+            <Route path="/buy/:token" element={<ProtectedRoute><Buy /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />
           </Routes>
