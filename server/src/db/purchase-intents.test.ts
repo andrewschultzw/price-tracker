@@ -101,4 +101,26 @@ describe('purchase_intents state machine', () => {
     const b = createIntent(baseInput());
     expect(getOpenIntentForTracker(trackerId)?.id).toBe(b.id);
   });
+
+  it('double resolveIntentPurchased throws on the second call (no double purchase)', () => {
+    const intent = createIntent(baseInput());
+    approveIntent(intent.id);
+    resolveIntentPurchased(intent.id);
+    expect(() => resolveIntentPurchased(intent.id)).toThrow();
+    const count = (getDb().prepare('SELECT COUNT(*) AS n FROM purchases WHERE tracker_id = ?').get(trackerId) as { n: number }).n;
+    expect(count).toBe(1);
+  });
+
+  it('resolveIntentPurchased throws if the intent was never approved', () => {
+    const intent = createIntent(baseInput());
+    expect(() => resolveIntentPurchased(intent.id)).toThrow();
+    const count = (getDb().prepare('SELECT COUNT(*) AS n FROM purchases WHERE tracker_id = ?').get(trackerId) as { n: number }).n;
+    expect(count).toBe(0);
+  });
+
+  it('approveIntent throws on a terminal (expired) intent', () => {
+    const intent = createIntent({ ...baseInput(), expires_at: '2000-01-01 00:00:00' });
+    expireStaleIntents('2026-05-31 00:00:00');
+    expect(() => approveIntent(intent.id)).toThrow();
+  });
 });

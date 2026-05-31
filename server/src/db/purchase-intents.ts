@@ -70,8 +70,16 @@ export function getMostRecentTerminalIntent(trackerId: number): PurchaseIntent |
   ).get(trackerId) as PurchaseIntent | undefined;
 }
 
-/** armed -> approved. Idempotent: only stamps approved_at on the first transition. */
+/** armed -> approved. Idempotent for an already-approved intent (returns it
+ *  unchanged). Throws for terminal/invalid states so a caller can't 'approve'
+ *  an expired/purchased/canceled intent. */
 export function approveIntent(id: number): PurchaseIntent {
+  const current = byId(id);
+  if (!current) throw new Error(`approveIntent: intent ${id} not found`);
+  if (current.status === 'approved') return current; // idempotent no-op
+  if (current.status !== 'armed') {
+    throw new Error(`approveIntent: intent ${id} is in '${current.status}', cannot approve`);
+  }
   getDb().prepare(
     `UPDATE purchase_intents SET status = 'approved', approved_at = datetime('now')
       WHERE id = ? AND status = 'armed'`,
@@ -82,31 +90,40 @@ export function approveIntent(id: number): PurchaseIntent {
 /** approved -> purchased. Logs a real purchase, links it, disarms the tracker. */
 export function resolveIntentPurchased(id: number): { intent: PurchaseIntent; purchase: Purchase } {
   const db = getDb();
-  const intent = byId(id);
-  const purchase = createPurchase(
-    intent.tracker_id,
-    {
-      purchase_price: intent.price_at_arm,
-      quantity: intent.quantity,
-      tracker_url_id: intent.tracker_url_id,
-    },
-    { keep_watching: false },
-  );
-  db.prepare(`UPDATE trackers SET buy_armed = 0 WHERE id = ?`).run(intent.tracker_id);
-  db.prepare(
-    `UPDATE purchase_intents
-        SET status = 'purchased', purchase_id = ?, resolved_at = datetime('now')
-      WHERE id = ?`,
-  ).run(purchase.id, id);
-  logger.info({ intent_id: id, purchase_id: purchase.id }, 'purchase_intent_resolved_purchased');
-  return { intent: byId(id), purchase };
+  const result = db.transaction(() => {
+    // Atomic state gate FIRST: flip approved -> purchased. If 0 rows changed
+    // the intent wasn't 'approved' (already resolved, expired, etc.) — abort
+    // before any money-real work so a double-invocation can't log two buys.
+    const gate = db.prepare(
+      `UPDATE purchase_intents SET status = 'purchased', resolved_at = datetime('now')
+        WHERE id = ? AND status = 'approved'`,
+    ).run(id);
+    if (gate.changes === 0) {
+      throw new Error(`resolveIntentPurchased: intent ${id} is not in 'approved' state`);
+    }
+    const intent = byId(id);
+    const purchase = createPurchase(
+      intent.tracker_id,
+      { purchase_price: intent.price_at_arm, quantity: intent.quantity, tracker_url_id: intent.tracker_url_id },
+      { keep_watching: false }, // sets tracker.status = 'purchased' (scheduler excludes it)
+    );
+    db.prepare(`UPDATE trackers SET buy_armed = 0 WHERE id = ?`).run(intent.tracker_id);
+    db.prepare(`UPDATE purchase_intents SET purchase_id = ? WHERE id = ?`).run(purchase.id, id);
+    return { intent: byId(id), purchase };
+  })();
+  logger.info({ intent_id: id, purchase_id: result.purchase.id }, 'purchase_intent_resolved_purchased');
+  return result;
 }
 
 /** approved -> not_completed. Tracker stays active + armed; re-arm cooldown begins. */
 export function resolveIntentNotCompleted(id: number): PurchaseIntent {
-  getDb().prepare(
-    `UPDATE purchase_intents SET status = 'not_completed', resolved_at = datetime('now') WHERE id = ?`,
+  const res = getDb().prepare(
+    `UPDATE purchase_intents SET status = 'not_completed', resolved_at = datetime('now')
+      WHERE id = ? AND status IN ('armed','approved')`,
   ).run(id);
+  if (res.changes === 0) {
+    throw new Error(`resolveIntentNotCompleted: intent ${id} is not in an open state`);
+  }
   logger.info({ intent_id: id }, 'purchase_intent_resolved_not_completed');
   return byId(id);
 }
