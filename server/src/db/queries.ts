@@ -54,6 +54,12 @@ export interface Tracker {
   // layer coerces to/from boolean at the API boundary. Default 0 = "not on
   // wishlist" so existing trackers stay private until explicitly toggled.
   is_wishlisted: number;
+  // Autonomous purchasing (migration v19). buy_armed=1 opts the tracker into
+  // the buy-on-trigger flow; buy_quantity sets the qty pre-loaded into the
+  // Amazon cart. Both stored as INTEGER; buy_armed coerced to/from boolean at
+  // the API boundary (same pattern as is_wishlisted).
+  buy_armed: number;     // 0/1 — opt-in to the buy-on-trigger flow
+  buy_quantity: number;  // qty to pre-load into the Amazon cart
 }
 
 /**
@@ -335,6 +341,10 @@ export function updateTracker(id: number, data: Partial<{
   // by callers (Number(boolean) === 0|1 works for both directions). Primary
   // mutation path is the dedicated PATCH at /api/wishlist/items/:id.
   is_wishlisted: number;
+  // Autonomous purchasing toggle (migration v19). Stored as 0/1; boolean
+  // coerced to int by callers. buy_quantity is a plain integer (min 1).
+  buy_armed: number;
+  buy_quantity: number;
 }>, userId?: number): Tracker | undefined {
   const fields: string[] = [];
   const values: Record<string, unknown> = { id };

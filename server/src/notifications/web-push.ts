@@ -120,6 +120,21 @@ export async function sendWebPushPriceAlert(
   });
 }
 
+export async function sendWebPushPurchaseArm(
+  trackerName: string,
+  currentPrice: number,
+  threshold: number,
+  buyUrl: string,
+  userId: number,
+): Promise<boolean> {
+  return dispatchToAllSubs(userId, {
+    title: `🛒 Ready to buy: ${trackerName}`,
+    body: `Hit $${currentPrice.toFixed(2)} (limit $${threshold.toFixed(2)}). Tap to review & buy.`,
+    url: buyUrl,
+    tag: `purchase-arm-${userId}`,
+  });
+}
+
 export async function sendWebPushBasketAlert(
   project: Project,
   basket: BasketState,

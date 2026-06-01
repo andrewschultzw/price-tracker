@@ -7,6 +7,7 @@ import {
   getTrackerUrls, addTrackerUrl, deleteTrackerUrl, updateTrackerUrlCondition, getOverlap,
   setTrackerWishlist,
   listPurchases, createPurchase,
+  setTrackerArm,
 } from '../api'
 import type { NotificationHistoryRow } from '../api'
 import type { Tracker, TrackerUrl, TrackerUrlCondition, PriceRecord, Overlap, Purchase } from '../types'
@@ -94,6 +95,9 @@ export default function TrackerDetail() {
   const [doorbusterInterval, setDoorbusterInterval] = useState('')
   const [doorbusterError, setDoorbusterError] = useState<string | null>(null)
   const [doorbusterSaving, setDoorbusterSaving] = useState(false)
+  // Arm-for-purchase state. Seeded from tracker.buy_quantity once the
+  // tracker loads (see useEffect below); defaults to '1' until then.
+  const [armQuantity, setArmQuantity] = useState('1')
   // Purchase tracking state. `purchases` is filtered client-side from the
   // user's full purchase list — keeps things simple while volume is low.
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
@@ -117,6 +121,8 @@ export default function TrackerDetail() {
         listPurchases({ limit: 200 }).catch(() => ({ purchases: [], total: 0 })),
       ])
       setTracker(t)
+      // Seed arm quantity from the latest tracker state (default 1 if unset).
+      setArmQuantity(t.buy_quantity != null ? String(t.buy_quantity) : '1')
       setPrices(p)
       setAlerts(notifs)
       setSellers(sellerRows)
@@ -289,6 +295,13 @@ export default function TrackerDetail() {
     } finally {
       setDoorbusterSaving(false)
     }
+  }
+
+  const handleToggleArm = async () => {
+    if (!tracker) return
+    const next = !tracker.buy_armed
+    await setTrackerArm(trackerId, next, Math.max(1, parseInt(armQuantity) || 1))
+    await load()
   }
 
   const startEdit = () => {
@@ -694,6 +707,64 @@ export default function TrackerDetail() {
           </div>
         )}
       </div>
+
+      {(() => {
+        // Determine whether the primary seller is Amazon. The primary seller
+        // is the one with position === 0 in the sellers list (same convention
+        // used by the seller table badge). We use the getHostname helper
+        // already defined in this file so the stripping of "www." is consistent.
+        const primarySeller = sellers.find(s => s.position === 0) ?? sellers[0]
+        const primaryHost = primarySeller ? getHostname(primarySeller.url) : getHostname(tracker.url)
+        const isAmazonSeller = /(?:^|\.)amazon\./i.test(primaryHost) || primaryHost === 'a.co' || primaryHost === 'amzn.to'
+        return (
+          <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <ShoppingBag className="w-5 h-5 text-amber-500" />
+              <h2 className="text-lg font-semibold">Arm for purchase</h2>
+              {!!tracker.buy_armed && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium bg-amber-500/15 text-amber-600 rounded-full px-2 py-0.5 ml-1">
+                  Armed
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-text-muted text-xs max-w-prose">
+                When this tracker hits your target price, you'll receive a one-tap approval
+                link to buy on Amazon. Nothing is purchased without your tap.
+              </p>
+              <button
+                onClick={handleToggleArm}
+                disabled={!isAmazonSeller}
+                title={isAmazonSeller ? undefined : 'Amazon only in v1'}
+                className={`flex-shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                  tracker.buy_armed
+                    ? 'bg-amber-500 text-white hover:bg-amber-600'
+                    : 'bg-surface-hover text-text-muted hover:text-text border border-border'
+                }`}
+              >
+                {tracker.buy_armed ? '🛒 Armed — tap to disarm' : 'Arm'}
+              </button>
+            </div>
+            {!tracker.buy_armed && (
+              <label className="mt-3 text-sm flex items-center gap-2 text-text-muted">
+                Quantity
+                <input
+                  type="number"
+                  min={1}
+                  value={armQuantity}
+                  onChange={e => setArmQuantity(e.target.value)}
+                  className="w-20 bg-bg border border-border rounded-lg px-2 py-1 text-sm text-text focus:outline-none focus:border-primary"
+                />
+              </label>
+            )}
+            {!isAmazonSeller && (
+              <div className="mt-2 text-xs text-text-muted bg-bg rounded-lg px-3 py-2">
+                Arming is Amazon-only in v1. Add an Amazon seller URL above to enable this feature.
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {overlap && overlap.count > 0 && (
         <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mb-6">

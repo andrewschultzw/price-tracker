@@ -160,6 +160,49 @@ export async function sendGenericBasketAlert(
   }
 }
 
+/**
+ * Send a purchase-arm notification to a generic webhook. `body` is the
+ * canonical plaintext from `purchaseArmContent()` in purchase-arm.ts.
+ */
+export async function sendGenericPurchaseArm(
+  trackerName: string,
+  currentPrice: number,
+  threshold: number,
+  buyUrl: string,
+  webhookUrl: string,
+  body: string,
+): Promise<boolean> {
+  try {
+    assertWebhookUrl(webhookUrl);
+    const payload = {
+      event: 'purchase_arm' as const,
+      tracker: trackerName,
+      price: currentPrice,
+      threshold,
+      buy_url: buyUrl,
+      body,
+      timestamp: new Date().toISOString(),
+    };
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      logger.error(
+        { status: response.status, body: await response.text(), trackerName },
+        'Generic webhook purchase arm failed',
+      );
+      return false;
+    }
+    logger.info({ trackerName, price: currentPrice }, 'Generic webhook purchase arm sent');
+    return true;
+  } catch (err) {
+    logger.error({ err, trackerName }, 'Generic webhook purchase arm request failed');
+    return false;
+  }
+}
+
 export async function testGenericWebhook(webhookUrl: string): Promise<{ ok: boolean; error?: string }> {
   try {
     assertWebhookUrl(webhookUrl);

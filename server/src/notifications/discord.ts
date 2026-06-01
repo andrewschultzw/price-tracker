@@ -151,6 +151,32 @@ export async function sendDiscordBasketAlert(
   }
 }
 
+export async function sendDiscordPurchaseArm(
+  trackerName: string,
+  currentPrice: number,
+  threshold: number,
+  buyUrl: string,
+  webhookUrl: string,
+): Promise<boolean> {
+  const embed = {
+    title: `🛒 Ready to buy: ${trackerName}`,
+    color: 0xff9900,
+    description: `Hit **$${currentPrice.toFixed(2)}** (your limit $${threshold.toFixed(2)}).`,
+    fields: [{ name: 'Approve', value: `[Review & buy →](${buyUrl})` }],
+  };
+  try {
+    const resp = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+    return resp.ok;
+  } catch (err) {
+    logger.error({ err }, 'Discord purchase-arm failed');
+    return false;
+  }
+}
+
 export async function testDiscordWebhook(webhookUrl: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const response = await fetch(webhookUrl, {

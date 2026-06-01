@@ -22,6 +22,7 @@ import publicProductRoutes, { sitemapHandler } from './routes/public-products.js
 import wishlistRoutes from './routes/wishlist.js';
 import publicWishlistRoutes from './routes/public-wishlist.js';
 import { trackerPurchasesRouter, purchasesRouter } from './routes/purchases.js';
+import { buyRouter } from './routes/buy.js';
 import { publicSavingsRouter } from './routes/public-savings.js';
 import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
@@ -123,6 +124,7 @@ app.use('/api/trackers', apiKeyMiddleware, authMiddleware, trackerRoutes);
 app.use('/api/trackers', apiKeyMiddleware, authMiddleware, priceRoutes);
 app.use('/api/trackers', apiKeyMiddleware, authMiddleware, trackerPurchasesRouter);
 app.use('/api/purchases', apiKeyMiddleware, authMiddleware, purchasesRouter);
+app.use('/api/buy', apiKeyMiddleware, authMiddleware, buyRouter);
 app.use('/api/settings/api-tokens', apiKeyMiddleware, authMiddleware, apiTokenRoutes);
 app.use('/api/settings', apiKeyMiddleware, authMiddleware, settingsRoutes);
 app.use('/api/invites', apiKeyMiddleware, authMiddleware, inviteRoutes);

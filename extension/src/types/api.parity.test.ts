@@ -63,6 +63,10 @@ const IGNORED_SERVER_FIELDS = new Set<string>([
   'doorbuster_interval_minutes',
   // Wishlist — owner-only toggle, gift-flow UX is separate from the popup.
   'is_wishlisted',
+  // Autonomous purchasing — arming is a web-UI-only owner action; the
+  // popup is create/check-only and never surfaces the buy-on-trigger flow.
+  'buy_armed',
+  'buy_quantity',
 ]);
 
 function extractTrackerFields(source: string): string[] {
