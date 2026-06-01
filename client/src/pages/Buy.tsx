@@ -28,14 +28,14 @@ export default function Buy() {
   if (state.kind === 'not-found') return <div className="p-6">This purchase link isn't valid anymore.</div>;
   if (state.kind === 'error') return <div className="p-6 text-red-600">Error: {state.message}</div>;
 
-  const { intent, tracker, cartUrl } = state.data;
+  const { intent, tracker, buyUrl } = state.data;
   const isOpen = intent.status === 'armed' || intent.status === 'approved';
 
   const onApprove = async () => {
     if (!token) return;
     setBusy(true);
     try {
-      const { cartUrl: url } = await approveBuyIntent(token);
+      const { buyUrl: url } = await approveBuyIntent(token);
       window.open(url, '_blank', 'noopener');
       load();
     } finally { setBusy(false); }
@@ -69,11 +69,12 @@ export default function Buy() {
 
       {intent.status === 'approved' && (
         <div className="space-y-3">
-          {cartUrl && (
-            <a href={cartUrl} target="_blank" rel="noopener" className="block text-center underline">
-              Re-open Amazon cart
+          {buyUrl && (
+            <a href={buyUrl} target="_blank" rel="noopener" className="block text-center underline">
+              Open on Amazon
             </a>
           )}
+          <div className="text-xs text-gray-500">Opens the product page on Amazon — add to cart there to finish.</div>
           <div className="text-sm font-medium">Did it go through?</div>
           <div className="flex gap-3">
             <button

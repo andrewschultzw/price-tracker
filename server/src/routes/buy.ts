@@ -7,7 +7,7 @@ import {
   resolveIntentPurchased,
   resolveIntentNotCompleted,
 } from '../db/purchase-intents.js';
-import { buildAmazonCartUrl } from '../lib/buy-arm.js';
+import { buildAmazonBuyUrl } from '../lib/buy-arm.js';
 import { config } from '../config.js';
 
 export const buyRouter = Router();
@@ -26,7 +26,7 @@ function ownedIntent(token: string, userId: number) {
 }
 
 // GET /api/buy/:token — order summary for the Buy Confirmation page.
-// cartUrl is only populated once the intent is 'approved'.
+// buyUrl is only populated once the intent is 'approved'.
 buyRouter.get('/:token', (req: Request, res: Response) => {
   const found = ownedIntent(String(req.params.token), req.user!.userId);
   if (!found) return res.status(404).json({ error: 'not found' });
@@ -41,15 +41,15 @@ buyRouter.get('/:token', (req: Request, res: Response) => {
       expires_at: intent.expires_at,
     },
     tracker: { id: tracker.id, name: tracker.name },
-    cartUrl:
+    buyUrl:
       intent.status === 'approved'
-        ? buildAmazonCartUrl(intent.asin, intent.quantity, config.amazonAffiliateTag)
+        ? buildAmazonBuyUrl(intent.asin, config.amazonAffiliateTag)
         : null,
   });
 });
 
-// POST /api/buy/:token/approve — armed -> approved; returns the cart URL so
-// the client can redirect the user straight into Amazon's cart.
+// POST /api/buy/:token/approve — armed -> approved; returns the buy URL so
+// the client can open the Amazon product page for the user to complete checkout.
 buyRouter.post('/:token/approve', (req: Request, res: Response) => {
   const found = ownedIntent(String(req.params.token), req.user!.userId);
   if (!found) return res.status(404).json({ error: 'not found' });
@@ -58,7 +58,7 @@ buyRouter.post('/:token/approve', (req: Request, res: Response) => {
   }
   try {
     const intent = approveIntent(found.intent.id);
-    res.json({ cartUrl: buildAmazonCartUrl(intent.asin, intent.quantity, config.amazonAffiliateTag) });
+    res.json({ buyUrl: buildAmazonBuyUrl(intent.asin, config.amazonAffiliateTag) });
   } catch {
     return res.status(409).json({ error: 'intent state changed; please reload' });
   }

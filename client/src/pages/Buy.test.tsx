@@ -33,7 +33,7 @@ describe('Buy confirmation page', () => {
         expires_at: '2026-06-01T00:00:00Z',
       },
       tracker: { id: 7, name: 'Widget Pro' },
-      cartUrl: null,
+      buyUrl: null,
     });
 
     renderBuy();
@@ -57,7 +57,7 @@ describe('Buy confirmation page', () => {
         expires_at: '2026-06-01T00:00:00Z',
       },
       tracker: { id: 7, name: 'Widget Pro' },
-      cartUrl: null,
+      buyUrl: null,
     });
 
     renderBuy();

@@ -561,7 +561,7 @@ export interface BuyIntentView {
     expires_at: string;
   };
   tracker: { id: number; name: string };
-  cartUrl: string | null;
+  buyUrl: string | null;
 }
 
 /**
@@ -578,7 +578,7 @@ export async function getBuyIntent(token: string): Promise<BuyIntentView> {
   return r.json();
 }
 
-export async function approveBuyIntent(token: string): Promise<{ cartUrl: string }> {
+export async function approveBuyIntent(token: string): Promise<{ buyUrl: string }> {
   const r = await fetch(`/api/buy/${encodeURIComponent(token)}/approve`, {
     method: 'POST',
     credentials: 'include',

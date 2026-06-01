@@ -1,16 +1,12 @@
 /**
- * Amazon add-to-cart handoff for the buy-on-trigger feature. We never
- * automate checkout or store payment in v1 — we just hand the owner into
- * Amazon's own cart with the item pre-loaded. The AssociateTag rides along
- * so armed buys route through Associates (same tag as lib/affiliate.ts).
- *
- * NB: the /gp/aws/cart/add.html endpoint is long-standing but partially
- * deprecated by Amazon. Validate against a live ASIN during rollout; if it
- * no longer pre-loads the cart, fall back to a /dp/<ASIN> deep-link here.
+ * Amazon product-page handoff for the buy-on-trigger feature. We hand the
+ * owner to the product page (with our Associates tag); they add to cart /
+ * Buy Now in their own logged-in session. v1 deliberately does NOT use the
+ * legacy /gp/aws/cart/add.html add-to-cart URL — validated 2026-06-01 to
+ * redirect to an Associates sign-in wall rather than pre-loading a cart.
  */
-export function buildAmazonCartUrl(asin: string, quantity: number, affiliateTag: string): string {
-  const qty = Math.max(1, Math.floor(quantity) || 1);
-  const parts = [`ASIN.1=${asin}`, `Quantity.1=${qty}`];
-  if (affiliateTag.trim() !== '') parts.push(`AssociateTag=${affiliateTag.trim()}`);
-  return `https://www.amazon.com/gp/aws/cart/add.html?${parts.join('&')}`;
+export function buildAmazonBuyUrl(asin: string, affiliateTag: string): string {
+  const base = `https://www.amazon.com/dp/${asin}`;
+  const tag = affiliateTag.trim();
+  return tag === '' ? base : `${base}?tag=${tag}`;
 }
