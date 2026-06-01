@@ -76,7 +76,7 @@ function seedArmedIntent(trackerId: number) {
 // ── GET /api/buy/:token ────────────────────────────────────────────────────────
 
 describe('GET /api/buy/:token', () => {
-  it('returns the order summary with cartUrl=null for an armed intent', async () => {
+  it('returns the order summary with buyUrl=null for an armed intent', async () => {
     const userId = seedUser('a@b.com');
     const trackerId = seedTracker(userId);
     const intent = seedArmedIntent(trackerId);
@@ -91,8 +91,8 @@ describe('GET /api/buy/:token', () => {
     expect(res.body.intent.price_at_arm).toBe(49.99);
     expect(res.body.intent.quantity).toBe(2);
     expect(res.body.tracker.id).toBe(trackerId);
-    // cart URL is null while the intent is still armed
-    expect(res.body.cartUrl).toBeNull();
+    // buy URL is null while the intent is still armed
+    expect(res.body.buyUrl).toBeNull();
   });
 
   it('returns 404 for an unknown token', async () => {
@@ -135,7 +135,7 @@ describe('GET /api/buy/:token', () => {
 // ── POST /api/buy/:token/approve ──────────────────────────────────────────────
 
 describe('POST /api/buy/:token/approve', () => {
-  it('approves the intent and returns a cartUrl containing the ASIN', async () => {
+  it('approves the intent and returns a buyUrl containing the ASIN', async () => {
     const userId = seedUser('a@b.com');
     const trackerId = seedTracker(userId);
     const intent = seedArmedIntent(trackerId);
@@ -145,8 +145,8 @@ describe('POST /api/buy/:token/approve', () => {
       .set('Cookie', authCookie(userId));
 
     expect(res.status).toBe(200);
-    expect(res.body.cartUrl).toMatch(/B09TESTTEST/);
-    expect(res.body.cartUrl).toContain('amazon.com');
+    expect(res.body.buyUrl).toMatch(/B09TESTTEST/);
+    expect(res.body.buyUrl).toContain('amazon.com');
   });
 
   it('is idempotent — a second approve on an already-approved intent returns 200', async () => {
@@ -163,7 +163,7 @@ describe('POST /api/buy/:token/approve', () => {
       .set('Cookie', authCookie(userId));
 
     expect(second.status).toBe(200);
-    expect(second.body.cartUrl).toMatch(/B09TESTTEST/);
+    expect(second.body.buyUrl).toMatch(/B09TESTTEST/);
   });
 
   it('returns 404 when a different user tries to approve', async () => {
