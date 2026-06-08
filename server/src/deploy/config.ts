@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 
 const schema = z.object({
   DEPLOY_WEBHOOK_SECRET: z.string().min(1, 'DEPLOY_WEBHOOK_SECRET is required'),
@@ -15,11 +15,19 @@ export interface DeployConfig {
 }
 
 export function loadDeployConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>): DeployConfig {
-  const parsed = schema.parse(env);
-  return {
-    secret: parsed.DEPLOY_WEBHOOK_SECRET,
-    port: parsed.DEPLOY_PORT,
-    repoRoot: parsed.DEPLOY_REPO_ROOT,
-    publicUrl: parsed.DEPLOY_PUBLIC_URL,
-  };
+  try {
+    const parsed = schema.parse(env);
+    return {
+      secret: parsed.DEPLOY_WEBHOOK_SECRET,
+      port: parsed.DEPLOY_PORT,
+      repoRoot: parsed.DEPLOY_REPO_ROOT,
+      publicUrl: parsed.DEPLOY_PUBLIC_URL,
+    };
+  } catch (err) {
+    if (err instanceof ZodError) {
+      const detail = err.errors.map((e) => `${e.path.join('.') || '(root)'}: ${e.message}`).join('; ');
+      throw new Error(`Invalid deploy config: ${detail}`);
+    }
+    throw err;
+  }
 }

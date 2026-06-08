@@ -28,4 +28,8 @@ describe('loadDeployConfig', () => {
     expect(() => loadDeployConfig({})).toThrow();
     expect(() => loadDeployConfig({ DEPLOY_WEBHOOK_SECRET: '' })).toThrow();
   });
+
+  it('throws a readable error naming the bad field', () => {
+    expect(() => loadDeployConfig({})).toThrow(/Invalid deploy config.*DEPLOY_WEBHOOK_SECRET/);
+  });
 });
