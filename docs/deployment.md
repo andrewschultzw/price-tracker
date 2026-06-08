@@ -129,3 +129,79 @@ bash scripts/deploy.sh
 3. Restart service, check logs for the setup URL: `journalctl -u price-tracker -n 20`
 4. Visit the setup URL to create the admin account
 5. Configure reverse proxy (NPM on CT 100) to point `prices.schultzsolutions.tech` to `192.168.1.166:3100`
+
+## Push-to-deploy (webhook)
+
+Merging to `main` triggers CI. When CI passes, GitHub sends a `workflow_run`
+webhook to the `deploy-listener` on CT 302, which rebuilds and restarts the app.
+
+**Flow:** push → CI (GitHub-hosted) → `workflow_run` webhook → CF tunnel → NPM
+(`pt-deploy.schultzsolutions.tech`) → `127.0.0.1:9000` listener → verify HMAC +
+CI/success/main → `scripts/deploy-local.sh <sha>` (checkout SHA, build server +
+client, back up DB, restart, verify live bundle).
+
+**Break-glass (manual):** if the webhook chain is down, deploy from CT 300 with
+`scripts/deploy.sh` exactly as before — it is unchanged.
+
+**Listener logs:** `journalctl -u price-tracker-deploy -f` on CT 302.
+
+**Environment:** the listener reads `/opt/price-tracker-deploy/.env`
+(`DEPLOY_WEBHOOK_SECRET`, `DEPLOY_PORT`, `DEPLOY_REPO_ROOT`, `DEPLOY_PUBLIC_URL`).
+`deploy-local.sh` also honors `DEPLOY_PUBLIC_URL` (defaults to the prod URL).
+
+### CT 302 deploy-listener setup (one-time)
+
+Run in order. These are operational steps against CT 302 (`root@192.168.1.166`).
+
+1. **Convert `/opt/price-tracker` to a clean clone tracking `origin/main`**
+   (it is currently a local-only repo with no remote). Preserve `data/` and the
+   `.env` files (all gitignored):
+   ```bash
+   systemctl stop price-tracker
+   cd /opt
+   cp -a price-tracker/data /opt/pt-data.bak
+   cp price-tracker/.env /opt/pt-server.env.bak
+   mv price-tracker price-tracker.old.$(date +%s)
+   git clone https://github.com/andrewschultzw/price-tracker.git price-tracker
+   cd price-tracker && rm -rf data && mv /opt/pt-data.bak data && cp /opt/pt-server.env.bak .env
+   ```
+
+2. **Create `client/.env`** with the public VAPID key (safe to store — it ships
+   to browsers): `VITE_VAPID_PUBLIC_KEY=<value>` in `/opt/price-tracker/client/.env`.
+
+3. **Create the listener secret env** (mode 600):
+   ```bash
+   mkdir -p /opt/price-tracker-deploy
+   SECRET=$(openssl rand -hex 32)
+   cat > /opt/price-tracker-deploy/.env <<ENV
+   DEPLOY_WEBHOOK_SECRET=$SECRET
+   DEPLOY_PORT=9000
+   DEPLOY_REPO_ROOT=/opt/price-tracker
+   DEPLOY_PUBLIC_URL=https://prices.schultzsolutions.tech
+   ENV
+   chmod 600 /opt/price-tracker-deploy/.env
+   echo "$SECRET"   # copy into the GitHub webhook config
+   ```
+
+   > **Do not** add `NODE_ENV` to this file. The listener shares the app's logger/config module, whose production guard calls `process.exit(1)` if `NODE_ENV=production` and `JWT_SECRET` is unset — which would prevent the listener from starting.
+
+4. **Build + install/enable services:**
+   ```bash
+   cd /opt/price-tracker
+   ( cd server && npm ci --no-audit --no-fund && npm run build )
+   ( cd client && npm ci --no-audit --no-fund && npm run build )
+   cp scripts/price-tracker-deploy.service /etc/systemd/system/
+   systemctl daemon-reload
+   systemctl enable --now price-tracker price-tracker-deploy
+   ```
+
+5. **Add the NPM proxy host** `pt-deploy.schultzsolutions.tech` → `127.0.0.1:9000`
+   (HTTP, wildcard SSL).
+
+6. **Register the GitHub webhook** (use the secret from step 3):
+   ```bash
+   gh api -X POST repos/andrewschultzw/price-tracker/hooks \
+     -f name=web -F active=true -f 'events[]=workflow_run' \
+     -f config.url=https://pt-deploy.schultzsolutions.tech/hook \
+     -f config.content_type=json -f config.secret='<SECRET>'
+   ```
