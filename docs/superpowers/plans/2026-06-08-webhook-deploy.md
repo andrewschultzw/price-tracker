@@ -1036,6 +1036,21 @@ Confirm and report: both systemd services active, positive E2E deployed the new 
 
 ---
 
+## Task 11: Deploy-failure ntfy notification (fast-follow)
+
+Added after the final review: journald-only failure visibility was deemed
+insufficient. On a failed/timed-out deploy, post a best-effort ntfy alert.
+Self-contained (no app DB coupling); no-op if unconfigured; never throws.
+
+**Files:**
+- Modify: `server/src/deploy/config.ts` (+ `config.test.ts`) — add optional `DEPLOY_ALERT_NTFY_URL`.
+- Create: `server/src/deploy/notify.ts` (+ `notify.test.ts`) — `notifyDeployFailure(ntfyUrl, sha, detail)`.
+- Modify: `server/src/deploy/listener.ts` — wrap the queue's deploy fn to fire the alert on failure, then rethrow so the queue still logs.
+
+See the implementation commits on the branch for the exact code; behavior:
+ntfy JSON publish (UTF-8 safe, mirrors `notifications/ntfy.ts`), priority 5,
+swallows its own errors to `logger.warn`.
+
 ## Self-Review
 
 **Spec coverage:**
