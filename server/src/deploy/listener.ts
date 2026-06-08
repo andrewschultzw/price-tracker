@@ -7,6 +7,11 @@ import { createListenerApp } from './app.js';
 
 const config = loadDeployConfig(process.env);
 
+// 15 min is ample for npm ci + build of server + client. A hang past this would
+// wedge the deploy queue forever (running stays true), so we kill the child and
+// reject — the queue then logs and stays usable for the next push.
+const DEPLOY_TIMEOUT_MS = 15 * 60 * 1000;
+
 /** Run scripts/deploy-local.sh <sha>, streaming output to the logger. */
 function runDeployScript(sha: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -16,10 +21,15 @@ function runDeployScript(sha: string): Promise<void> {
       cwd: config.repoRoot,
       env: { ...process.env, DEPLOY_PUBLIC_URL: config.publicUrl },
     });
+    const watchdog = setTimeout(() => {
+      logger.error({ sha, timeoutMs: DEPLOY_TIMEOUT_MS }, 'deploy timed out; killing child process');
+      child.kill('SIGKILL');
+    }, DEPLOY_TIMEOUT_MS);
     child.stdout.on('data', (d) => logger.info({ sha }, `deploy: ${d.toString().trimEnd()}`));
     child.stderr.on('data', (d) => logger.warn({ sha }, `deploy: ${d.toString().trimEnd()}`));
-    child.on('error', reject);
+    child.on('error', (err) => { clearTimeout(watchdog); reject(err); });
     child.on('close', (code, signal) => {
+      clearTimeout(watchdog);
       if (code === 0) {
         logger.info({ sha }, 'deploy succeeded');
         resolve();

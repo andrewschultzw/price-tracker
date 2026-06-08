@@ -57,7 +57,7 @@ systemctl restart price-tracker
 
 echo "=== Verifying live bundle ==="
 sleep 2  # let nginx/express settle after restart
-LIVE_BUNDLE=$(curl -s "$PUBLIC_URL/" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1 | sed 's|assets/||' || true)
+LIVE_BUNDLE=$(curl -s --max-time 15 "$PUBLIC_URL/" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1 | sed 's|assets/||' || true)
 if [ -z "$LIVE_BUNDLE" ]; then
   echo "ERROR: could not extract bundle from $PUBLIC_URL/ — production HTML unparseable" >&2
   exit 1
