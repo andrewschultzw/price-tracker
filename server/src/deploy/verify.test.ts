@@ -33,4 +33,8 @@ describe('verifySignature', () => {
   it('rejects a malformed signature header', () => {
     expect(verifySignature(Buffer.from('x'), 'garbage', SECRET)).toBe(false);
   });
+
+  it('rejects an empty signature header', () => {
+    expect(verifySignature(Buffer.from('x'), '', SECRET)).toBe(false);
+  });
 });
