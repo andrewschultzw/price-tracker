@@ -8,6 +8,9 @@ function deferred() {
   return { promise, resolve };
 }
 
+/** Flush pending micro/macrotasks deterministically (no wall-clock waits). */
+const flush = () => new Promise((r) => setImmediate(r));
+
 describe('createDeployQueue', () => {
   it('runs a single deploy', async () => {
     const calls: string[] = [];
@@ -26,11 +29,12 @@ describe('createDeployQueue', () => {
     });
 
     q.enqueue('first');                 // starts running, blocks on gate
-    await new Promise((r) => setImmediate(r));
+    await flush();
     q.enqueue('second');                // arrives while running -> rerun flag
     q.enqueue('third');                 // overwrites rerun flag -> latest wins
     gate.resolve();                     // let first finish
-    await new Promise((r) => setTimeout(r, 10));
+    await flush();
+    await flush();
 
     expect(calls).toEqual(['first', 'third']); // 'second' coalesced away
   });
@@ -40,10 +44,10 @@ describe('createDeployQueue', () => {
     const q = createDeployQueue(async () => { await gate.promise; });
     expect(q.isRunning()).toBe(false);
     q.enqueue('a');
-    await new Promise((r) => setImmediate(r));
+    await flush();
     expect(q.isRunning()).toBe(true);
     gate.resolve();
-    await new Promise((r) => setTimeout(r, 10));
+    await flush();
     expect(q.isRunning()).toBe(false);
   });
 
@@ -54,9 +58,9 @@ describe('createDeployQueue', () => {
       if (sha === 'boom') throw new Error('deploy failed');
     });
     q.enqueue('boom');
-    await new Promise((r) => setTimeout(r, 10));
+    await flush();
     q.enqueue('ok');
-    await new Promise((r) => setTimeout(r, 10));
+    await flush();
     expect(calls).toEqual(['boom', 'ok']);
     expect(q.isRunning()).toBe(false);
   });

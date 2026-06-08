@@ -16,7 +16,7 @@ export function createDeployQueue(deployFn: (sha: string) => Promise<void>): Dep
   let pending: string | null = null;
 
   async function drain(sha: string): Promise<void> {
-    running = true;
+    running = true; // Must stay synchronous (before any await) so two drains can never race.
     let next: string | null = sha;
     try {
       while (next) {
@@ -25,9 +25,10 @@ export function createDeployQueue(deployFn: (sha: string) => Promise<void>): Dep
         try {
           await deployFn(current);
         } catch (err) {
-          logger.error({ err, sha: current }, 'deploy failed; previous build still running');
+          logger.error({ err, sha: current }, 'deploy failed; live service remains on previous build');
         }
         next = pending;
+        // No await between the while-exit and finally's running=false (single-threaded), so an enqueue can't slip in and be lost.
       }
     } finally {
       running = false;
