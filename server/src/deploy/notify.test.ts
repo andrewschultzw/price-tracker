@@ -38,4 +38,9 @@ describe('notifyDeployFailure', () => {
     await expect(notifyDeployFailure('https://ntfy.sh/', 'abc', 'd')).resolves.toBeUndefined();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it('does not throw when ntfy returns a non-ok status', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 403 }) as Response));
+    await expect(notifyDeployFailure('https://ntfy.sh/t', 'abc', 'd')).resolves.toBeUndefined();
+  });
 });

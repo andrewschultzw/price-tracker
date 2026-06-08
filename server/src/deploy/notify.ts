@@ -29,6 +29,7 @@ export async function notifyDeployFailure(
         priority: 5,
         tags: ['rotating_light'],
       }),
+      signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) {
       logger.warn({ status: res.status }, 'deploy alert: ntfy publish returned non-ok');
