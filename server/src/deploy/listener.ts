@@ -19,12 +19,12 @@ function runDeployScript(sha: string): Promise<void> {
     child.stdout.on('data', (d) => logger.info({ sha }, `deploy: ${d.toString().trimEnd()}`));
     child.stderr.on('data', (d) => logger.warn({ sha }, `deploy: ${d.toString().trimEnd()}`));
     child.on('error', reject);
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       if (code === 0) {
         logger.info({ sha }, 'deploy succeeded');
         resolve();
       } else {
-        reject(new Error(`deploy-local.sh exited ${code}`));
+        reject(new Error(`deploy-local.sh failed (code=${code ?? 'null'} signal=${signal ?? 'none'})`));
       }
     });
   });
