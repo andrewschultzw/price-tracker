@@ -58,6 +58,18 @@ describe('createListenerApp', () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
+  it('400 on a signed but unparseable body', async () => {
+    const { app, enqueue } = appWithSpy();
+    const body = 'not-json';
+    const res = await request(app)
+      .post('/hook')
+      .set('X-Hub-Signature-256', sign(body))
+      .set('Content-Type', 'application/json')
+      .send(body);
+    expect(res.status).toBe(400);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
   it('404 on any other route', async () => {
     const { app } = appWithSpy();
     expect((await request(app).get('/')).status).toBe(404);

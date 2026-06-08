@@ -18,7 +18,7 @@ export function createListenerApp(deps: ListenerDeps): express.Express {
 
     if (!verifySignature(raw, sig, deps.secret)) {
       logger.warn('deploy webhook: invalid signature');
-      return res.status(401).send('invalid signature');
+      return res.status(401).send('unauthorized');
     }
 
     let payload: unknown;
@@ -38,6 +38,11 @@ export function createListenerApp(deps: ListenerDeps): express.Express {
     logger.info({ sha: decision.sha }, 'deploy webhook: accepted; enqueuing deploy');
     deps.queue.enqueue(decision.sha);
     return res.status(202).send('accepted');
+  });
+
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    logger.warn({ err }, 'deploy webhook: unhandled error');
+    if (!res.headersSent) res.status(500).send('internal error');
   });
 
   return app;
