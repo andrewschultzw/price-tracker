@@ -9,6 +9,7 @@ export async function notifyDeployFailure(
   ntfyUrl: string | undefined,
   sha: string,
   detail: string,
+  token?: string,
 ): Promise<void> {
   if (!ntfyUrl) return;
   try {
@@ -19,9 +20,13 @@ export async function notifyDeployFailure(
       logger.warn({ ntfyUrl }, 'deploy alert: ntfy URL missing topic; skipping');
       return;
     }
+    // Bearer auth for self-hosted ntfy instances that require it; omitted when
+    // no token is set (public ntfy.sh with an unguessable topic needs none).
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(base, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         topic,
         title: 'price-tracker deploy FAILED',

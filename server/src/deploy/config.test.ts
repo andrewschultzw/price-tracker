@@ -35,6 +35,14 @@ describe('loadDeployConfig', () => {
     expect(loadDeployConfig({ DEPLOY_WEBHOOK_SECRET: 's' }).alertNtfyUrl).toBeUndefined();
   });
 
+  it('parses the optional alert ntfy token when present', () => {
+    const cfg = loadDeployConfig({ DEPLOY_WEBHOOK_SECRET: 's', DEPLOY_ALERT_NTFY_TOKEN: 'tk_abc' });
+    expect(cfg.alertNtfyToken).toBe('tk_abc');
+  });
+  it('leaves alertNtfyToken undefined when not set', () => {
+    expect(loadDeployConfig({ DEPLOY_WEBHOOK_SECRET: 's' }).alertNtfyToken).toBeUndefined();
+  });
+
   it('throws when the secret is missing or empty', () => {
     expect(() => loadDeployConfig({})).toThrow();
     expect(() => loadDeployConfig({ DEPLOY_WEBHOOK_SECRET: '' })).toThrow();

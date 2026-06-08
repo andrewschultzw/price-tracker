@@ -10,6 +10,7 @@ const schema = z.object({
   DEPLOY_REPO_ROOT: z.string().min(1).default('/opt/price-tracker'),
   DEPLOY_PUBLIC_URL: z.string().url().default('https://prices.schultzsolutions.tech'),
   DEPLOY_ALERT_NTFY_URL: z.string().url().optional(),
+  DEPLOY_ALERT_NTFY_TOKEN: z.string().min(1).optional(),
 });
 
 export interface DeployConfig {
@@ -19,6 +20,7 @@ export interface DeployConfig {
   repoRoot: string;
   publicUrl: string;
   alertNtfyUrl?: string;
+  alertNtfyToken?: string;
 }
 
 export function loadDeployConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>): DeployConfig {
@@ -31,6 +33,7 @@ export function loadDeployConfig(env: NodeJS.ProcessEnv | Record<string, string 
       repoRoot: parsed.DEPLOY_REPO_ROOT,
       publicUrl: parsed.DEPLOY_PUBLIC_URL,
       alertNtfyUrl: parsed.DEPLOY_ALERT_NTFY_URL,
+      alertNtfyToken: parsed.DEPLOY_ALERT_NTFY_TOKEN,
     };
   } catch (err) {
     if (err instanceof ZodError) {
