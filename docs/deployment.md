@@ -136,7 +136,7 @@ Merging to `main` triggers CI. When CI passes, GitHub sends a `workflow_run`
 webhook to the `deploy-listener` on CT 302, which rebuilds and restarts the app.
 
 **Flow:** push → CI (GitHub-hosted) → `workflow_run` webhook → CF tunnel → NPM
-(`pt-deploy.schultzsolutions.tech`) → `127.0.0.1:9000` listener → verify HMAC +
+(`pt-deploy.schultzsolutions.tech`) → `192.168.1.166:9000` listener → verify HMAC +
 CI/success/main → `scripts/deploy-local.sh <sha>` (checkout SHA, build server +
 client, back up DB, restart, verify live bundle).
 
@@ -176,6 +176,7 @@ Run in order. These are operational steps against CT 302 (`root@192.168.1.166`).
    cat > /opt/price-tracker-deploy/.env <<ENV
    DEPLOY_WEBHOOK_SECRET=$SECRET
    DEPLOY_PORT=9000
+   DEPLOY_BIND_HOST=0.0.0.0
    DEPLOY_REPO_ROOT=/opt/price-tracker
    DEPLOY_PUBLIC_URL=https://prices.schultzsolutions.tech
    ENV
@@ -195,8 +196,12 @@ Run in order. These are operational steps against CT 302 (`root@192.168.1.166`).
    systemctl enable --now price-tracker price-tracker-deploy
    ```
 
-5. **Add the NPM proxy host** `pt-deploy.schultzsolutions.tech` → `127.0.0.1:9000`
-   (HTTP, wildcard SSL).
+5. **Add the NPM proxy host** `pt-deploy.schultzsolutions.tech` →
+   `192.168.1.166:9000` (HTTP, wildcard SSL). NPM runs on a separate host and
+   reaches the listener over the LAN, so the listener binds `0.0.0.0`
+   (`DEPLOY_BIND_HOST` above) rather than localhost. The HMAC signature — not the
+   bind interface — is the security boundary; this matches how the app itself is
+   exposed on `:3100`.
 
 6. **Register the GitHub webhook** (use the secret from step 3):
    ```bash
