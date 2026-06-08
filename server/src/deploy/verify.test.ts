@@ -72,7 +72,11 @@ describe('shouldDeploy', () => {
   });
 
   it('skips actions other than completed', () => {
-    expect(shouldDeploy({ action: 'requested', workflow_run: { name: 'CI' } }).deploy).toBe(false);
+    expect(shouldDeploy({ ...workflowRun(), action: 'requested' }).deploy).toBe(false);
+  });
+
+  it('skips a run with a null conclusion (in-progress)', () => {
+    expect(shouldDeploy(workflowRun({ conclusion: null })).deploy).toBe(false);
   });
 
   it('skips a payload with no workflow_run (e.g. a ping event)', () => {
