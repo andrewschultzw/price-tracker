@@ -6,12 +6,14 @@ describe('loadDeployConfig', () => {
     const cfg = loadDeployConfig({
       DEPLOY_WEBHOOK_SECRET: 'shhh',
       DEPLOY_PORT: '9001',
+      DEPLOY_BIND_HOST: '0.0.0.0',
       DEPLOY_REPO_ROOT: '/srv/pt',
       DEPLOY_PUBLIC_URL: 'https://example.test',
     });
     expect(cfg).toEqual({
       secret: 'shhh',
       port: 9001,
+      bindHost: '0.0.0.0',
       repoRoot: '/srv/pt',
       publicUrl: 'https://example.test',
     });
@@ -20,6 +22,7 @@ describe('loadDeployConfig', () => {
   it('applies defaults for everything except the secret', () => {
     const cfg = loadDeployConfig({ DEPLOY_WEBHOOK_SECRET: 'shhh' });
     expect(cfg.port).toBe(9000);
+    expect(cfg.bindHost).toBe('127.0.0.1');
     expect(cfg.repoRoot).toBe('/opt/price-tracker');
     expect(cfg.publicUrl).toBe('https://prices.schultzsolutions.tech');
   });

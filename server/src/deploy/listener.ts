@@ -51,7 +51,12 @@ const queue = createDeployQueue(async (sha) => {
 });
 const app = createListenerApp({ secret: config.secret, queue });
 
-// Bind localhost only — the sole ingress is the CF tunnel -> NPM proxy host.
-app.listen(config.port, '127.0.0.1', () => {
-  logger.info({ port: config.port, repoRoot: config.repoRoot }, 'deploy-listener up on 127.0.0.1');
+// Bind host defaults to localhost; set DEPLOY_BIND_HOST=0.0.0.0 where a reverse
+// proxy on another host must reach the listener. The HMAC gate is the security
+// boundary regardless of interface.
+app.listen(config.port, config.bindHost, () => {
+  logger.info(
+    { port: config.port, bindHost: config.bindHost, repoRoot: config.repoRoot },
+    'deploy-listener up',
+  );
 });
