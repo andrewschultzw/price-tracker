@@ -146,8 +146,15 @@ client, back up DB, restart, verify live bundle).
 **Listener logs:** `journalctl -u price-tracker-deploy -f` on CT 302.
 
 **Environment:** the listener reads `/opt/price-tracker-deploy/.env`
-(`DEPLOY_WEBHOOK_SECRET`, `DEPLOY_PORT`, `DEPLOY_REPO_ROOT`, `DEPLOY_PUBLIC_URL`).
-`deploy-local.sh` also honors `DEPLOY_PUBLIC_URL` (defaults to the prod URL).
+(`DEPLOY_WEBHOOK_SECRET`, `DEPLOY_PORT`, `DEPLOY_BIND_HOST`, `DEPLOY_REPO_ROOT`,
+`DEPLOY_PUBLIC_URL`). `deploy-local.sh` also honors `DEPLOY_PUBLIC_URL` (defaults
+to the prod URL).
+
+**Deploy-failure alerts (optional):** set `DEPLOY_ALERT_NTFY_URL` (an ntfy topic
+URL, e.g. `https://ntfy.schultzsolutions.tech/pt-deploy`) and, for an
+auth-required instance, `DEPLOY_ALERT_NTFY_TOKEN` (sent as a Bearer header). On a
+failed or timed-out deploy the listener posts a best-effort ntfy alert; unset =
+journald-only. After editing the env, `systemctl restart price-tracker-deploy`.
 
 ### CT 302 deploy-listener setup (one-time)
 

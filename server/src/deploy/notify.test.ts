@@ -27,6 +27,22 @@ describe('notifyDeployFailure', () => {
     expect(body.title).toMatch(/fail/i);
   });
 
+  it('sends a Bearer auth header when a token is provided', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+    vi.stubGlobal('fetch', fetchSpy);
+    await notifyDeployFailure('https://ntfy.example/pt-deploy', 'abc123', 'boom', 'tk_secret');
+    const [, opts] = fetchSpy.mock.calls[0];
+    expect(opts.headers['Authorization']).toBe('Bearer tk_secret');
+  });
+
+  it('omits the auth header when no token is provided', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+    vi.stubGlobal('fetch', fetchSpy);
+    await notifyDeployFailure('https://ntfy.sh/pt-deploy', 'abc123', 'boom');
+    const [, opts] = fetchSpy.mock.calls[0];
+    expect(opts.headers['Authorization']).toBeUndefined();
+  });
+
   it('does not throw when fetch rejects', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
     await expect(notifyDeployFailure('https://ntfy.sh/t', 'abc', 'd')).resolves.toBeUndefined();

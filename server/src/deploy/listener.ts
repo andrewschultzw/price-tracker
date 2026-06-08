@@ -45,7 +45,12 @@ const queue = createDeployQueue(async (sha) => {
   try {
     await runDeployScript(sha);
   } catch (err) {
-    await notifyDeployFailure(config.alertNtfyUrl, sha, err instanceof Error ? err.message : String(err));
+    await notifyDeployFailure(
+      config.alertNtfyUrl,
+      sha,
+      err instanceof Error ? err.message : String(err),
+      config.alertNtfyToken,
+    );
     throw err; // rethrow so the queue logs it too
   }
 });
