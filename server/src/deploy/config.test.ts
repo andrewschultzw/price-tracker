@@ -24,6 +24,14 @@ describe('loadDeployConfig', () => {
     expect(cfg.publicUrl).toBe('https://prices.schultzsolutions.tech');
   });
 
+  it('parses the optional alert ntfy url when present', () => {
+    const cfg = loadDeployConfig({ DEPLOY_WEBHOOK_SECRET: 's', DEPLOY_ALERT_NTFY_URL: 'https://ntfy.sh/pt-deploy' });
+    expect(cfg.alertNtfyUrl).toBe('https://ntfy.sh/pt-deploy');
+  });
+  it('leaves alertNtfyUrl undefined when not set', () => {
+    expect(loadDeployConfig({ DEPLOY_WEBHOOK_SECRET: 's' }).alertNtfyUrl).toBeUndefined();
+  });
+
   it('throws when the secret is missing or empty', () => {
     expect(() => loadDeployConfig({})).toThrow();
     expect(() => loadDeployConfig({ DEPLOY_WEBHOOK_SECRET: '' })).toThrow();

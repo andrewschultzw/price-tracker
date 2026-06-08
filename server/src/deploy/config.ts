@@ -5,6 +5,7 @@ const schema = z.object({
   DEPLOY_PORT: z.coerce.number().int().positive().default(9000),
   DEPLOY_REPO_ROOT: z.string().min(1).default('/opt/price-tracker'),
   DEPLOY_PUBLIC_URL: z.string().url().default('https://prices.schultzsolutions.tech'),
+  DEPLOY_ALERT_NTFY_URL: z.string().url().optional(),
 });
 
 export interface DeployConfig {
@@ -12,6 +13,7 @@ export interface DeployConfig {
   port: number;
   repoRoot: string;
   publicUrl: string;
+  alertNtfyUrl?: string;
 }
 
 export function loadDeployConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>): DeployConfig {
@@ -22,6 +24,7 @@ export function loadDeployConfig(env: NodeJS.ProcessEnv | Record<string, string 
       port: parsed.DEPLOY_PORT,
       repoRoot: parsed.DEPLOY_REPO_ROOT,
       publicUrl: parsed.DEPLOY_PUBLIC_URL,
+      alertNtfyUrl: parsed.DEPLOY_ALERT_NTFY_URL,
     };
   } catch (err) {
     if (err instanceof ZodError) {
