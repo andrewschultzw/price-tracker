@@ -19,6 +19,7 @@ echo "=== Fetching origin ==="
 git fetch --quiet origin
 
 echo "=== Checking out $SHA ==="
+# Detached HEAD is intentional on the deploy box — each deploy checks out an exact SHA.
 git checkout --quiet --detach "$SHA"
 
 echo "=== Building server ==="
@@ -29,7 +30,7 @@ echo "=== Building client (with client/.env VITE_* vars) ==="
 
 # Safety net for the 'silent stale bundle' class of bug: capture the freshly
 # built bundle name so we can confirm the live site actually serves it.
-LOCAL_BUNDLE=$(ls "$DEPLOY_DIR/client/dist/assets/" | grep -E '^index-[A-Za-z0-9_-]+\.js$' | head -1)
+LOCAL_BUNDLE=$(ls "$DEPLOY_DIR/client/dist/assets/" 2>/dev/null | grep -E '^index-[A-Za-z0-9_-]+\.js$' | head -1 || true)
 if [ -z "$LOCAL_BUNDLE" ]; then
   echo "ERROR: no client bundle in client/dist/assets/ — vite build silently failed?" >&2
   exit 1
@@ -55,8 +56,8 @@ echo "=== Restarting service ==="
 systemctl restart price-tracker
 
 echo "=== Verifying live bundle ==="
-sleep 2
-LIVE_BUNDLE=$(curl -s "$PUBLIC_URL/" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1 | sed 's|assets/||')
+sleep 2  # let nginx/express settle after restart
+LIVE_BUNDLE=$(curl -s "$PUBLIC_URL/" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1 | sed 's|assets/||' || true)
 if [ -z "$LIVE_BUNDLE" ]; then
   echo "ERROR: could not extract bundle from $PUBLIC_URL/ — production HTML unparseable" >&2
   exit 1
