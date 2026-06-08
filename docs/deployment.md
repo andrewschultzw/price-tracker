@@ -183,6 +183,8 @@ Run in order. These are operational steps against CT 302 (`root@192.168.1.166`).
    echo "$SECRET"   # copy into the GitHub webhook config
    ```
 
+   > **Do not** add `NODE_ENV` to this file. The listener shares the app's logger/config module, whose production guard calls `process.exit(1)` if `NODE_ENV=production` and `JWT_SECRET` is unset — which would prevent the listener from starting.
+
 4. **Build + install/enable services:**
    ```bash
    cd /opt/price-tracker
