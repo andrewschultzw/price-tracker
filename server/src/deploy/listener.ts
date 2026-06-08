@@ -4,6 +4,7 @@ import { logger } from '../logger.js';
 import { loadDeployConfig } from './config.js';
 import { createDeployQueue } from './queue.js';
 import { createListenerApp } from './app.js';
+import { notifyDeployFailure } from './notify.js';
 
 const config = loadDeployConfig(process.env);
 
@@ -40,7 +41,14 @@ function runDeployScript(sha: string): Promise<void> {
   });
 }
 
-const queue = createDeployQueue(runDeployScript);
+const queue = createDeployQueue(async (sha) => {
+  try {
+    await runDeployScript(sha);
+  } catch (err) {
+    await notifyDeployFailure(config.alertNtfyUrl, sha, err instanceof Error ? err.message : String(err));
+    throw err; // rethrow so the queue logs it too
+  }
+});
 const app = createListenerApp({ secret: config.secret, queue });
 
 // Bind localhost only — the sole ingress is the CF tunnel -> NPM proxy host.
