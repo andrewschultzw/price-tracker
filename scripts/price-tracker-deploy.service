@@ -1,0 +1,16 @@
+# Checked-in template for the deploy-listener. Install on CT 302 to
+# /etc/systemd/system/price-tracker-deploy.service (see docs/deployment.md).
+[Unit]
+Description=Price Tracker deploy-listener (GitHub webhook -> build-on-302)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/price-tracker
+EnvironmentFile=/opt/price-tracker-deploy/.env
+ExecStart=/usr/bin/node /opt/price-tracker/server/dist/deploy/listener.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
