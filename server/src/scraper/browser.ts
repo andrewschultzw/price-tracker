@@ -3,6 +3,43 @@ import { getNextUserAgent } from './user-agents.js';
 import { ScrapeError } from './retry.js';
 import { logger } from '../logger.js';
 
+// --- hard timeouts -----------------------------------------------------------
+// One wedged page or an unresponsive Chromium must never hang a scrape — or the
+// event loop behind it — indefinitely. goto already caps at 30s; these bound
+// everything else: the post-goto waits, page.content(), and (the real footgun)
+// context/browser teardown, which can block forever on a dead browser. This is
+// the failure mode that took price-tracker down: a hung Amazon scrape froze the
+// worker, the HTTP server stopped accepting connections, and headless-Chrome
+// processes leaked for days.
+const SCRAPE_HARD_TIMEOUT_MS = 60_000;
+const CONTEXT_CLOSE_TIMEOUT_MS = 10_000;
+const BROWSER_CLOSE_TIMEOUT_MS = 10_000;
+const PAGE_DEFAULT_TIMEOUT_MS = 20_000;
+
+export class TimeoutError extends Error {
+  constructor(label: string, ms: number) {
+    super(`${label} timed out after ${ms}ms`);
+    this.name = 'TimeoutError';
+  }
+}
+
+/**
+ * Race a promise against a wall-clock deadline. Rejects with TimeoutError if
+ * `p` hasn't settled within `ms`; always clears the timer so a settled promise
+ * never leaks a pending timeout.
+ */
+export async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new TimeoutError(label, ms)), ms);
+  });
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 let browser: Browser | null = null;
 
 async function getBrowser(): Promise<Browser> {
@@ -35,101 +72,152 @@ export async function createContext(): Promise<BrowserContext> {
   });
 }
 
+/** Close a context, bounded — a hung close() must not become the new hang. */
+async function closeContextSafely(context: BrowserContext): Promise<void> {
+  try {
+    await withTimeout(context.close(), CONTEXT_CLOSE_TIMEOUT_MS, 'context.close');
+  } catch (err) {
+    logger.warn({ err: String(err) }, 'context.close failed/timed out; leaving it for browser recycle');
+  }
+}
+
+/**
+ * Discard the shared browser so the next scrape launches a fresh one. Called
+ * after a hard timeout: the Chromium instance may be wedged and leaking pages/
+ * processes, so we stop reusing it. The close is itself bounded.
+ */
+async function recycleBrowser(): Promise<void> {
+  const b = browser;
+  browser = null;   // swap out first so getBrowser() relaunches a clean instance
+  if (!b) return;
+  try {
+    await withTimeout(b.close(), BROWSER_CLOSE_TIMEOUT_MS, 'browser.close');
+    logger.info('Recycled wedged Playwright browser');
+  } catch (err) {
+    logger.warn({ err: String(err) }, 'browser recycle close failed/timed out; abandoning instance');
+  }
+}
+
 export interface FetchResult {
   html: string;
   finalUrl: string;
 }
 
+/** Navigate + extract on a fresh page. The caller owns the context lifecycle
+ * (and the hard timeout that bounds this whole operation). */
+async function loadPage(context: BrowserContext, url: string): Promise<FetchResult> {
+  const page = await context.newPage();
+  page.setDefaultTimeout(PAGE_DEFAULT_TIMEOUT_MS);
+
+  // Block unnecessary resources for speed
+  await page.route('**/*', (route) => {
+    const type = route.request().resourceType();
+    if (['image', 'media', 'font', 'stylesheet'].includes(type)) {
+      return route.abort();
+    }
+    return route.continue();
+  });
+
+  let response;
+  try {
+    // Use 'commit' (just first-byte received) instead of 'domcontentloaded'.
+    // Some retailers (notably Best Buy) keep the network busy with bot-detection
+    // and analytics scripts well past the actual content load, so domcontentloaded
+    // never fires within any reasonable timeout. Price data comes from server-
+    // rendered JSON-LD which lands in the initial HTML, so we don't need
+    // domcontentloaded — just the response. The post-goto wait below gives
+    // dynamic content a chance to render for sites that need it.
+    response = await page.goto(url, { waitUntil: 'commit', timeout: 30000 });
+  } catch (err) {
+    // Playwright throws on network errors, DNS failures, and timeouts.
+    // These are transient — classify as retryable.
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new ScrapeError(`Failed to load ${url}: ${msg}`, true);
+  }
+
+  if (response) {
+    const status = response.status();
+    if (status >= 400 && status < 500) {
+      // Client errors (404, 403, 410, etc.) are deterministic — the page
+      // isn't coming back just because we asked again. But a 403 from a
+      // known WAF server header means the retailer is blanket-blocking
+      // our egress IP, which is a distinct state from "this product page
+      // doesn't exist" — surface it specifically so the scheduler can
+      // park the seller in 'blocked' status instead of treating it as
+      // flaky scrape failures.
+      if (isRetailerBlock(status, response.headers())) {
+        throw new ScrapeError(
+          `Retailer WAF blocked request to ${url} (HTTP ${status})`,
+          false,
+          status,
+          true,
+        );
+      }
+      throw new ScrapeError(`HTTP ${status} from ${url}`, false, status);
+    }
+    if (status >= 500) {
+      // Server errors may clear up — retry.
+      throw new ScrapeError(`HTTP ${status} from ${url}`, true, status);
+    }
+  }
+
+  // Wait for JS to render prices. 5s is enough for any retailer to populate
+  // dynamic content on top of the server-rendered HTML; longer would dilute
+  // happy-path scrape throughput. 'commit' navigation gets us here within
+  // ~1s for slow sites, so total page time is bounded at ~6s in practice.
+  await page.waitForTimeout(5000);
+
+  const html = await page.content();
+
+  // Bot-check / captcha detection. Amazon (and some other retailers)
+  // occasionally serve an intercept page instead of the real product
+  // page — the HTML parses fine but contains no real price data, so
+  // every extraction strategy returns null and the caller sees a
+  // confusing "Could not extract price" error. Detecting the intercept
+  // here and throwing a retryable ScrapeError lets the retry loop in
+  // extractPrice() take another pass (usually with a different user
+  // agent, since the context is recreated per attempt), which
+  // frequently clears the intercept.
+  if (isBotCheckPage(html, response?.url() ?? url)) {
+    throw new ScrapeError(`Bot check / captcha page detected for ${url}`, true);
+  }
+  return { html, finalUrl: response?.url() ?? url };
+}
+
 /**
  * Load a URL and return the rendered HTML and final URL (after redirects).
+ * The whole operation is bounded by a hard wall-clock ceiling, and teardown is
+ * bounded too, so a wedged page or unresponsive Chromium can never hang the
+ * worker (the failure mode that froze the service). A hard timeout surfaces as
+ * a retryable ScrapeError and recycles the shared browser.
+ *
  * Throws a ScrapeError on failure:
- *   - Network errors / timeouts → retryable
- *   - HTTP 5xx                  → retryable
- *   - HTTP 4xx                  → NOT retryable (deterministic)
+ *   - Network errors / timeouts / hard timeout → retryable
+ *   - HTTP 5xx                                 → retryable
+ *   - HTTP 4xx                                 → NOT retryable (deterministic)
  *
  * Callers should wrap this in `withRetry()` to actually take advantage of
  * the retryable flag.
  */
 export async function fetchPageContent(url: string): Promise<FetchResult> {
   const context = await createContext();
+  let hardTimedOut = false;
   try {
-    const page = await context.newPage();
-
-    // Block unnecessary resources for speed
-    await page.route('**/*', (route) => {
-      const type = route.request().resourceType();
-      if (['image', 'media', 'font', 'stylesheet'].includes(type)) {
-        return route.abort();
-      }
-      return route.continue();
-    });
-
-    let response;
-    try {
-      // Use 'commit' (just first-byte received) instead of 'domcontentloaded'.
-      // Some retailers (notably Best Buy) keep the network busy with bot-detection
-      // and analytics scripts well past the actual content load, so domcontentloaded
-      // never fires within any reasonable timeout. Price data comes from server-
-      // rendered JSON-LD which lands in the initial HTML, so we don't need
-      // domcontentloaded — just the response. The post-goto wait below gives
-      // dynamic content a chance to render for sites that need it.
-      response = await page.goto(url, { waitUntil: 'commit', timeout: 30000 });
-    } catch (err) {
-      // Playwright throws on network errors, DNS failures, and timeouts.
-      // These are transient — classify as retryable.
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new ScrapeError(`Failed to load ${url}: ${msg}`, true);
+    return await withTimeout(loadPage(context, url), SCRAPE_HARD_TIMEOUT_MS, `scrape ${url}`);
+  } catch (err) {
+    if (err instanceof TimeoutError) {
+      hardTimedOut = true;
+      throw new ScrapeError(
+        `Scrape of ${url} exceeded ${SCRAPE_HARD_TIMEOUT_MS}ms hard timeout`,
+        true,
+      );
     }
-
-    if (response) {
-      const status = response.status();
-      if (status >= 400 && status < 500) {
-        // Client errors (404, 403, 410, etc.) are deterministic — the page
-        // isn't coming back just because we asked again. But a 403 from a
-        // known WAF server header means the retailer is blanket-blocking
-        // our egress IP, which is a distinct state from "this product page
-        // doesn't exist" — surface it specifically so the scheduler can
-        // park the seller in 'blocked' status instead of treating it as
-        // flaky scrape failures.
-        if (isRetailerBlock(status, response.headers())) {
-          throw new ScrapeError(
-            `Retailer WAF blocked request to ${url} (HTTP ${status})`,
-            false,
-            status,
-            true,
-          );
-        }
-        throw new ScrapeError(`HTTP ${status} from ${url}`, false, status);
-      }
-      if (status >= 500) {
-        // Server errors may clear up — retry.
-        throw new ScrapeError(`HTTP ${status} from ${url}`, true, status);
-      }
-    }
-
-    // Wait for JS to render prices. 5s is enough for any retailer to populate
-    // dynamic content on top of the server-rendered HTML; longer would dilute
-    // happy-path scrape throughput. 'commit' navigation gets us here within
-    // ~1s for slow sites, so total page time is bounded at ~6s in practice.
-    await page.waitForTimeout(5000);
-
-    const html = await page.content();
-
-    // Bot-check / captcha detection. Amazon (and some other retailers)
-    // occasionally serve an intercept page instead of the real product
-    // page — the HTML parses fine but contains no real price data, so
-    // every extraction strategy returns null and the caller sees a
-    // confusing "Could not extract price" error. Detecting the intercept
-    // here and throwing a retryable ScrapeError lets the retry loop in
-    // extractPrice() take another pass (usually with a different user
-    // agent, since the context is recreated per attempt), which
-    // frequently clears the intercept.
-    if (isBotCheckPage(html, response?.url() ?? url)) {
-      throw new ScrapeError(`Bot check / captcha page detected for ${url}`, true);
-    }
-    return { html, finalUrl: response?.url() ?? url };
+    throw err;
   } finally {
-    await context.close();
+    await closeContextSafely(context);
+    // A hard timeout means the page/browser may be wedged — recycle so a
+    // poisoned Chromium can't freeze every future scrape.
+    if (hardTimedOut) await recycleBrowser();
   }
 }
 
@@ -201,9 +289,13 @@ export function isRetailerBlock(status: number, headers: Record<string, string>)
 }
 
 export async function closeBrowser(): Promise<void> {
-  if (browser) {
-    await browser.close();
-    browser = null;
+  const b = browser;
+  browser = null;
+  if (!b) return;
+  try {
+    await withTimeout(b.close(), BROWSER_CLOSE_TIMEOUT_MS, 'browser.close');
     logger.info('Browser closed');
+  } catch (err) {
+    logger.warn({ err: String(err) }, 'closeBrowser timed out; abandoning instance');
   }
 }
