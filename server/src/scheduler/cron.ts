@@ -593,7 +593,17 @@ export async function checkTrackerUrl(
       }
 
       const failures = seller.consecutive_failures + 1;
-      const newStatus = failures >= config.maxConsecutiveFailures ? 'error' : seller.status;
+
+      // A seller that keeps failing gets auto-paused rather than parked in a
+      // perpetually re-alerting 'error' state. Paused sellers are excluded from
+      // the scrape loop (see getDueTrackerUrls), so this stops both the wasted
+      // scrapes and the error-alert spam: we notify exactly once, on the
+      // transition into paused, then stay silent until the user unpauses.
+      // Mirrors the 'blocked' fast-path above. The `!== 'paused'` guard means a
+      // manual "Check Now" on an already-paused seller won't re-alert.
+      const justAutoPaused =
+        failures >= config.maxConsecutiveFailures && seller.status !== 'paused';
+      const newStatus = justAutoPaused ? 'paused' : seller.status;
 
       updateTrackerUrl(seller.id, {
         last_checked_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
@@ -604,19 +614,22 @@ export async function checkTrackerUrl(
       refreshTrackerAggregates(tracker.id);
 
       logger.error(
-        { trackerId: tracker.id, trackerUrlId: seller.id, failures, err: errorMsg },
+        { trackerId: tracker.id, trackerUrlId: seller.id, failures, status: newStatus, err: errorMsg },
         'Seller price check failed',
       );
 
-      if (newStatus === 'error') {
+      if (justAutoPaused) {
         if (!hasAnyChannel(channels)) {
           logger.warn(
             { trackerId: tracker.id, trackerUrlId: seller.id, trackerName: tracker.name, userId: tracker.user_id },
-            'Seller errored but no notification channels are configured — error alert skipped',
+            'Seller auto-paused after repeated failures but no notification channels are configured — alert skipped',
           );
         } else {
+          // Reuse the error-alert path, but make the copy say it auto-paused so
+          // the single notice is actionable ("unpause to resume").
+          const noticeMsg = `${errorMsg} — auto-paused after ${failures} failed checks; unpause to resume.`;
           const alertTracker = buildAlertTracker(tracker, { ...seller, last_error: errorMsg, consecutive_failures: failures }, null);
-          await fireErrorAlerts(alertTracker, errorMsg, channels);
+          await fireErrorAlerts(alertTracker, noticeMsg, channels);
         }
       }
     }
