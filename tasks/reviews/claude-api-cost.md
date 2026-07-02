@@ -37,25 +37,35 @@ ssh root@192.168.1.166 'sqlite3 /opt/price-tracker/data/price-tracker.db "
   LIMIT 10;
 "'
 
-# Verdict generation activity in the last 30 days (rough call count proxy)
-ssh root@192.168.1.166 'journalctl -u price-tracker --since "30 days ago" -o cat | grep -c "Generated verdict for tracker"'
-
-# Summary backfill activity in the last 30 days
-ssh root@192.168.1.166 'journalctl -u price-tracker --since "30 days ago" -o cat | grep -c "Generated summary for tracker"'
-
-# Alert-copy generation activity
-ssh root@192.168.1.166 'journalctl -u price-tracker --since "30 days ago" -o cat | grep -c "Generated alert copy"'
+# Generation volume in the last 30 days (verdict + summary attempts, from the
+# structured sweep events — the old "Generated X for tracker" prose lines no
+# longer exist in the logs; grepping for them silently returns 0)
+ssh root@192.168.1.166 'journalctl -u price-tracker --since "30 days ago" -o cat' | python3 -c "
+import sys, json
+sums = verds = sweeps = 0
+for line in sys.stdin:
+    try: d = json.loads(line)
+    except Exception: continue
+    m = d.get('msg', '')
+    if m == 'ai_backfill_sweep_done': sums += d.get('attempted', 0); sweeps += 1
+    elif m == 'ai_verdict_backfill_sweep_done': verds += d.get('attempted', 0)
+print(f'summaries={sums} verdicts={verds} nightly_sweeps={sweeps} (sweeps should be ~30)')
+"
 
 # Anthropic API errors in the last 30 days
 ssh root@192.168.1.166 'journalctl -u price-tracker --since "30 days ago" -o cat | grep -E "anthropic|Anthropic" | grep -iE "error|failed|429|529" | wc -l'
 
 # Stale summary backlog — count of trackers with summary older than
 # aiSummaryStalenessDays (default 7) or never generated
+# Excludes paused/blocked trackers: loadSignalsForTracker() returns null for
+# them, so the nightly sweep skips them by design and they'd sit in this count
+# forever (permanent floor, not backlog).
 ssh root@192.168.1.166 'sqlite3 /opt/price-tracker/data/price-tracker.db "
   SELECT COUNT(*) AS stale_or_missing
   FROM trackers
-  WHERE ai_summary_updated_at IS NULL
-     OR ai_summary_updated_at < strftime(\"%s\", \"now\", \"-7 days\") * 1000;
+  WHERE status NOT IN (\"paused\", \"blocked\")
+    AND (ai_summary_updated_at IS NULL
+     OR ai_summary_updated_at < strftime(\"%s\", \"now\", \"-7 days\") * 1000);
 "'
 
 # Actual cost: check the Anthropic console at https://console.anthropic.com/
@@ -68,7 +78,7 @@ ssh root@192.168.1.166 'sqlite3 /opt/price-tracker/data/price-tracker.db "
 - [ ] Total `ai_failure_count` sum noted (flat is healthy, climbing is a smell)
 - [ ] No per-tracker failure outliers > 10 (if any, investigate that tracker
       specifically — its AI input may be malformed)
-- [ ] Verdict + summary + alert-copy generation counts noted (rough call volume)
+- [ ] Verdict + summary generation counts noted (rough call volume; ~30 nightly sweeps expected)
 - [ ] Anthropic API error count noted (handful of 529 overloads is normal;
       sustained errors warrant looking at retry logic)
 - [ ] Stale-summary backlog count noted (should trend toward 0 since the nightly
