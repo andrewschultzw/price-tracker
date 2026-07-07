@@ -99,7 +99,9 @@ bash scripts/deploy.sh
 **What rebuild.sh does on CT 302:**
 1. Backs up the DB to `/opt/price-tracker-backups/` (keeps last 10)
 2. `npm ci` + `npm run build` for server
-3. `npm ci` + `npm run build` for client
+3. `npm ci` + tests for client — the client is **not** rebuilt here; the deploy
+   scripts run `vite build` on the building machine so `VITE_*` vars from that
+   machine's `client/.env` bake into the bundle
 4. `systemctl restart price-tracker`
 
 ## Database
