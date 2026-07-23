@@ -23,6 +23,8 @@ export interface Tracker {
   // include them.
   seller_count?: number;
   errored_seller_count?: number;
+  // Sellers affirmatively out of stock (server migration v21, phase 4).
+  oos_seller_count?: number;
   best_seller_url?: string | null;
   // AI Buyer's Assistant fields (server migration v8). All optional in the
   // type because legacy responses + endpoints that don't populate them may
@@ -93,6 +95,8 @@ export interface TrackerUrl {
   condition: TrackerUrlCondition;
   created_at: string;
   updated_at: string;
+  availability?: 'unknown' | 'in_stock' | 'out_of_stock';
+  availability_changed_at?: string | null;
 }
 
 export interface PriceRecord {
@@ -109,12 +113,16 @@ export interface PriceRecord {
 }
 
 export interface ScrapeResult {
-  price: number;
-  currency: string;
-  strategy: string;
+  // Absent when the page is affirmatively out of stock (outOfStock: true).
+  price?: number;
+  currency?: string;
+  strategy?: string;
   // Product name from structured data (share-flow autofill). Optional for
   // back-compat with cached responses; null on the css-selector fast path.
   title?: string | null;
+  // Back-in-stock (phase 4): the page loaded and reported itself out of
+  // stock — a healthy result with no purchasable price.
+  outOfStock?: boolean;
 }
 
 export interface User {

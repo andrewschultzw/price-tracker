@@ -15,6 +15,7 @@ function emptyData(): DigestData {
   return {
     drops: [],
     recordLows: [],
+    restocks: [],
     attention: [],
     staleThresholds: [],
     unclaimedWins: [],
@@ -26,6 +27,7 @@ function fullData(): DigestData {
   return {
     drops: [{ tracker_id: 1, name: 'Widget', from: 100, to: 80, pct: 20 }],
     recordLows: [{ tracker_id: 2, name: 'Gadget', tier: 'low_all_time', price: 49.4 }],
+    restocks: [{ tracker_id: 6, name: 'Whatsit', price: 199 }],
     attention: [{ tracker_id: 3, name: 'Doohickey', status: 'blocked', detail: 'WAF block', daysSince: 4 }],
     staleThresholds: [{ tracker_id: 4, name: 'Gizmo', threshold: 10, kind: 'stale_low' }],
     unclaimedWins: [{ tracker_id: 5, name: 'Thingamajig', threshold: 50, bestPrice: 44, daysAgo: 12 }],
@@ -85,6 +87,7 @@ describe('renderDigestText', () => {
     const { body } = renderDigestText(fullData(), 'https://x.test');
     expect(body).toContain('Widget: $100.00 → $80.00 (−20.0%)');
     expect(body).toContain('Gadget: $49.40 — ALL-TIME low');
+    expect(body).toContain('Whatsit: $199.00');
     expect(body).toContain('Doohickey: blocked, 4d since last check — WAF block');
     expect(body).toContain('Gizmo: target $10.00 is below anything ever seen');
     expect(body).toContain('Thingamajig: saw $44.00 (target $50.00) 12d ago');

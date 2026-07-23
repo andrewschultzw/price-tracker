@@ -6,6 +6,7 @@ import { extractFromCssPatterns, isAmazonCurrentlyUnavailable } from './strategi
 import { extractFromRegex } from './strategies/regex.js';
 import { extractWithCssSelector } from './strategies/css-selector.js';
 import { extractProductTitle } from './strategies/product-title.js';
+import { extractAvailability } from './strategies/availability.js';
 import { withRetry, ScrapeError } from './retry.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
@@ -22,6 +23,26 @@ export interface ExtractionResult {
    * Consumed by the share-flow name autofill via POST /test-scrape.
    */
   title: string | null;
+}
+
+/**
+ * A successful scrape of a page that is affirmatively OUT OF STOCK (phase 4):
+ * Amazon's "Currently unavailable" block, or JSON-LD offers all reporting
+ * OutOfStock/SoldOut/Discontinued. Distinct from a scrape FAILURE — the page
+ * loaded and told us the product state; there is just no purchasable price.
+ * Any parsed price on such a page (cached list price) is deliberately
+ * discarded rather than recorded.
+ */
+export interface OutOfStockResult {
+  outOfStock: true;
+  finalUrl: string;
+  title: string | null;
+}
+
+export type ScrapeOutcome = ExtractionResult | OutOfStockResult;
+
+export function isOutOfStock(r: ScrapeOutcome): r is OutOfStockResult {
+  return 'outOfStock' in r && r.outOfStock === true;
 }
 
 /**
@@ -95,7 +116,7 @@ export function parsePrice(text: string): number | null {
 /**
  * Extract price from a URL using the pipeline of strategies.
  */
-export async function extractPrice(url: string, cssSelector?: string | null): Promise<ExtractionResult> {
+export async function extractPrice(url: string, cssSelector?: string | null): Promise<ScrapeOutcome> {
   // If user provided a CSS selector, try that first with a separate page load
   if (cssSelector) {
     logger.debug({ url, strategy: 'css-selector' }, 'Trying user CSS selector');
@@ -126,16 +147,17 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
   );
   const { html, finalUrl } = fetched;
 
-  // Short-circuit on Amazon "Currently unavailable" pages. Without this,
-  // the strategy pipeline falls through to page-wide regex/css fallbacks
-  // that grab a sponsored-carousel price and report it as the product
-  // price (the JetKVM regression: reported $35.99 for an unavailable
-  // product because the first `.a-offscreen` on the page was an
-  // accessory). Non-retryable because the page state is deterministic
-  // — retrying won't un-unavailable the product.
-  if (isAmazonCurrentlyUnavailable(html)) {
-    logger.info({ url }, 'Amazon lists product as Currently unavailable');
-    throw new ScrapeError('Product is currently unavailable on Amazon', false);
+  // Affirmative out-of-stock (phase 4) — a HEALTHY outcome, not an error.
+  // Amazon "Currently unavailable" short-circuits before the price pipeline
+  // for the same reason it always did (the JetKVM regression: fallbacks grab
+  // a sponsored-carousel price on these pages); JSON-LD offers unanimously
+  // reporting OutOfStock/SoldOut/Discontinued mean the same thing on
+  // structured-data retailers. Previously the Amazon case THREW, which sent
+  // OOS products down the consecutive-failures path to auto-pause — killing
+  // exactly the tracker you want alive for the restock.
+  if (isAmazonCurrentlyUnavailable(html) || extractAvailability(html) === 'out_of_stock') {
+    logger.info({ url }, 'Product is out of stock (affirmative page signal)');
+    return { outOfStock: true, finalUrl, title: extractProductTitle(html) };
   }
 
   const onAmazonHost =

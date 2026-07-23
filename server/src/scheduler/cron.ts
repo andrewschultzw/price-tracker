@@ -195,9 +195,9 @@ export async function maybeArmPurchase(
  * config.notificationCooldownHours when unset. `bypassCooldown=true`
  * skips the gate entirely (manual "Check Now" path).
  */
-/** Record-low context threaded from checkTrackerUrl into the channel senders. */
+/** Record-low or restock context threaded from checkTrackerUrl into the channel senders. */
 export interface LowAlert {
-  tier: LowTier;
+  tier: LowTier | 'back_in_stock';
   /** Human line, e.g. "Lowest price ever seen (prev. $429.00 · 289 days tracked)". */
   context: string;
 }
@@ -384,7 +384,42 @@ export async function checkTrackerUrl(
     );
 
     try {
-      const result = await extractPrice(seller.url, tracker.css_selector);
+      const outcome = await extractPrice(seller.url, tracker.css_selector);
+
+      // Affirmative out-of-stock (phase 4): a HEALTHY state, not a failure.
+      // No price row (a cached list price on a dead page is not a price),
+      // failures reset, status stays active — so the scheduler keeps
+      // polling and the out_of_stock -> in_stock transition below can fire
+      // the restock alert. Pending plausibility state is cleared: the price
+      // that needed confirming no longer exists.
+      // ('outOfStock' in outcome) rather than the isOutOfStock() helper:
+      // many scheduler tests mock the extractor module with a factory that
+      // only provides extractPrice, and an imported helper would arrive
+      // undefined there. The bare `in` check narrows the union both ways
+      // (a compound `&& outcome.outOfStock` would break the negative
+      // narrowing after the early return).
+      if ('outOfStock' in outcome) {
+        const wentOos = seller.availability !== 'out_of_stock';
+        updateTrackerUrl(seller.id, {
+          last_checked_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+          last_error: null,
+          consecutive_failures: 0,
+          status: 'active',
+          pending_confirmation_price: null,
+          pending_confirmation_at: null,
+          availability: 'out_of_stock',
+          ...(wentOos
+            ? { availability_changed_at: new Date().toISOString().replace('T', ' ').slice(0, 19) }
+            : {}),
+        });
+        refreshTrackerAggregates(tracker.id);
+        logger.info(
+          { trackerId: tracker.id, trackerUrlId: seller.id, transition: wentOos },
+          'Seller is out of stock (no alert; badge only)',
+        );
+        return;
+      }
+      const result = outcome;
 
       // Snapshot daily-min history BEFORE recording this scrape: record-low
       // evaluation must compare the candidate against PRIOR observations
@@ -394,12 +429,20 @@ export async function checkTrackerUrl(
 
       addPriceRecord(tracker.id, result.price, result.currency, seller.id);
 
+      // A successfully priced page is an in-stock signal (phase 4). The
+      // prior state decides whether this scrape is a restock transition;
+      // 'unknown' adopts silently (never alerts).
+      const priorAvailability = seller.availability;
       updateTrackerUrl(seller.id, {
         last_price: result.price,
         last_checked_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
         last_error: null,
         consecutive_failures: 0,
         status: 'active',
+        availability: 'in_stock',
+        ...(priorAvailability !== 'in_stock'
+          ? { availability_changed_at: new Date().toISOString().replace('T', ' ').slice(0, 19) }
+          : {}),
       });
 
       // If this was the primary seller (position=0), re-normalize using
@@ -472,7 +515,36 @@ export async function checkTrackerUrl(
         }
       }
 
-      if (thresholdHit || low) {
+      // Restock transition (phase 4): out_of_stock -> priced. One alert per
+      // transition, and it REPLACES any threshold/record-low alert this tick
+      // — "back in stock at $X" is the news; the price rides along. The
+      // per-(tracker,seller,channel) cooldown applies as usual.
+      const restocked = priorAvailability === 'out_of_stock' && result.price > 0;
+
+      if (restocked) {
+        if (!hasAnyChannel(channels)) {
+          logger.warn(
+            { trackerId: tracker.id, trackerUrlId: seller.id, price: result.price },
+            'Seller back in stock but no notification channels are configured — alert skipped',
+          );
+        } else {
+          // Threshold framing is suppressed on restock alerts (a restock
+          // above target would otherwise render negative "savings").
+          const restockTracker = { ...buildAlertTracker(tracker, seller, result.price), threshold_price: null };
+          const targetNote =
+            tracker.threshold_price && result.price <= tracker.threshold_price
+              ? ' — at/below your target'
+              : '';
+          const restockInfo: LowAlert = {
+            tier: 'back_in_stock',
+            context: `Back in stock at $${result.price.toFixed(2)}${targetNote}`,
+          };
+          const sentChannels = await firePriceAlerts(restockTracker, result.price, channels, seller, bypassCooldown, restockInfo);
+          for (const channel of sentChannels) {
+            addNotification(tracker.id, result.price, tracker.threshold_price ?? 0, channel, seller.id, 'back_in_stock');
+          }
+        }
+      } else if (thresholdHit || low) {
         if (!hasAnyChannel(channels)) {
           logger.warn(
             {

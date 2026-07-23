@@ -532,6 +532,14 @@ export default function TrackerDetail() {
                         {isLowest && sellers.length > 1 && (
                           <span className="text-[10px] text-success bg-success/10 rounded px-1.5 py-0.5 flex-shrink-0">lowest</span>
                         )}
+                        {s.availability === 'out_of_stock' && (
+                          <span
+                            className="text-[10px] text-warning bg-warning/10 rounded px-1.5 py-0.5 flex-shrink-0"
+                            title="This seller reports the product out of stock — you'll get an alert when it returns"
+                          >
+                            out of stock
+                          </span>
+                        )}
                         {s.condition !== 'new' && (
                           <span
                             className={`text-[10px] rounded px-1.5 py-0.5 flex-shrink-0 ${conditionBadgeClass(s.condition)}`}
