@@ -698,6 +698,21 @@ const migrations: Migration[] = [
           CHECK(low_alert_mode IN ('all','record_only','off'))`);
       }
     },
+  },  {
+    version: 21,
+    description: "Back-in-stock (phase 4): tracker_urls availability columns",
+    up: () => {
+      const db = getDb();
+      const run = (sql: string): void => { db.prepare(sql).run(); };
+      const cols = (db.pragma('table_info(tracker_urls)') as { name: string }[]).map(c => c.name);
+      if (!cols.includes('availability')) {
+        run(`ALTER TABLE tracker_urls ADD COLUMN availability TEXT NOT NULL DEFAULT 'unknown'
+          CHECK(availability IN ('unknown','in_stock','out_of_stock'))`);
+      }
+      if (!cols.includes('availability_changed_at')) {
+        run(`ALTER TABLE tracker_urls ADD COLUMN availability_changed_at TEXT`);
+      }
+    },
   },
 ];
 

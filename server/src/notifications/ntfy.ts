@@ -117,7 +117,7 @@ export async function sendNtfyPriceAlert(
     ? `Now ${formatPriceWithCondition(currentPrice, condition)} (target $${tracker.threshold_price.toFixed(2)}, save $${(tracker.threshold_price - currentPrice).toFixed(2)})`
     : `Now ${formatPriceWithCondition(currentPrice, condition)}`;
   const messageParts: string[] = [baseMessage];
-  if (low) messageParts.push(`📉 ${low.context}`);
+  if (low) messageParts.push(`${low.tier === 'back_in_stock' ? '📦' : '📉'} ${low.context}`);
   if (aiCommentary) messageParts.push(aiCommentary);
   if (confidence && confidence.reasons.length > 0) {
     messageParts.push(confidence.reasons.join(' · '));
@@ -128,7 +128,7 @@ export async function sendNtfyPriceAlert(
   const result = await publish(target.base, {
     topic: target.topic,
     title: low && !tracker.threshold_price
-      ? `${titlePrefix}Record Low: ${tracker.name}`
+      ? `${titlePrefix}${low.tier === 'back_in_stock' ? 'Back in Stock' : 'Record Low'}: ${tracker.name}`
       : `${titlePrefix}Price Drop: ${tracker.name}`,
     message,
     priority: 4,

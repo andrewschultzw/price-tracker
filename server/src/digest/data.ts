@@ -13,6 +13,7 @@ import type {
   DigestData,
   DigestDrop,
   DigestRecordLow,
+  DigestRestock,
   DigestStaleThreshold,
   DigestUnclaimedWin,
 } from './build.js';
@@ -74,6 +75,20 @@ function weeklyRecordLows(userId: number): DigestRecordLow[] {
     tier: SEV_TIER[r.sev] ?? r.tier,
     price: r.price,
   }));
+}
+
+/** Back-in-stock alerts fired in the last 7 days (phase 4). */
+function weeklyRestocks(userId: number): DigestRestock[] {
+  return getDb().prepare(`
+    SELECT n.tracker_id, t.name, MIN(n.price) AS price
+    FROM notifications n
+    INNER JOIN trackers t ON t.id = n.tracker_id
+    WHERE t.user_id = ?
+      AND n.alert_type = 'back_in_stock'
+      AND n.sent_at >= datetime('now', '-7 days')
+    GROUP BY n.tracker_id
+    ORDER BY MAX(n.sent_at) DESC
+  `).all(userId) as DigestRestock[];
 }
 
 /** Errored/blocked trackers plus auto-paused ones (failure-count signature). */
@@ -152,6 +167,7 @@ export function gatherDigestData(userId: number, nowMs: number): DigestData {
   return {
     drops: weeklyDrops(trackers, nowMs),
     recordLows: weeklyRecordLows(userId),
+    restocks: weeklyRestocks(userId),
     attention: attentionList(trackers, nowMs),
     staleThresholds: staleThresholds(trackers, nowMs),
     unclaimedWins: unclaimedWins(userId, nowMs),

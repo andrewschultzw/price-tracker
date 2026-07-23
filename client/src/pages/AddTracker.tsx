@@ -118,12 +118,17 @@ export default function AddTracker() {
               Test
             </button>
           </div>
-          {testResult && (
+          {testResult && (testResult.outOfStock ? (
+            <div className="mt-2 text-sm text-warning bg-warning/10 rounded-lg px-3 py-2">
+              Product found but currently out of stock — you can still track it and
+              get a back-in-stock alert.
+            </div>
+          ) : (
             <div className="mt-2 flex items-center gap-2 text-sm text-success bg-success/10 rounded-lg px-3 py-2">
               <CheckCircle className="w-4 h-4" />
-              Found: ${testResult.price.toFixed(2)} (via {testResult.strategy})
+              Found: ${testResult.price!.toFixed(2)} (via {testResult.strategy})
             </div>
-          )}
+          ))}
           {testError && (
             <div className="mt-2 text-sm text-danger bg-danger/10 rounded-lg px-3 py-2">{testError}</div>
           )}

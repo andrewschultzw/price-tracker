@@ -191,6 +191,15 @@ export default function TrackerCard({ tracker, sparklineData, minPrice = null, o
                 at low
               </span>
             )}
+            {(tracker.oos_seller_count ?? 0) > 0 &&
+              tracker.oos_seller_count === tracker.seller_count && (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/10 rounded-full px-2 py-0.5"
+                title="Every seller reports this product out of stock — a back-in-stock alert will fire when it returns"
+              >
+                out of stock
+              </span>
+            )}
             {belowThreshold && !notificationsConfigured && (
               <span
                 className="inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/10 rounded-full px-2 py-0.5"

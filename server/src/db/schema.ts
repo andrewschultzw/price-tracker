@@ -66,6 +66,12 @@ export function initializeSchema(): void {
       pending_confirmation_at TEXT,
       -- Listing condition (migration v14). 'new' is the default; other
       -- values let alerts disambiguate "Amazon Warehouse $239" vs "$279 new".
+      -- Availability state (migration v21, back-in-stock phase 4). Positive
+      -- signals only — scrape failures never touch this; 'unknown' until a
+      -- page provides evidence. Transition out_of_stock -> in_stock fires the
+      -- back_in_stock alert.
+      availability TEXT NOT NULL DEFAULT 'unknown' CHECK(availability IN ('unknown','in_stock','out_of_stock')),
+      availability_changed_at TEXT,
       condition TEXT NOT NULL DEFAULT 'new'
         CHECK(condition IN ('new', 'warehouse', 'refurb', 'open_box')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),

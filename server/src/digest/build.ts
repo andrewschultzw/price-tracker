@@ -56,9 +56,16 @@ export interface DigestUnclaimedWin {
   daysAgo: number;
 }
 
+export interface DigestRestock {
+  tracker_id: number;
+  name: string;
+  price: number;
+}
+
 export interface DigestData {
   drops: DigestDrop[];
   recordLows: DigestRecordLow[];
+  restocks: DigestRestock[];
   attention: DigestAttention[];
   staleThresholds: DigestStaleThreshold[];
   unclaimedWins: DigestUnclaimedWin[];
@@ -69,6 +76,7 @@ export function isDigestEmpty(d: DigestData): boolean {
   return (
     d.drops.length === 0 &&
     d.recordLows.length === 0 &&
+    d.restocks.length === 0 &&
     d.attention.length === 0 &&
     d.staleThresholds.length === 0 &&
     d.unclaimedWins.length === 0
@@ -141,6 +149,12 @@ export function renderDigestText(d: DigestData, publicUrl: string): { title: str
       lines.push(`  • ${x.name}: ${money(x.price)} — ${TIER_SHORT[x.tier] ?? x.tier}`);
     }
   }
+  if (d.restocks.length > 0) {
+    lines.push('', '📦 Back in stock');
+    for (const x of d.restocks) {
+      lines.push(`  • ${x.name}: ${money(x.price)}`);
+    }
+  }
   if (d.attention.length > 0) {
     lines.push('', '⚠️ Needs attention');
     for (const x of d.attention) {
@@ -195,6 +209,8 @@ export function renderDigestHtml(d: DigestData, publicUrl: string): string {
       `${link(x.tracker_id, x.name)}: ${money(x.from)} → <strong>${money(x.to)}</strong> (−${x.pct.toFixed(1)}%)`)),
     section('🏆 Record lows hit', d.recordLows.map(x =>
       `${link(x.tracker_id, x.name)}: <strong>${money(x.price)}</strong> — ${TIER_SHORT[x.tier] ?? esc(x.tier)}`)),
+    section('📦 Back in stock', d.restocks.map(x =>
+      `${link(x.tracker_id, x.name)}: <strong>${money(x.price)}</strong>`)),
     section('⚠️ Needs attention', d.attention.map(x =>
       `${link(x.tracker_id, x.name)}: ${esc(x.status)}${x.daysSince !== null ? `, ${x.daysSince}d since last check` : ''} — ${esc(x.detail)}`)),
     section('🎯 Targets worth revisiting', d.staleThresholds.map(x =>

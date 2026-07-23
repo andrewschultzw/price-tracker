@@ -123,6 +123,10 @@ export interface TrackerUrl {
   // See Tracker.status for the same enum on the parent table.
   status: 'active' | 'paused' | 'error' | 'blocked';
   condition: TrackerUrlCondition;
+  // Back-in-stock (migration v21). Positive-signal state machine; 'unknown'
+  // never fires transitions.
+  availability: 'unknown' | 'in_stock' | 'out_of_stock';
+  availability_changed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -133,6 +137,9 @@ export interface TrackerUrl {
 export interface TrackerWithSellerSummary extends Tracker {
   seller_count: number;
   errored_seller_count: number;
+  // Sellers affirmatively out of stock (phase 4). Card shows an OOS chip
+  // when EVERY seller is out of stock.
+  oos_seller_count: number;
   // The seller currently offering the lowest price (non-null last_price).
   // Drives the dashboard card's "@ seller" indicator.
   best_seller_url: string | null;
@@ -229,13 +236,15 @@ export function getAllTrackers(userId: number): TrackerWithSellerSummary[] {
       t.*,
       COALESCE(agg.seller_count, 0) as seller_count,
       COALESCE(agg.errored_seller_count, 0) as errored_seller_count,
+      COALESCE(agg.oos_seller_count, 0) as oos_seller_count,
       best.url as best_seller_url
     FROM trackers t
     LEFT JOIN (
       SELECT
         tracker_id,
         COUNT(*) as seller_count,
-        SUM(CASE WHEN status = 'error' OR (last_error IS NOT NULL AND consecutive_failures > 0) THEN 1 ELSE 0 END) as errored_seller_count
+        SUM(CASE WHEN status = 'error' OR (last_error IS NOT NULL AND consecutive_failures > 0) THEN 1 ELSE 0 END) as errored_seller_count,
+        SUM(CASE WHEN availability = 'out_of_stock' THEN 1 ELSE 0 END) as oos_seller_count
       FROM tracker_urls
       GROUP BY tracker_id
     ) agg ON agg.tracker_id = t.id
@@ -609,6 +618,8 @@ export function updateTrackerUrl(id: number, data: Partial<{
   status: string;
   pending_confirmation_price: number | null;
   pending_confirmation_at: string | null;
+  availability: string;
+  availability_changed_at: string | null;
 }>): TrackerUrl | undefined {
   const fields: string[] = [];
   const values: Record<string, unknown> = { id };

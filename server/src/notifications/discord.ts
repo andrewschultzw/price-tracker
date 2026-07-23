@@ -41,12 +41,16 @@ export async function sendDiscordPriceAlert(
     );
   }
   if (low) {
-    fields.push({ name: 'Record', value: low.context, inline: false });
+    fields.push({
+      name: low.tier === 'back_in_stock' ? 'Stock' : 'Record',
+      value: low.context,
+      inline: false,
+    });
   }
 
   const embed: Record<string, unknown> = {
     title: low && !tracker.threshold_price
-      ? `${titlePrefix}Record Low: ${tracker.name}`
+      ? `${titlePrefix}${low.tier === 'back_in_stock' ? 'Back in Stock' : 'Record Low'}: ${tracker.name}`
       : `${titlePrefix}Price Drop Alert: ${tracker.name}`,
     color: 0x00c853,
     fields,

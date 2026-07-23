@@ -78,7 +78,7 @@ function priceAlertText(
       `Savings: ${formatMoney(tracker.threshold_price - price)}`,
     );
   }
-  if (low) lines.push(`Record: ${low.context}`);
+  if (low) lines.push(`${low.tier === 'back_in_stock' ? 'Stock' : 'Record'}: ${low.context}`);
   lines.push(`Seller: ${hostOf(tracker.url)}`);
   const condLabel = conditionLabel(condition);
   if (condLabel) lines.push(`Condition: ${condLabel}`);
@@ -104,7 +104,7 @@ function priceAlertHtml(
     <tr><td style="color: #6b7280;">Savings</td><td style="font-weight: 600; color: #16a34a;">${formatMoney(tracker.threshold_price - price)}</td></tr>`
     : '';
   const recordRow = low
-    ? `<tr><td style="color: #6b7280;">Record</td><td style="font-weight: 600;">${escapeHtml(low.context)}</td></tr>`
+    ? `<tr><td style="color: #6b7280;">${low.tier === 'back_in_stock' ? 'Stock' : 'Record'}</td><td style="font-weight: 600;">${escapeHtml(low.context)}</td></tr>`
     : '';
   const conditionRow = condLabel
     ? `<tr><td style="color: #6b7280;">Condition</td><td style="font-weight: 600;">${escapeHtml(condLabel)}</td></tr>`
@@ -199,7 +199,7 @@ export async function sendEmailPriceAlert(
       from: config.smtpFrom,
       to: recipient,
       subject: low && !tracker.threshold_price
-        ? `${subjectPrefix}Record low: ${tracker.name} is ${priceTagged}`
+        ? `${subjectPrefix}${low.tier === 'back_in_stock' ? 'Back in stock' : 'Record low'}: ${tracker.name} is ${priceTagged}`
         : `${subjectPrefix}Price drop: ${tracker.name} is ${priceTagged}`,
       text,
       html,
