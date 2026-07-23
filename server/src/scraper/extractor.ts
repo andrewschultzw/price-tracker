@@ -5,6 +5,7 @@ import { extractFromOpenGraph } from './strategies/opengraph.js';
 import { extractFromCssPatterns, isAmazonCurrentlyUnavailable } from './strategies/css-patterns.js';
 import { extractFromRegex } from './strategies/regex.js';
 import { extractWithCssSelector } from './strategies/css-selector.js';
+import { extractProductTitle } from './strategies/product-title.js';
 import { withRetry, ScrapeError } from './retry.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
@@ -14,6 +15,13 @@ export interface ExtractionResult {
   currency: string;
   strategy: string;
   finalUrl: string;
+  /**
+   * Product name from the page's structured data (JSON-LD name → og:title →
+   * <title>), boilerplate-stripped. Null when nothing trustworthy was found
+   * and on the user-CSS-selector fast path (which never fetches raw HTML).
+   * Consumed by the share-flow name autofill via POST /test-scrape.
+   */
+  title: string | null;
 }
 
 /**
@@ -93,7 +101,7 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
     logger.debug({ url, strategy: 'css-selector' }, 'Trying user CSS selector');
     const price = await extractWithCssSelector(url, cssSelector);
     if (price !== null) {
-      return { price, currency: 'USD', strategy: 'css-selector', finalUrl: url };
+      return { price, currency: 'USD', strategy: 'css-selector', finalUrl: url, title: null };
     }
     logger.debug({ url }, 'User CSS selector failed, falling back to pipeline');
   }
@@ -156,7 +164,7 @@ export async function extractPrice(url: string, cssSelector?: string | null): Pr
         logger.warn({ url, strategy: name, price }, 'Price outside sanity range, skipping');
         continue;
       }
-      return { price, currency: 'USD', strategy: name, finalUrl };
+      return { price, currency: 'USD', strategy: name, finalUrl, title: extractProductTitle(html) };
     }
   }
 

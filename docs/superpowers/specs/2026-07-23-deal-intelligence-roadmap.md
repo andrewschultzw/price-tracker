@@ -248,16 +248,14 @@ Andy (and likely the whole household) is on iPhone, where share_target will
 never appear. The equivalent flow on iOS is a one-time Shortcut, since
 `/share` is just a URL:
 
-1. Shortcuts → new shortcut → ⓘ → **Show in Share Sheet**, receive **URLs and Text**
-2. Action **Get URLs from Input** — REQUIRED. Without it, Safari shares its
-   page as full page TEXT (nav, prices, footer — no link), and /share
-   correctly reports nothing to track. Field-debugged 2026-07-23 via the NPM
-   access log for proxy-host-11: Andy's first attempt arrived as ~4 KB of
-   store.ui.com page text with zero URLs in it. This action coerces a Safari
-   page share to its URL and extracts links from text shares.
-3. Action **URL Encode** (encodes the extracted URL)
-4. Action **Text**: `https://prices.schultzsolutions.tech/share?text=` + *URL Encoded Text*
-5. Action **Open URLs**; name it "Track Price"
+1. Shortcuts → new shortcut → ⓘ → **Show in Share Sheet**, receive **URLs
+   ONLY** (uncheck Text — VERIFIED on Andy's iPhone 2026-07-23: with Text
+   enabled, Safari shares the page's full TEXT instead of its URL, and
+   "Get URLs from Input" doesn't save you because inserting an action does
+   not rewire downstream variable references)
+2. Action **URL Encode** (encodes Shortcut Input)
+3. Action **Text**: `https://prices.schultzsolutions.tech/share?text=` + *URL Encoded Text*
+4. Action **Open URLs**; name it "Track Price"
 
 Share → Track Price then behaves identically to the Android path (dedup jump
 or prefilled add). The `text=` param is used on purpose — it survives apps

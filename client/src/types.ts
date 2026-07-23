@@ -112,6 +112,9 @@ export interface ScrapeResult {
   price: number;
   currency: string;
   strategy: string;
+  // Product name from structured data (share-flow autofill). Optional for
+  // back-compat with cached responses; null on the css-selector fast path.
+  title?: string | null;
 }
 
 export interface User {

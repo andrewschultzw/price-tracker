@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Loader2, CheckCircle } from 'lucide-react'
 import { createTracker, testScrape, getTrackerUrls, updateTrackerUrlCondition } from '../api'
@@ -13,6 +13,19 @@ export default function AddTracker() {
   const [searchParams] = useSearchParams()
   const [url, setUrl] = useState(() => searchParams.get('url') ?? '')
   const [name, setName] = useState(() => searchParams.get('name') ?? '')
+
+  // Share-flow arrivals (?url= present, no name yet) get an automatic test
+  // scrape so the live price AND the product name appear without a tap.
+  // Once per mount; a user-typed name suppresses it (they're mid-edit, not
+  // arriving from a share).
+  const autoTested = useRef(false)
+  useEffect(() => {
+    if (!autoTested.current && searchParams.get('url') && !name) {
+      autoTested.current = true
+      void handleTest()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [thresholdPrice, setThresholdPrice] = useState('')
   const [interval, setInterval] = useState('360')
   const [cssSelector, setCssSelector] = useState('')
@@ -31,6 +44,12 @@ export default function AddTracker() {
     try {
       const result = await testScrape(url, cssSelector || undefined)
       setTestResult(result)
+      // Share-flow autofill: the scrape now returns the product's own name
+      // (JSON-LD/og:title). Fill the name field only if the user hasn't
+      // typed one — their input always wins over the page's.
+      if (result.title) {
+        setName(prev => prev || result.title!)
+      }
     } catch (err) {
       setTestError(err instanceof Error ? err.message : 'Scrape failed')
     } finally {
