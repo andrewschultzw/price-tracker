@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { ArrowLeft, ExternalLink, RefreshCw, Trash2, Play, Pause, Pencil, Download, Plus, X, Store, Users, TrendingDown, Zap, ShoppingBag } from 'lucide-react'
 import {
   getTracker, getPriceHistory, checkTracker, updateTracker, deleteTracker,
@@ -71,6 +71,8 @@ function dateTimeLocalToIso(local: string): string | null {
 export default function TrackerDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  // Set by the share-target flow when a shared link matched this tracker.
+  const sharedDuplicate = !!(useLocation().state as { sharedDuplicate?: boolean } | null)?.sharedDuplicate
   const [tracker, setTracker] = useState<Tracker | null>(null)
   const [sellers, setSellers] = useState<TrackerUrl[]>([])
   const [newSellerUrl, setNewSellerUrl] = useState('')
@@ -323,6 +325,12 @@ export default function TrackerDetail() {
         <ArrowLeft className="w-4 h-4" />
         Back to Dashboard
       </Link>
+
+      {sharedDuplicate && (
+        <div className="bg-primary/10 border border-primary/30 text-primary rounded-lg px-4 py-2 mb-4 text-sm">
+          You&apos;re already tracking this product — the shared link matched this tracker.
+        </div>
+      )}
 
       <div className="bg-surface border border-border rounded-xl p-4 sm:p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
