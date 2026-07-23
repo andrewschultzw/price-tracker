@@ -59,6 +59,15 @@ if (userCount === 0) {
 
 const app = express();
 
+// Exactly one reverse-proxy hop (NPM on CT 100) sits in front of this app in
+// production and sets X-Forwarded-For. trust proxy = 1 makes req.ip the real
+// client address — the auth rate limiter keys on it, so without this every
+// external visitor shared one bucket (and express-rate-limit v7 threw
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on every limited request). Deliberately
+// 1, not true: trusting arbitrary XFF chains would let a client spoof its own
+// IP and sidestep the limiter.
+app.set('trust proxy', 1);
+
 // CORS - lock down in production
 app.use(cors({
   origin: config.isProduction ? 'https://prices.schultzsolutions.tech' : true,
@@ -162,17 +171,14 @@ app.get('/api/health', (req, res) => {
     return res.json(baseFields);
   }
 
-  // Admin observability fields
+  // Admin observability fields. Only metrics with real accumulators are
+  // reported — four hard-coded-0 placeholders (summary failures, alert-copy
+  // timeouts, latency, cache hit rate) were removed 2026-07-24: a metric
+  // that always reads 0 is worse than its absence. Re-add per metric when a
+  // real counter exists to back it.
   const aiFields = {
     ai_enabled: process.env.AI_ENABLED === 'true',
     ai_verdict_failures_total: countAIFailures(),
-    // TODO(debt): The four metrics below need accumulators we don't track yet.
-    // Landing as 0 placeholders; wire real values in a follow-up once
-    // volume justifies an in-memory counter or an ai_metrics table.
-    ai_summary_failures_24h: 0,
-    ai_alert_copy_timeouts_24h: 0,
-    ai_avg_latency_ms_24h: 0,
-    ai_cache_hit_rate_24h: 0,
   };
   res.json({ ...baseFields, ...aiFields });
 });
