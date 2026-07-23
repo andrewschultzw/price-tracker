@@ -10,7 +10,8 @@ import {
   searchTrackersByName,
 } from '../db/queries.js';
 import { checkTracker, checkTrackerUrl } from '../scheduler/cron.js';
-import { getDailyMinHistoryForTracker, getRecentLowTiers } from '../db/queries.js';
+import { getDailyMinHistoryForTracker, getRecentLowTiers, getTrackerIdByNormalizedUrl } from '../db/queries.js';
+import { normalizeTrackerUrl } from '../lib/normalize-url.js';
 import {
   computePriceStats,
   percentileRank90d,
@@ -120,6 +121,25 @@ router.get('/search', (req: Request, res: Response) => {
   const limit = req.query.limit ? Math.min(Number(req.query.limit) || 5, 20) : 5;
   const results = searchTrackersByName(req.user!.userId, q, limit);
   res.json({ query: q, results });
+});
+
+/**
+ * Share-target dedup (phase 2): does the current user already track this
+ * URL? Uses the server's canonical normalizeTrackerUrl — the single source
+ * of truth — so the client never needs its own normalization mirror.
+ */
+router.get('/match', (req: Request, res: Response) => {
+  const url = String(req.query.url ?? '').trim();
+  if (!url) {
+    res.status(400).json({ error: 'Query parameter url is required' });
+    return;
+  }
+  const normalized = normalizeTrackerUrl(url);
+  res.json({
+    tracker_id: normalized
+      ? getTrackerIdByNormalizedUrl(normalized, req.user!.userId)
+      : null,
+  });
 });
 
 router.post('/', (req: Request, res: Response) => {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Loader2, CheckCircle } from 'lucide-react'
 import { createTracker, testScrape, getTrackerUrls, updateTrackerUrlCondition } from '../api'
 import type { ScrapeResult, TrackerUrlCondition } from '../types'
@@ -8,8 +8,11 @@ import useTitle from '../useTitle'
 export default function AddTracker() {
   useTitle('Add Tracker')
   const navigate = useNavigate()
-  const [url, setUrl] = useState('')
-  const [name, setName] = useState('')
+  // Prefill from the share-target flow (phase 2): /add?url=...&name=...
+  // Lazy initializers only — the params seed the form, they don't own it.
+  const [searchParams] = useSearchParams()
+  const [url, setUrl] = useState(() => searchParams.get('url') ?? '')
+  const [name, setName] = useState(() => searchParams.get('name') ?? '')
   const [thresholdPrice, setThresholdPrice] = useState('')
   const [interval, setInterval] = useState('360')
   const [cssSelector, setCssSelector] = useState('')

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, LogIn } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,6 +10,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -17,7 +18,11 @@ export default function Login() {
     setSubmitting(true);
     try {
       await login(email, password);
-      navigate('/');
+      // Return to where ProtectedRoute intercepted (path + query preserved —
+      // the share-target flow depends on the query surviving this round-trip).
+      // Only ever an in-app string we set ourselves; never an absolute URL.
+      const from = (location.state as { from?: string } | null)?.from;
+      navigate(from && from.startsWith('/') ? from : '/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

@@ -101,6 +101,9 @@ export const testScrape = (url: string, css_selector?: string) =>
   request<ScrapeResult>('/trackers/test-scrape', {
     method: 'POST', body: JSON.stringify({ url, css_selector }),
   });
+// Share-target dedup (phase 2): server-side normalized-URL match.
+export const matchTrackerByUrl = (url: string) =>
+  request<{ tracker_id: number | null }>(`/trackers/match?url=${encodeURIComponent(url)}`);
 export const getOverlap = (trackerId: number) =>
   request<Overlap>(`/trackers/${trackerId}/overlap`);
 export const getOverlapCounts = () =>

@@ -11,6 +11,7 @@ import AdminRoute from './components/AdminRoute'
 // (recharts for TrackerDetail, canvas-confetti for the celebration
 // inside Dashboard's StatCards, etc.) don't inflate the initial bundle.
 import Dashboard from './pages/Dashboard'
+import Share from './pages/Share'
 
 // Login/Register/Setup are the pre-auth pages. They're small and
 // users hit them before anything else, so eager loading avoids a
@@ -181,6 +182,7 @@ function App() {
           <Routes>
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/add" element={<ProtectedRoute><AddTracker /></ProtectedRoute>} />
+            <Route path="/share" element={<ProtectedRoute><Share /></ProtectedRoute>} />
             <Route path="/tracker/:id" element={<ProtectedRoute><TrackerDetail /></ProtectedRoute>} />
             <Route path="/category/:domain" element={<ProtectedRoute><Category /></ProtectedRoute>} />
             <Route path="/below-target" element={<ProtectedRoute><BelowTarget /></ProtectedRoute>} />

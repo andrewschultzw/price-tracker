@@ -1565,6 +1565,18 @@ export function getDailyMinHistoryForNormalizedUrl(
 }
 
 /**
+ * The user's own tracker matching a normalized URL, if any. Used by the
+ * share-target dedup check (phase 2): sharing an already-tracked product
+ * jumps to its detail page instead of the add form.
+ */
+export function getTrackerIdByNormalizedUrl(normalizedUrl: string, userId: number): number | null {
+  const row = getDb().prepare(
+    'SELECT id FROM trackers WHERE normalized_url = ? AND user_id = ? LIMIT 1',
+  ).get(normalizedUrl, userId) as { id: number } | undefined;
+  return row?.id ?? null;
+}
+
+/**
  * Latest record-low tier per tracker within the last 48h, for the dashboard
  * "All-time low / 90-day low" chips (deal-intelligence phase 1). One query
  * for the whole list view; a chip disappears on its own as the notification
