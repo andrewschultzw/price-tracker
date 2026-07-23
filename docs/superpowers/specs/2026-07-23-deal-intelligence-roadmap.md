@@ -241,3 +241,18 @@ Unit: signal mapping (each schema.org value), transition matrix
 longer increments failures. Fixture-page scrape test. Browser smoke.
 
 **Estimate:** one session.
+
+### Phase 2 addendum (2026-07-24): the iOS path
+
+Andy (and likely the whole household) is on iPhone, where share_target will
+never appear. The equivalent flow on iOS is a one-time Shortcut, since
+`/share` is just a URL:
+
+1. Shortcuts → new shortcut → ⓘ → **Show in Share Sheet**, receive **URLs and Text**
+2. Action **URL Encode** (encodes Shortcut Input)
+3. Action **Text**: `https://prices.schultzsolutions.tech/share?text=` + *URL Encoded Text*
+4. Action **Open URLs**; name it "Track Price"
+
+Share → Track Price then behaves identically to the Android path (dedup jump
+or prefilled add). The `text=` param is used on purpose — it survives apps
+that wrap the link in prose, which `extractSharedUrl` handles.
