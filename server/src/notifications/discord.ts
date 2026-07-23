@@ -24,21 +24,32 @@ export async function sendDiscordPriceAlert(
   aiCommentary?: string | null,
   confidence?: Confidence | null,
   condition?: TrackerUrlCondition | null,
+  low?: { tier: string; context: string } | null,
 ): Promise<boolean> {
-  if (!tracker.threshold_price) return false;
-
-  const savings = (tracker.threshold_price - currentPrice).toFixed(2);
+  // Record-low alerts (phase 1) fire without a threshold; all others need one.
+  if (!tracker.threshold_price && !low) return false;
 
   const titlePrefix = confidence ? discordTitlePrefix(confidence.level) : '';
 
-  const embed: Record<string, unknown> = {
-    title: `${titlePrefix}Price Drop Alert: ${tracker.name}`,
-    color: 0x00c853,
-    fields: [
-      { name: 'Current Price', value: formatPriceWithCondition(currentPrice, condition), inline: true },
+  const fields: Record<string, unknown>[] = [
+    { name: 'Current Price', value: formatPriceWithCondition(currentPrice, condition), inline: true },
+  ];
+  if (tracker.threshold_price) {
+    fields.push(
       { name: 'Threshold', value: `$${tracker.threshold_price.toFixed(2)}`, inline: true },
-      { name: 'Savings', value: `$${savings}`, inline: true },
-    ],
+      { name: 'Savings', value: `$${(tracker.threshold_price - currentPrice).toFixed(2)}`, inline: true },
+    );
+  }
+  if (low) {
+    fields.push({ name: 'Record', value: low.context, inline: false });
+  }
+
+  const embed: Record<string, unknown> = {
+    title: low && !tracker.threshold_price
+      ? `${titlePrefix}Record Low: ${tracker.name}`
+      : `${titlePrefix}Price Drop Alert: ${tracker.name}`,
+    color: 0x00c853,
+    fields,
     url: tracker.url,
     timestamp: new Date().toISOString(),
     footer: { text: 'Price Tracker' },

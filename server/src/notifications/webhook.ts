@@ -34,12 +34,17 @@ export async function sendGenericPriceAlert(
   aiCommentary?: string | null,
   confidence?: Confidence | null,
   condition?: TrackerUrlCondition | null,
+  low?: { tier: string; context: string } | null,
 ): Promise<boolean> {
-  if (!tracker.threshold_price) return false;
+  // Record-low alerts (phase 1) fire without a threshold; all others need one.
+  if (!tracker.threshold_price && !low) return false;
 
   try {
     assertWebhookUrl(webhookUrl);
     const payload = {
+      // 'price_drop' kept for record lows too — downstream consumers branch
+      // on the additive record_low field, not a new event name, so existing
+      // automations keep working.
       event: 'price_drop' as const,
       tracker: {
         id: tracker.id,
@@ -52,7 +57,11 @@ export async function sendGenericPriceAlert(
       // on warehouse/refurb/open-box without parsing free-form text. Always
       // present — defaults to 'new' so consumers don't have to handle null.
       condition: condition ?? 'new',
-      savings: Number((tracker.threshold_price - currentPrice).toFixed(2)),
+      savings: tracker.threshold_price
+        ? Number((tracker.threshold_price - currentPrice).toFixed(2))
+        : null,
+      // Additive (phase 1): null on plain threshold alerts.
+      record_low: low ? { tier: low.tier, context: low.context } : null,
       error: null,
       consecutive_failures: null,
       ai_commentary: aiCommentary || null,

@@ -10,6 +10,13 @@ import {
   searchTrackersByName,
 } from '../db/queries.js';
 import { checkTracker, checkTrackerUrl } from '../scheduler/cron.js';
+import { getDailyMinHistoryForTracker, getRecentLowTiers } from '../db/queries.js';
+import {
+  computePriceStats,
+  percentileRank90d,
+  suggestThreshold,
+  thresholdStaleness,
+} from '../stats/price-stats.js';
 import { cancelOpenIntentsForTracker } from '../db/purchase-intents.js';
 import { extractPrice } from '../scraper/extractor.js';
 import {
@@ -49,6 +56,8 @@ const updateSchema = z
     // buy-on-trigger flow; buy_quantity sets the Amazon cart quantity (min 1).
     buy_armed: z.boolean().optional(),
     buy_quantity: z.number().int().min(1).optional(),
+    // Record-low alert mode (migration v20, deal-intelligence phase 1).
+    low_alert_mode: z.enum(['all', 'record_only', 'off']).optional(),
   })
   .refine(
     data => {
@@ -72,7 +81,15 @@ const updateSchema = z
 
 router.get('/', (req: Request, res: Response) => {
   const trackers = getAllTrackers(req.user!.userId);
-  res.json(affiliateTrackers(trackers));
+  // Dashboard record-low chips (phase 1): additive computed field, not part
+  // of the Tracker row shape (extension parity unaffected).
+  const lowTiers = getRecentLowTiers(req.user!.userId);
+  res.json(
+    affiliateTrackers(trackers).map(t => ({
+      ...t,
+      recent_low_tier: lowTiers.get(t.id) ?? null,
+    })),
+  );
 });
 
 router.get('/sparklines', (req: Request, res: Response) => {
@@ -122,6 +139,39 @@ router.get('/:id', (req: Request, res: Response) => {
     return;
   }
   res.json(affiliateTracker(tracker));
+});
+
+/**
+ * Price-context stats for the tracker detail page (deal-intelligence phase 1):
+ * windowed min/median/max over daily-min history ('new'-condition sellers),
+ * a suggested threshold, threshold staleness, and where the current price
+ * sits in the last 90 days. Computed on demand — a tracker's history is a few
+ * hundred daily rows at most.
+ */
+router.get('/:id/stats', (req: Request, res: Response) => {
+  const tracker = getTrackerById(Number(req.params.id), req.user!.userId);
+  if (!tracker) {
+    res.status(404).json({ error: 'Tracker not found' });
+    return;
+  }
+  const dailyMins = getDailyMinHistoryForTracker(tracker.id);
+  const stats = computePriceStats(dailyMins, Date.now());
+  res.json({
+    span_days: stats.spanDays,
+    windows: {
+      w30: stats.w30,
+      w90: stats.w90,
+      w365: stats.w365,
+      all: stats.all,
+    },
+    suggested_threshold: suggestThreshold(stats),
+    threshold_staleness: thresholdStaleness(tracker.threshold_price, stats),
+    current_percentile_90d:
+      tracker.last_price !== null && tracker.last_price > 0
+        ? percentileRank90d(dailyMins, Date.now(), tracker.last_price)
+        : null,
+    low_alert_mode: tracker.low_alert_mode,
+  });
 });
 
 router.get('/:id/public-slug', (req: Request, res: Response) => {

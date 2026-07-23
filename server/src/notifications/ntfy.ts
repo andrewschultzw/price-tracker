@@ -98,8 +98,11 @@ export async function sendNtfyPriceAlert(
   aiCommentary?: string | null,
   confidence?: Confidence | null,
   condition?: TrackerUrlCondition | null,
+  low?: { tier: string; context: string } | null,
 ): Promise<boolean> {
-  if (!tracker.threshold_price) return false;
+  // Record-low alerts (phase 1) are the one class that fires without a
+  // threshold; everything else still requires one.
+  if (!tracker.threshold_price && !low) return false;
 
   let target: NtfyTarget;
   try {
@@ -109,10 +112,12 @@ export async function sendNtfyPriceAlert(
     return false;
   }
 
-  const savings = (tracker.threshold_price - currentPrice).toFixed(2);
   // formatPriceWithCondition tags non-'new' conditions: "Now $239 (Warehouse)".
-  const baseMessage = `Now ${formatPriceWithCondition(currentPrice, condition)} (target $${tracker.threshold_price.toFixed(2)}, save $${savings})`;
+  const baseMessage = tracker.threshold_price
+    ? `Now ${formatPriceWithCondition(currentPrice, condition)} (target $${tracker.threshold_price.toFixed(2)}, save $${(tracker.threshold_price - currentPrice).toFixed(2)})`
+    : `Now ${formatPriceWithCondition(currentPrice, condition)}`;
   const messageParts: string[] = [baseMessage];
+  if (low) messageParts.push(`📉 ${low.context}`);
   if (aiCommentary) messageParts.push(aiCommentary);
   if (confidence && confidence.reasons.length > 0) {
     messageParts.push(confidence.reasons.join(' · '));
@@ -122,7 +127,9 @@ export async function sendNtfyPriceAlert(
   const titlePrefix = confidence ? ntfyTitlePrefix(confidence.level) : '';
   const result = await publish(target.base, {
     topic: target.topic,
-    title: `${titlePrefix}Price Drop: ${tracker.name}`,
+    title: low && !tracker.threshold_price
+      ? `${titlePrefix}Record Low: ${tracker.name}`
+      : `${titlePrefix}Price Drop: ${tracker.name}`,
     message,
     priority: 4,
     tags: ['tada', 'money_with_wings'],

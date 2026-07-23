@@ -170,7 +170,19 @@ export default function TrackerCard({ tracker, sparklineData, minPrice = null, o
                 {sellerCount} sellers
               </span>
             )}
-            {atHistoricalLow && (
+            {tracker.recent_low_tier ? (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-success bg-success/10 rounded-full px-2 py-0.5"
+                title="A record-low alert fired for this tracker in the last 48 hours"
+              >
+                <TrendingDown className="w-3 h-3" />
+                {tracker.recent_low_tier === 'low_all_time'
+                  ? 'all-time low'
+                  : tracker.recent_low_tier === 'low_90d'
+                    ? '90-day low'
+                    : '30-day low'}
+              </span>
+            ) : atHistoricalLow && (
               <span
                 className="inline-flex items-center gap-1 text-[10px] font-medium text-success bg-success/10 rounded-full px-2 py-0.5"
                 title="Current price matches the all-time low"

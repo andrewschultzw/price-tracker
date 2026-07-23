@@ -40,6 +40,8 @@ export function initializeSchema(): void {
       -- many units to attempt to purchase.
       buy_armed INTEGER NOT NULL DEFAULT 0 CHECK(buy_armed IN (0,1)),
       buy_quantity INTEGER NOT NULL DEFAULT 1 CHECK(buy_quantity >= 1),
+      -- Record-low alert mode (migration v20, deal-intelligence phase 1).
+      low_alert_mode TEXT NOT NULL DEFAULT 'all' CHECK(low_alert_mode IN ('all','record_only','off')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -96,7 +98,13 @@ export function initializeSchema(): void {
       tracker_id INTEGER NOT NULL REFERENCES trackers(id) ON DELETE CASCADE,
       tracker_url_id INTEGER REFERENCES tracker_urls(id) ON DELETE SET NULL,
       price REAL NOT NULL,
+      -- NOT NULL predates record-low alerts: a low_* alert on a tracker with
+      -- no threshold stores 0 here; alert_type carries the meaning.
       threshold_price REAL NOT NULL,
+      -- Alert class (migration v20). 'back_in_stock'/'digest' reserved for
+      -- deal-intelligence roadmap phases 3/4.
+      alert_type TEXT NOT NULL DEFAULT 'threshold'
+        CHECK(alert_type IN ('threshold','low_30d','low_90d','low_all_time','back_in_stock','digest')),
       sent_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 

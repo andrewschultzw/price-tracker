@@ -11,6 +11,7 @@ import {
 } from '../api'
 import type { NotificationHistoryRow } from '../api'
 import type { Tracker, TrackerUrl, TrackerUrlCondition, PriceRecord, Overlap, Purchase } from '../types'
+import { PriceContextCard } from '../components/PriceContextCard'
 import PurchaseModal from '../components/PurchaseModal'
 import PurchasedBanner from '../components/PurchasedBanner'
 
@@ -792,6 +793,8 @@ export default function TrackerDetail() {
       )}
 
       <AIInsightsCard tracker={tracker} />
+
+      <PriceContextCard tracker={tracker} onTrackerUpdated={setTracker} />
 
       {tracker.status === 'purchased' && purchases[0] && (
         <PurchasedBanner

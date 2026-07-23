@@ -51,6 +51,28 @@ export interface Tracker {
   // buy_quantity: how many units to buy when the arm fires.
   buy_armed?: number;
   buy_quantity?: number;
+  // Record-low alert mode (server migration v20, deal-intelligence phase 1).
+  low_alert_mode?: 'all' | 'record_only' | 'off';
+  // Computed by the list endpoint only: the record-low tier of an alert that
+  // fired within the last 48h, for the dashboard chip. Null/absent otherwise.
+  recent_low_tier?: 'low_30d' | 'low_90d' | 'low_all_time' | null;
+}
+
+// GET /api/trackers/:id/stats response (deal-intelligence phase 1).
+export interface WindowStats {
+  min: number | null;
+  max: number | null;
+  median: number | null;
+  points: number;
+}
+
+export interface TrackerPriceStats {
+  span_days: number;
+  windows: { w30: WindowStats; w90: WindowStats; w365: WindowStats; all: WindowStats };
+  suggested_threshold: number | null;
+  threshold_staleness: 'stale_low' | 'stale_high' | null;
+  current_percentile_90d: number | null;
+  low_alert_mode: 'all' | 'record_only' | 'off';
 }
 
 // Listing condition for a per-seller URL. Mirrors the server enum.

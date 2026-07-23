@@ -94,6 +94,7 @@ export async function sendWebPushPriceAlert(
   aiCommentary: string | null,
   confidence?: Confidence | null,
   condition?: TrackerUrlCondition | null,
+  low?: { tier: string; context: string } | null,
 ): Promise<boolean> {
   // Tag both the title and the body so the condition is visible whether
   // the user only sees the lock-screen preview (title) or expands.
@@ -107,6 +108,7 @@ export async function sendWebPushPriceAlert(
   // alerts read identically. Reasons (when present) get appended with ` · `
   // per spec — they're additive, not a replacement for aiCommentary.
   let body = `${prefix}${baseBody}`;
+  if (low) body += ` — ${low.context}`;
   if (aiCommentary) body += ` — ${aiCommentary}`;
   if (confidence && confidence.reasons.length > 0) {
     body += ` · ${confidence.reasons.join(' · ')}`;
