@@ -322,6 +322,23 @@ export async function sendEmailPurchaseArm(
  * {ok, error} shape the other channels' test helpers use so the UI
  * branch is uniform.
  */
+/** Digest delivery (phase 3). */
+export async function sendEmailDigest(
+  recipient: string,
+  subject: string,
+  text: string,
+  html: string,
+): Promise<boolean> {
+  try {
+    await getTransport().sendMail({ from: config.smtpFrom, to: recipient, subject, text, html });
+    logger.info('Email digest sent');
+    return true;
+  } catch (err) {
+    logger.error({ err }, 'Email digest failed');
+    return false;
+  }
+}
+
 export async function testEmail(recipient: string): Promise<{ ok: boolean; error?: string }> {
   if (!isEmailConfigured()) {
     return { ok: false, error: 'Email channel is not configured on the server' };

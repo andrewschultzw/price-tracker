@@ -212,6 +212,30 @@ export async function sendGenericPurchaseArm(
   }
 }
 
+/** Digest delivery (phase 3): additive event type 'weekly_digest'. */
+export async function sendGenericDigest(
+  webhookUrl: string,
+  payload: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    assertWebhookUrl(webhookUrl);
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'weekly_digest', ...payload, timestamp: new Date().toISOString() }),
+    });
+    if (!response.ok) {
+      logger.error({ status: response.status }, 'Generic webhook digest failed');
+      return false;
+    }
+    logger.info('Generic webhook digest sent');
+    return true;
+  } catch (err) {
+    logger.error({ err }, 'Generic webhook digest request failed');
+    return false;
+  }
+}
+
 export async function testGenericWebhook(webhookUrl: string): Promise<{ ok: boolean; error?: string }> {
   try {
     assertWebhookUrl(webhookUrl);

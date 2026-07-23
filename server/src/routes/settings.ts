@@ -24,6 +24,12 @@ const ALLOWED_SETTING_KEYS = new Set([
   'webhook_min_confidence',
   'email_min_confidence',
   'web_push_min_confidence',
+  // Weekly digest (phase 3)
+  'digest_enabled',
+  'digest_channel',
+  'digest_day',
+  'digest_hour',
+  'digest_always',
 ]);
 
 // Basic email shape check. Not RFC 5322 strict — SMTP will reject
@@ -54,6 +60,26 @@ router.put('/', (req: Request, res: Response) => {
       const n = Number(value);
       if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
         res.status(400).json({ error: `Invalid cooldown for ${key} — must be a non-negative integer` });
+        return;
+      }
+    }
+    // Digest settings: bounded enums/ints; empty string clears (falls back
+    // to defaults: enabled, Sunday 8am, first-configured channel).
+    if (key === 'digest_enabled' || key === 'digest_always') {
+      if (value !== '' && value !== 'true' && value !== 'false') {
+        res.status(400).json({ error: `${key} must be 'true' or 'false'` });
+        return;
+      }
+    }
+    if (key === 'digest_channel' && value !== '' && !['ntfy', 'discord', 'email', 'webhook'].includes(value)) {
+      res.status(400).json({ error: 'digest_channel must be ntfy, discord, email, or webhook' });
+      return;
+    }
+    if ((key === 'digest_day' || key === 'digest_hour') && value !== '') {
+      const n = Number(value);
+      const max = key === 'digest_day' ? 6 : 23;
+      if (!Number.isInteger(n) || n < 0 || n > max) {
+        res.status(400).json({ error: `${key} must be an integer 0-${max}` });
         return;
       }
     }
