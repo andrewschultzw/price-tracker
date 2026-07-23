@@ -678,6 +678,27 @@ const migrations: Migration[] = [
       run(`CREATE INDEX IF NOT EXISTS idx_purchase_intents_status ON purchase_intents(status)`);
     },
   },
+  {
+    version: 20,
+    description: "Deal intelligence phase 1: notifications.alert_type + trackers.low_alert_mode",
+    up: () => {
+      const db = getDb();
+      const run = (sql: string): void => { db.prepare(sql).run(); };
+
+      // Idempotent ADD COLUMN — same fresh-install guard as v19.
+      const ncols = (db.pragma('table_info(notifications)') as { name: string }[]).map(c => c.name);
+      if (!ncols.includes('alert_type')) {
+        // 'digest' and 'back_in_stock' are reserved for roadmap phases 3/4.
+        run(`ALTER TABLE notifications ADD COLUMN alert_type TEXT NOT NULL DEFAULT 'threshold'
+          CHECK(alert_type IN ('threshold','low_30d','low_90d','low_all_time','back_in_stock','digest'))`);
+      }
+      const tcols = (db.pragma('table_info(trackers)') as { name: string }[]).map(c => c.name);
+      if (!tcols.includes('low_alert_mode')) {
+        run(`ALTER TABLE trackers ADD COLUMN low_alert_mode TEXT NOT NULL DEFAULT 'all'
+          CHECK(low_alert_mode IN ('all','record_only','off'))`);
+      }
+    },
+  },
 ];
 
 export function runMigrations(): void {

@@ -1,4 +1,4 @@
-import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail, WebPushDevice, SubscribePayload, TrackerUrlCondition, Purchase, PurchaseWithTracker, SavingsSummary } from './types';
+import type { Tracker, PriceRecord, ScrapeResult, User, InviteCode, SetupStatus, Overlap, Project, BasketMember, ProjectDetail, WebPushDevice, SubscribePayload, TrackerUrlCondition, Purchase, PurchaseWithTracker, SavingsSummary, TrackerPriceStats } from './types';
 
 const BASE = '/api';
 
@@ -118,6 +118,10 @@ export interface TrackerStat {
 }
 export const getTrackerStats = () =>
   request<Record<string, TrackerStat>>('/trackers/stats');
+// Per-tracker price-context stats (deal-intelligence phase 1). Distinct from
+// getTrackerStats above, which is the dashboard sparkline batch endpoint.
+export const getTrackerPriceStats = (id: number) =>
+  request<TrackerPriceStats>(`/trackers/${id}/stats`);
 
 // Notifications
 export interface NotificationHistoryRow {

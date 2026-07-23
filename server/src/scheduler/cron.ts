@@ -16,7 +16,14 @@ import {
   getSellersWithPendingConfirmation,
   getActiveProjectIdsForTracker,
   getActiveWebPushSubscriptionsForUser,
+  getDailyMinHistoryForTracker,
 } from '../db/queries.js';
+import {
+  computePriceStats,
+  evaluateLowTier,
+  formatLowContext,
+  type LowTier,
+} from '../stats/price-stats.js';
 import type { Tracker, TrackerUrl } from '../db/queries.js';
 import { extractPrice } from '../scraper/extractor.js';
 import { ScrapeError } from '../scraper/retry.js';
@@ -138,6 +145,9 @@ export async function maybeArmPurchase(
 ): Promise<boolean> {
   const tracker = getTrackerById(trackerId);
   if (!tracker || tracker.buy_armed !== 1 || !tracker.threshold_price) return false;
+  // Alerts can now fire without a threshold hit (record lows, phase 1) —
+  // never arm a purchase at a price the user's threshold doesn't cover.
+  if (currentPrice > tracker.threshold_price) return false;
   if (!isAmazonStorefrontUrl(seller.url)) return false;
 
   const asin =
@@ -185,12 +195,20 @@ export async function maybeArmPurchase(
  * config.notificationCooldownHours when unset. `bypassCooldown=true`
  * skips the gate entirely (manual "Check Now" path).
  */
+/** Record-low context threaded from checkTrackerUrl into the channel senders. */
+export interface LowAlert {
+  tier: LowTier;
+  /** Human line, e.g. "Lowest price ever seen (prev. $429.00 · 289 days tracked)". */
+  context: string;
+}
+
 async function firePriceAlerts(
   alertTracker: Tracker,
   currentPrice: number,
   channels: EnabledChannels,
   seller: TrackerUrl,
   bypassCooldown: boolean,
+  low: LowAlert | null = null,
 ): Promise<string[]> {
   // Buy-on-trigger: an eligible armed tracker arms a purchase instead of a
   // price alert. Returning [] means the caller's addNotification loop records
@@ -301,19 +319,19 @@ async function firePriceAlerts(
     let promise: Promise<boolean>;
     switch (name) {
       case 'discord':
-        promise = sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord!, aiCommentary, confidence, sellerCondition);
+        promise = sendDiscordPriceAlert(alertTracker, currentPrice, channels.discord!, aiCommentary, confidence, sellerCondition, low);
         break;
       case 'ntfy':
-        promise = sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy!, channels.ntfyToken, aiCommentary, confidence, sellerCondition);
+        promise = sendNtfyPriceAlert(alertTracker, currentPrice, channels.ntfy!, channels.ntfyToken, aiCommentary, confidence, sellerCondition, low);
         break;
       case 'webhook':
-        promise = sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook!, aiCommentary, confidence, sellerCondition);
+        promise = sendGenericPriceAlert(alertTracker, currentPrice, channels.webhook!, aiCommentary, confidence, sellerCondition, low);
         break;
       case 'email':
-        promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!, aiCommentary, confidence, sellerCondition);
+        promise = sendEmailPriceAlert(alertTracker, currentPrice, channels.email!, aiCommentary, confidence, sellerCondition, low);
         break;
       case 'web_push':
-        promise = sendWebPushPriceAlert(alertTracker, currentPrice, userId, aiCommentary, confidence, sellerCondition);
+        promise = sendWebPushPriceAlert(alertTracker, currentPrice, userId, aiCommentary, confidence, sellerCondition, low);
         break;
     }
     tasks.push({ name, promise });
@@ -367,6 +385,12 @@ export async function checkTrackerUrl(
 
     try {
       const result = await extractPrice(seller.url, tracker.css_selector);
+
+      // Snapshot daily-min history BEFORE recording this scrape: record-low
+      // evaluation must compare the candidate against PRIOR observations
+      // only (deal-intelligence phase 1). Cheap — one indexed GROUP BY over
+      // this tracker's rows.
+      const priorDailyMins = getDailyMinHistoryForTracker(tracker.id);
 
       addPriceRecord(tracker.id, result.price, result.currency, seller.id);
 
@@ -423,11 +447,32 @@ export async function checkTrackerUrl(
       // `price > 0`, so the just-recorded zero row is absent and
       // `recentPrices.slice(1)` would discard a real prior price. Block
       // here instead.
-      if (
-        tracker.threshold_price &&
+      const thresholdHit =
+        !!tracker.threshold_price &&
         result.price > 0 &&
-        result.price <= tracker.threshold_price
-      ) {
+        result.price <= tracker.threshold_price;
+
+      // Record-low evaluation (deal-intelligence phase 1). Fires even when no
+      // threshold is set — but only for 'new'-condition sellers (the history
+      // basis excludes warehouse/refurb, so comparing their prices against it
+      // would be apples-to-oranges) and never for the zero/glitch prices the
+      // threshold gate also blocks. Shares the plausibility-guard path below:
+      // a misread "$4.12 all-time low" gets held for confirmation exactly
+      // like a misread threshold hit.
+      let low: LowAlert | null = null;
+      if (result.price > 0 && seller.condition === 'new' && tracker.low_alert_mode !== 'off') {
+        const stats = computePriceStats(priorDailyMins, Date.now());
+        const tier = evaluateLowTier(result.price, stats, tracker.low_alert_mode);
+        if (tier) {
+          low = { tier, context: formatLowContext(tier, stats) };
+          logger.info(
+            { trackerId: tracker.id, trackerUrlId: seller.id, price: result.price, tier, spanDays: stats.spanDays },
+            'Record-low price detected',
+          );
+        }
+      }
+
+      if (thresholdHit || low) {
         if (!hasAnyChannel(channels)) {
           logger.warn(
             {
@@ -508,9 +553,20 @@ export async function checkTrackerUrl(
               'Confirmation matched, firing alert',
             );
             const alertTracker = buildAlertTracker(tracker, seller, result.price);
-            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels, seller, bypassCooldown);
+            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels, seller, bypassCooldown, low);
             for (const channel of sentChannels) {
-              addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
+              // threshold_price 0 = "no threshold" (column is NOT NULL);
+              // alert_type records why this alert fired. A hit that is ALSO
+              // a record low stays 'threshold' — the low context rides along
+              // in the message body.
+              addNotification(
+                tracker.id,
+                result.price,
+                tracker.threshold_price ?? 0,
+                channel,
+                seller.id,
+                thresholdHit ? 'threshold' : low!.tier,
+              );
             }
           } else if (!suspicious && hadPending) {
             // Pending was set, but the new read is plausible. Either
@@ -524,16 +580,38 @@ export async function checkTrackerUrl(
               pending_confirmation_at: null,
             });
             const alertTracker = buildAlertTracker(tracker, seller, result.price);
-            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels, seller, bypassCooldown);
+            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels, seller, bypassCooldown, low);
             for (const channel of sentChannels) {
-              addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
+              // threshold_price 0 = "no threshold" (column is NOT NULL);
+              // alert_type records why this alert fired. A hit that is ALSO
+              // a record low stays 'threshold' — the low context rides along
+              // in the message body.
+              addNotification(
+                tracker.id,
+                result.price,
+                tracker.threshold_price ?? 0,
+                channel,
+                seller.id,
+                thresholdHit ? 'threshold' : low!.tier,
+              );
             }
           } else {
             // Not suspicious, no pending — normal alert path.
             const alertTracker = buildAlertTracker(tracker, seller, result.price);
-            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels, seller, bypassCooldown);
+            const sentChannels = await firePriceAlerts(alertTracker, result.price, channels, seller, bypassCooldown, low);
             for (const channel of sentChannels) {
-              addNotification(tracker.id, result.price, tracker.threshold_price, channel, seller.id);
+              // threshold_price 0 = "no threshold" (column is NOT NULL);
+              // alert_type records why this alert fired. A hit that is ALSO
+              // a record low stays 'threshold' — the low context rides along
+              // in the message body.
+              addNotification(
+                tracker.id,
+                result.price,
+                tracker.threshold_price ?? 0,
+                channel,
+                seller.id,
+                thresholdHit ? 'threshold' : low!.tier,
+              );
             }
           }
         }

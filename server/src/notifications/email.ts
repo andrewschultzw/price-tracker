@@ -66,16 +66,20 @@ function priceAlertText(
   tracker: Tracker,
   price: number,
   condition?: TrackerUrlCondition | null,
+  low?: { tier: string; context: string } | null,
 ): string {
-  const threshold = tracker.threshold_price!;
-  const savings = threshold - price;
   const lines = [
     `${tracker.name} dropped to ${formatPriceWithCondition(price, condition)}`,
     '',
-    `Target: ${formatMoney(threshold)}`,
-    `Savings: ${formatMoney(savings)}`,
-    `Seller: ${hostOf(tracker.url)}`,
   ];
+  if (tracker.threshold_price) {
+    lines.push(
+      `Target: ${formatMoney(tracker.threshold_price)}`,
+      `Savings: ${formatMoney(tracker.threshold_price - price)}`,
+    );
+  }
+  if (low) lines.push(`Record: ${low.context}`);
+  lines.push(`Seller: ${hostOf(tracker.url)}`);
   const condLabel = conditionLabel(condition);
   if (condLabel) lines.push(`Condition: ${condLabel}`);
   lines.push('', `Buy now: ${tracker.url}`);
@@ -86,9 +90,8 @@ function priceAlertHtml(
   tracker: Tracker,
   price: number,
   condition?: TrackerUrlCondition | null,
+  low?: { tier: string; context: string } | null,
 ): string {
-  const threshold = tracker.threshold_price!;
-  const savings = threshold - price;
   const host = hostOf(tracker.url);
   const condLabel = conditionLabel(condition);
   // Inline tag in the headline price line so the condition is visible at a
@@ -96,6 +99,13 @@ function priceAlertHtml(
   const priceHeadline = condLabel
     ? `${formatMoney(price)} <span style="font-size: 16px; color: #6b7280; font-weight: 500;">(${escapeHtml(condLabel)})</span>`
     : formatMoney(price);
+  const targetRows = tracker.threshold_price
+    ? `<tr><td style="color: #6b7280;">Target</td><td style="font-weight: 600;">${formatMoney(tracker.threshold_price)}</td></tr>
+    <tr><td style="color: #6b7280;">Savings</td><td style="font-weight: 600; color: #16a34a;">${formatMoney(tracker.threshold_price - price)}</td></tr>`
+    : '';
+  const recordRow = low
+    ? `<tr><td style="color: #6b7280;">Record</td><td style="font-weight: 600;">${escapeHtml(low.context)}</td></tr>`
+    : '';
   const conditionRow = condLabel
     ? `<tr><td style="color: #6b7280;">Condition</td><td style="font-weight: 600;">${escapeHtml(condLabel)}</td></tr>`
     : '';
@@ -104,8 +114,8 @@ function priceAlertHtml(
   <h2 style="margin: 0 0 8px 0; font-size: 18px;">${escapeHtml(tracker.name)}</h2>
   <div style="font-size: 28px; font-weight: 700; color: #16a34a; margin: 8px 0 16px 0;">${priceHeadline}</div>
   <table style="border-collapse: collapse; margin-bottom: 20px;" cellpadding="4">
-    <tr><td style="color: #6b7280;">Target</td><td style="font-weight: 600;">${formatMoney(threshold)}</td></tr>
-    <tr><td style="color: #6b7280;">Savings</td><td style="font-weight: 600; color: #16a34a;">${formatMoney(savings)}</td></tr>
+    ${targetRows}
+    ${recordRow}
     <tr><td style="color: #6b7280;">Seller</td><td>${escapeHtml(host)}</td></tr>
     ${conditionRow}
   </table>
@@ -148,10 +158,12 @@ export async function sendEmailPriceAlert(
   aiCommentary?: string | null,
   confidence?: Confidence | null,
   condition?: TrackerUrlCondition | null,
+  low?: { tier: string; context: string } | null,
 ): Promise<boolean> {
-  if (!tracker.threshold_price) return false;
-  const baseText = priceAlertText(tracker, currentPrice, condition);
-  const baseHtml = priceAlertHtml(tracker, currentPrice, condition);
+  // Record-low alerts (phase 1) fire without a threshold; all others need one.
+  if (!tracker.threshold_price && !low) return false;
+  const baseText = priceAlertText(tracker, currentPrice, condition, low);
+  const baseHtml = priceAlertHtml(tracker, currentPrice, condition, low);
 
   // Plaintext: aiCommentary then "About this deal" line.
   const textParts: string[] = [baseText];
@@ -186,7 +198,9 @@ export async function sendEmailPriceAlert(
     await getTransport().sendMail({
       from: config.smtpFrom,
       to: recipient,
-      subject: `${subjectPrefix}Price drop: ${tracker.name} is ${priceTagged}`,
+      subject: low && !tracker.threshold_price
+        ? `${subjectPrefix}Record low: ${tracker.name} is ${priceTagged}`
+        : `${subjectPrefix}Price drop: ${tracker.name} is ${priceTagged}`,
       text,
       html,
     });

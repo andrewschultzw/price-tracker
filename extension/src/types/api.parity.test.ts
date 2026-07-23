@@ -67,6 +67,9 @@ const IGNORED_SERVER_FIELDS = new Set<string>([
   // popup is create/check-only and never surfaces the buy-on-trigger flow.
   'buy_armed',
   'buy_quantity',
+  // Record-low alert mode (deal-intelligence phase 1) — alert tuning is a
+  // web-UI-only owner action, same rationale as buy_armed.
+  'low_alert_mode',
 ]);
 
 function extractTrackerFields(source: string): string[] {

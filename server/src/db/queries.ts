@@ -54,6 +54,12 @@ export interface Tracker {
   // layer coerces to/from boolean at the API boundary. Default 0 = "not on
   // wishlist" so existing trackers stay private until explicitly toggled.
   is_wishlisted: number;
+  // Record-low alert mode (migration v20, deal-intelligence phase 1).
+  // 'all' fires 30d/90d/all-time record-low alerts; 'record_only' fires only
+  // all-time lows; 'off' disables record-low alerts (threshold alerts
+  // unaffected). Record-low alerts are the one alert class that fires even
+  // when threshold_price is null.
+  low_alert_mode: 'all' | 'record_only' | 'off';
   // Autonomous purchasing (migration v19). buy_armed=1 opts the tracker into
   // the buy-on-trigger flow; buy_quantity sets the qty pre-loaded into the
   // Amazon cart. Both stored as INTEGER; buy_armed coerced to/from boolean at
@@ -345,6 +351,8 @@ export function updateTracker(id: number, data: Partial<{
   // coerced to int by callers. buy_quantity is a plain integer (min 1).
   buy_armed: number;
   buy_quantity: number;
+  // Record-low alert mode (migration v20); zod-validated at the route layer.
+  low_alert_mode: string;
 }>, userId?: number): Tracker | undefined {
   const fields: string[] = [];
   const values: Record<string, unknown> = { id };
@@ -847,15 +855,19 @@ export function searchTrackersByName(userId: number, q: string, limit: number = 
 export function addNotification(
   trackerId: number,
   price: number,
+  // notifications.threshold_price is NOT NULL (pre-v20 schema). Record-low
+  // alerts can fire on trackers with no threshold; they store 0 here and
+  // alert_type carries the real meaning (spec phase 1).
   thresholdPrice: number,
   channel: string | null = null,
   trackerUrlId: number | null = null,
+  alertType: string = 'threshold',
 ): NotificationRecord {
   const stmt = getDb().prepare(`
-    INSERT INTO notifications (tracker_id, tracker_url_id, price, threshold_price, channel)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO notifications (tracker_id, tracker_url_id, price, threshold_price, channel, alert_type)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
-  const result = stmt.run(trackerId, trackerUrlId, price, thresholdPrice, channel);
+  const result = stmt.run(trackerId, trackerUrlId, price, thresholdPrice, channel, alertType);
   return getDb().prepare('SELECT * FROM notifications WHERE id = ?').get(Number(result.lastInsertRowid)) as NotificationRecord;
 }
 
@@ -1550,6 +1562,46 @@ export function getDailyMinHistoryForNormalizedUrl(
     GROUP BY DATE(ph.scraped_at)
     ORDER BY DATE(ph.scraped_at) ASC
   `).all(normalized_url) as Array<{ date: string; price: number }>;
+}
+
+/**
+ * Latest record-low tier per tracker within the last 48h, for the dashboard
+ * "All-time low / 90-day low" chips (deal-intelligence phase 1). One query
+ * for the whole list view; a chip disappears on its own as the notification
+ * ages out of the window.
+ */
+export function getRecentLowTiers(userId?: number): Map<number, string> {
+  const rows = getDb().prepare(`
+    SELECT n.tracker_id, n.alert_type, MAX(n.sent_at)
+    FROM notifications n
+    INNER JOIN trackers t ON t.id = n.tracker_id
+    WHERE n.alert_type LIKE 'low_%'
+      AND n.sent_at >= datetime('now', '-48 hours')
+      ${userId !== undefined ? 'AND t.user_id = @userId' : ''}
+    GROUP BY n.tracker_id
+  `).all(userId !== undefined ? { userId } : {}) as Array<{ tracker_id: number; alert_type: string }>;
+  return new Map(rows.map(r => [r.tracker_id, r.alert_type]));
+}
+
+/**
+ * Daily-minimum price history for ONE tracker, restricted to 'new'-condition
+ * sellers (deal-intelligence phase 1: a warehouse/refurb listing must not set
+ * a "record low" for the product). Legacy rows with no tracker_url_id predate
+ * the multi-seller/condition era and are treated as 'new'.
+ */
+export function getDailyMinHistoryForTracker(
+  trackerId: number,
+): Array<{ date: string; price: number }> {
+  return getDb().prepare(`
+    SELECT DATE(ph.scraped_at) AS date, MIN(ph.price) AS price
+    FROM price_history ph
+    LEFT JOIN tracker_urls tu ON tu.id = ph.tracker_url_id
+    WHERE ph.tracker_id = ?
+      AND ph.price > 0
+      AND (ph.tracker_url_id IS NULL OR tu.condition = 'new')
+    GROUP BY DATE(ph.scraped_at)
+    ORDER BY DATE(ph.scraped_at) ASC
+  `).all(trackerId) as Array<{ date: string; price: number }>;
 }
 
 export interface PublicProductStats {
