@@ -27,6 +27,7 @@ import { publicSavingsRouter } from './routes/public-savings.js';
 import { faviconRouter } from './routes/favicon.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { startBackfillCron, stopBackfillCron } from './ai/backfill-cron.js';
+import { startDigestCron, stopDigestCron } from './digest/cron.js';
 import { closeBrowser } from './scraper/browser.js';
 import { getUserCount, deleteExpiredRefreshTokens } from './db/user-queries.js';
 import { initSettingsCrypto } from './crypto/settings-crypto.js';
@@ -190,6 +191,7 @@ const server = app.listen(config.port, () => {
   }
   startScheduler();
   startBackfillCron();
+  startDigestCron();
 });
 
 // Periodic cleanup of expired refresh tokens (every hour)
@@ -202,6 +204,7 @@ function shutdown() {
   logger.info('Shutting down...');
   stopScheduler();
   stopBackfillCron();
+  stopDigestCron();
   clearInterval(cleanupInterval);
   server.close(() => {
     closeBrowser().then(() => {

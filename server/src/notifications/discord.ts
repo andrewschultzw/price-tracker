@@ -88,6 +88,37 @@ export async function sendDiscordPriceAlert(
   }
 }
 
+/** Digest delivery (phase 3): one embed; description capped to Discord's 4096 limit. */
+export async function sendDiscordDigest(
+  title: string,
+  description: string,
+  webhookUrl: string,
+): Promise<boolean> {
+  const embed = {
+    title,
+    description: description.length > 4000 ? description.slice(0, 4000) + '\u2026' : description,
+    color: 0x2563eb,
+    timestamp: new Date().toISOString(),
+    footer: { text: 'Price Tracker' },
+  };
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+    if (!response.ok) {
+      logger.error({ status: response.status }, 'Discord digest failed');
+      return false;
+    }
+    logger.info('Discord digest sent');
+    return true;
+  } catch (err) {
+    logger.error({ err }, 'Discord digest request failed');
+    return false;
+  }
+}
+
 export async function sendDiscordErrorAlert(
   tracker: Tracker,
   error: string,

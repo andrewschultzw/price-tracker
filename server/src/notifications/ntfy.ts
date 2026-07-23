@@ -144,6 +144,37 @@ export async function sendNtfyPriceAlert(
   return true;
 }
 
+/** Digest delivery (phase 3): arbitrary title+body through the same JSON publish path. */
+export async function sendNtfyDigest(
+  title: string,
+  message: string,
+  ntfyUrl: string,
+  ntfyToken?: string,
+  click?: string,
+): Promise<boolean> {
+  let target: NtfyTarget;
+  try {
+    target = parseNtfyUrl(ntfyUrl);
+  } catch (err) {
+    logger.error({ err }, 'Invalid ntfy URL for digest');
+    return false;
+  }
+  const result = await publish(target.base, {
+    topic: target.topic,
+    title,
+    message,
+    priority: 3,
+    tags: ['newspaper'],
+    click,
+  }, ntfyToken);
+  if (!result.ok) {
+    logger.error({ error: result.error }, 'ntfy digest failed');
+    return false;
+  }
+  logger.info('ntfy digest sent');
+  return true;
+}
+
 export async function sendNtfyErrorAlert(
   tracker: Tracker,
   error: string,
