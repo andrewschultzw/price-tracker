@@ -2,7 +2,7 @@
 
 > A self-hosted price tracker for anything you can link to. Multi-seller support, multiple notification channels, and a dashboard that actually respects your attention.
 
-[![tests](https://img.shields.io/badge/tests-206%20passing-success)](./server) [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE) [![typescript](https://img.shields.io/badge/typescript-5.9-blue)](https://www.typescriptlang.org/)
+[![tests](https://img.shields.io/badge/tests-1001%20passing-success)](./server) [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE) [![typescript](https://img.shields.io/badge/typescript-5.9-blue)](https://www.typescriptlang.org/)
 
 ![Dashboard](./docs/screenshots/dashboard.png)
 
@@ -23,13 +23,22 @@ Built as a homelab project, designed to be portable. Runs in a single Node proce
 - **All-time low indicator** — see at a glance whether the current price is a real historical deal or just slightly below your arbitrary threshold
 - **CSV / JSON export** of full price history per tracker
 
+### Deal intelligence (2026-07)
+- **Record-low alerts** — 30-day / 90-day / all-time lows computed from the tracker's own daily-min history; fire even with no threshold set, with coverage gates so young trackers stay quiet
+- **Threshold suggestions & staleness warnings** — a Price Context card suggests a target from your history (10th percentile of recent daily lows) and flags targets that can never fire or fire trivially
+- **Share-to-track** — Android share sheet via PWA share_target; iOS via a 2-minute Shortcut. Already-tracked products jump to their page; new ones land on an add form with the name and live price auto-detected
+- **Weekly digest** — one summary per week (default Sunday 8am): biggest drops, record lows, restocks, failing trackers, stale targets, and deals you hit but never bought. Quiet weeks send nothing
+- **Back-in-stock alerts** — per-seller availability from page signals (never inferred from scrape failures); "back in stock at $X" on the out-of-stock → priced transition
+
 ![Notification channel settings](./docs/screenshots/settings.png)
 
 ### Notifications
-- **Three channels**, each optional and configurable per user:
+- **Five channels**, each optional and configurable per user:
   - **Discord** — via incoming webhook
   - **ntfy** — push notifications via [ntfy.sh](https://ntfy.sh) or a self-hosted instance, with optional Bearer token auth for private topics
   - **Generic webhook** — JSON POST to any HTTPS endpoint (Home Assistant, Slack, n8n, custom bots)
+  - **Email** — SMTP (nodemailer), plaintext + HTML bodies
+  - **Web push** — PWA notifications straight to the phone (VAPID)
 - **Per-seller cooldowns** — one seller alerting doesn't silence another seller's later drop on the same tracker
 - **Manual-check bypass** — clicking "Check Now" always fires fresh notifications, regardless of cooldown
 - **Notification history** — see every alert ever sent, with channel, timestamp, and savings
@@ -333,12 +342,11 @@ The server expects the built client at `../client/dist` relative to its `Working
 
 Planned but not yet built:
 
-- **Email notification channel** — fourth channel using SMTP
 - **OpenClaw / Discord bot integration** — accept product links in Discord to create trackers automatically
-- **Cross-user tracker overlap** — "N others also track this" indicator when multiple users track the same product
 - **Bulk add** — paste a list of URLs at once
+- **Extension-assisted prices for blocked retailers** — let the browser extension report prices for hosts that block the server's network (deferred)
 
-See [`tasks/todo.md`](./tasks/todo.md) for the full open list.
+Email notifications and cross-user overlap, listed here historically, shipped long ago — as did the community deal feed, purchases/savings, wishlists, buy-arm, and the 2026-07 deal-intelligence work above. Design docs live in [`docs/superpowers/specs/`](./docs/superpowers/specs/).
 
 ## Security notes
 
