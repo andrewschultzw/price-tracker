@@ -130,12 +130,20 @@ export default function AddTracker() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-text-muted mb-1.5">Name</label>
+          <label className="block text-sm font-medium text-text-muted mb-1.5">
+            Name
+            {testing && !name && (
+              <span className="ml-2 inline-flex items-center gap-1 text-xs text-primary font-normal">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                detecting product…
+              </span>
+            )}
+          </label>
           <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="Sony WH-1000XM5"
+            placeholder={testing && !name ? 'Detecting product name…' : 'Sony WH-1000XM5'}
             required
             className="w-full bg-surface border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary"
           />
