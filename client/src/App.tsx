@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
 import { BarChart3, Plus, Settings as SettingsIcon, Shield, LogOut, Menu, X, Inbox, Package, TrendingUp, ShoppingBag } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -38,9 +38,6 @@ const WishlistPublic = lazy(() => import('./pages/WishlistPublic'))
 const AddTracker = lazy(() => import('./pages/AddTracker'))
 const TrackerDetail = lazy(() => import('./pages/TrackerDetail'))
 const Category = lazy(() => import('./pages/Category'))
-const BelowTarget = lazy(() => import('./pages/BelowTarget'))
-const Errors = lazy(() => import('./pages/Errors'))
-const Active = lazy(() => import('./pages/Active'))
 const Notifications = lazy(() => import('./pages/Notifications'))
 const SettingsPage = lazy(() => import('./pages/Settings'))
 const Admin = lazy(() => import('./pages/Admin'))
@@ -185,9 +182,9 @@ function App() {
             <Route path="/share" element={<ProtectedRoute><Share /></ProtectedRoute>} />
             <Route path="/tracker/:id" element={<ProtectedRoute><TrackerDetail /></ProtectedRoute>} />
             <Route path="/category/:domain" element={<ProtectedRoute><Category /></ProtectedRoute>} />
-            <Route path="/below-target" element={<ProtectedRoute><BelowTarget /></ProtectedRoute>} />
-            <Route path="/errors" element={<ProtectedRoute><Errors /></ProtectedRoute>} />
-            <Route path="/active" element={<ProtectedRoute><Active /></ProtectedRoute>} />
+            <Route path="/below-target" element={<Navigate to="/?filter=below-target" replace />} />
+            <Route path="/errors" element={<Navigate to="/?filter=errors" replace />} />
+            <Route path="/active" element={<Navigate to="/?filter=active" replace />} />
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
             <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
