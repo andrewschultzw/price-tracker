@@ -60,6 +60,9 @@ function mockAuthedHappyPath() {
   // AffiliateDisclosure renders unconditionally at the bottom of the
   // authenticated shell and fires this on mount.
   vi.mocked(api.getPublicSavings).mockResolvedValue({} as any);
+  // NotificationBell (Task 6) fetches notification history on mount to
+  // compute its unread badge.
+  vi.mocked(api.getNotificationHistory).mockResolvedValue([]);
 }
 
 function renderAt(initialEntry: string) {
