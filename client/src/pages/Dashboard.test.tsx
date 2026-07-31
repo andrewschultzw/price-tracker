@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import * as api from '../api';
@@ -102,11 +102,17 @@ describe('Dashboard', () => {
   describe('toolbar', () => {
     const allFixtures = [baseTracker, belowTargetTracker, erroredTracker, pausedTracker, purchasedTracker];
 
+    // Scopes chip queries to the toolbar's filter-chip group. Since
+    // StatCards' Active/Below Target/Errors cards are now clickable
+    // buttons too, an unscoped getByRole('button', { name: /errors/i })
+    // matches both the toolbar chip and the stat card — ambiguous.
+    const toolbarGroup = () => screen.getByRole('group', { name: /filter by status/i });
+
     it('filter chips show live counts and filter the grid', async () => {
       renderAt('/', allFixtures);
       await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
 
-      const errorsChip = screen.getByRole('button', { name: /errors/i });
+      const errorsChip = within(toolbarGroup()).getByRole('button', { name: /errors/i });
       expect(errorsChip).toHaveTextContent('1');
       expect(errorsChip).toHaveAttribute('aria-pressed', 'false');
 
@@ -136,10 +142,10 @@ describe('Dashboard', () => {
       renderAt('/?filter=errors', allFixtures);
       await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
 
-      const errorsChip = screen.getByRole('button', { name: /errors/i });
+      const errorsChip = within(toolbarGroup()).getByRole('button', { name: /errors/i });
       expect(errorsChip).toHaveAttribute('aria-pressed', 'true');
 
-      const pausedChip = screen.getByRole('button', { name: /paused/i });
+      const pausedChip = within(toolbarGroup()).getByRole('button', { name: /paused/i });
       fireEvent.click(pausedChip);
 
       expect(pausedChip).toHaveAttribute('aria-pressed', 'true');
@@ -151,11 +157,11 @@ describe('Dashboard', () => {
       await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
 
       // Non-default filter → param written.
-      fireEvent.click(screen.getByRole('button', { name: /errors/i }));
+      fireEvent.click(within(toolbarGroup()).getByRole('button', { name: /errors/i }));
       expect(screen.getByTestId('location-probe')).toHaveTextContent('filter=errors');
 
       // Back to the default filter ('all') → param removed, not set to 'all'.
-      fireEvent.click(screen.getByRole('button', { name: /^all/i }));
+      fireEvent.click(within(toolbarGroup()).getByRole('button', { name: /^all/i }));
       expect(screen.getByTestId('location-probe')).not.toHaveTextContent('filter=');
 
       // Same contract for sort: non-default writes, default ('smart') deletes.
@@ -197,12 +203,35 @@ describe('Dashboard', () => {
       renderAt('/', [baseTracker]);
       await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
 
-      expect(screen.queryByRole('button', { name: /errors/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /paused/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /purchased/i })).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^all/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /active/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /below target/i })).toBeInTheDocument();
+      expect(within(toolbarGroup()).queryByRole('button', { name: /errors/i })).not.toBeInTheDocument();
+      expect(within(toolbarGroup()).queryByRole('button', { name: /paused/i })).not.toBeInTheDocument();
+      expect(within(toolbarGroup()).queryByRole('button', { name: /purchased/i })).not.toBeInTheDocument();
+      expect(within(toolbarGroup()).getByRole('button', { name: /^all/i })).toBeInTheDocument();
+      expect(within(toolbarGroup()).getByRole('button', { name: /active/i })).toBeInTheDocument();
+      expect(within(toolbarGroup()).getByRole('button', { name: /below target/i })).toBeInTheDocument();
+    });
+
+    it('clicking the Errors stat card selects the Errors chip in place (no navigation)', async () => {
+      renderAt('/', allFixtures);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      // Scope to the stat-cards-grid so this doesn't collide with the
+      // toolbar's own "Errors" chip, which also matches /errors/i.
+      const statCardsGrid = document.querySelector('.stat-cards-grid') as HTMLElement;
+      const errorsStatCard = within(statCardsGrid).getByRole('button', { name: /errors/i });
+      fireEvent.click(errorsStatCard);
+
+      const errorsChip = screen.getByRole('button', { name: /^errors/i });
+      expect(errorsChip).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('/?filter=errors');
+    });
+
+    it('below-target cards carry the glow class', async () => {
+      renderAt('/', allFixtures);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      const ssdCard = screen.getByText('SSD 1TB').closest('a');
+      expect(ssdCard).toHaveClass('bit-border-glow');
     });
   });
 });

@@ -59,9 +59,15 @@ interface Props {
    * keeping the card navigable.
    */
   isPurchased?: boolean
+  /**
+   * Highlights the card with the bit-border-glow treatment when the
+   * tracker is currently below its target price — a stronger visual cue
+   * than the price text alone that this is a live deal.
+   */
+  glow?: boolean
 }
 
-export default function TrackerCard({ tracker, sparklineData, minPrice = null, onUpdate, notificationsConfigured = true, overlapCount, isPurchased = false }: Props) {
+export default function TrackerCard({ tracker, sparklineData, minPrice = null, onUpdate, notificationsConfigured = true, overlapCount, isPurchased = false, glow = false }: Props) {
   const [checking, setChecking] = useState(false)
 
   const handleCheck = async (e: React.MouseEvent) => {
@@ -93,7 +99,7 @@ export default function TrackerCard({ tracker, sparklineData, minPrice = null, o
   return (
     <Link
       to={`/tracker/${tracker.id}`}
-      className={`group block bg-surface border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-[0_0_20px_rgba(99,102,241,0.08)] transition-all no-underline ${isPurchased ? 'opacity-60' : ''}`}
+      className={`group block bg-surface border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-[0_0_20px_rgba(99,102,241,0.08)] transition-all no-underline ${isPurchased ? 'opacity-60' : ''}${glow ? ' bit-border-glow' : ''}`}
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">

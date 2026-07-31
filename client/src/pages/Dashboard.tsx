@@ -135,7 +135,7 @@ export default function Dashboard() {
         onSortChange={s => setParam('sort', s, 'smart')}
       />
 
-      <StatCards trackers={trackers} />
+      <StatCards trackers={trackers} onSelectFilter={f => setParam('filter', f, 'all')} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map(item =>
@@ -149,6 +149,7 @@ export default function Dashboard() {
               notificationsConfigured={notificationsConfigured}
               overlapCount={overlapCounts[item.tracker.id] ?? 0}
               isPurchased={item.tracker.status === 'purchased'}
+              glow={!!(item.tracker.threshold_price && item.tracker.last_price && item.tracker.last_price <= item.tracker.threshold_price)}
             />
           ) : (
             <CategoryCard
