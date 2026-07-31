@@ -89,7 +89,13 @@ export function buildDashboardLayout(trackers: Tracker[]): DashboardLayout {
   const erroredItems = individuals.filter(isErrored)
   const erroredIds = new Set(erroredItems.map(t => t.id))
   const remaining = individuals.filter(t => !erroredIds.has(t.id))
-  const pausedItems = remaining.filter(t => t.status === 'paused')
+  // Catch-all bucket, mirroring the category fallback below: anything
+  // that's not errored and not active lands here. That's normally just
+  // 'paused', but the dashboard toolbar's Purchased filter can hand this
+  // function a set of only 'purchased' trackers — without this catch-all
+  // (previously a strict status === 'paused' filter) those individuals had
+  // no bucket and were silently dropped from the grid.
+  const pausedItems = remaining.filter(t => t.status !== 'active')
   const activeItems = remaining.filter(t => t.status === 'active')
   const belowTargetItems = activeItems.filter(isBelowTarget)
   const belowTargetIds = new Set(belowTargetItems.map(t => t.id))

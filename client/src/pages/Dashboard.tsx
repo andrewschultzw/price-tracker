@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Package } from 'lucide-react'
 import { getTrackers, getTrackerStats, getSettings, getOverlapCounts } from '../api'
 import type { TrackerStat } from '../api'
@@ -8,8 +8,10 @@ import TrackerCard from '../components/TrackerCard'
 import CategoryCard from '../components/CategoryCard'
 import StatCards from '../components/StatCards'
 import WelcomeModal from '../components/WelcomeModal'
+import DashboardToolbar from '../components/DashboardToolbar'
 import useTitle from '../useTitle'
 import { buildDashboardLayout } from '../lib/dashboard-sort'
+import { parseFilter, parseSort, filterTrackers, filterCounts, sortTrackers } from '../lib/dashboard-filter'
 
 export default function Dashboard() {
   const [trackers, setTrackers] = useState<Tracker[]>([])
@@ -17,11 +19,22 @@ export default function Dashboard() {
   const [notificationsConfigured, setNotificationsConfigured] = useState(true)
   const [overlapCounts, setOverlapCounts] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
-  // Purchased trackers are hidden by default — the dashboard is for "what
-  // am I still watching". Users can re-surface them via the toggle to
-  // review past wins or correct a mistaken purchase log.
-  const [showPurchased, setShowPurchased] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [query, setQuery] = useState('')
   useTitle('Dashboard')
+
+  // Filter/sort mode are URL-driven so a filtered view is shareable/
+  // bookmarkable and survives a page refresh. Search text stays local
+  // component state — it's transient, not something you'd want to link to.
+  const filter = parseFilter(searchParams.get('filter'))
+  const sort = parseSort(searchParams.get('sort'))
+
+  const setParam = (key: 'filter' | 'sort', value: string, defaultValue: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === defaultValue) next.delete(key)
+    else next.set(key, value)
+    setSearchParams(next, { replace: true })
+  }
 
   const load = async () => {
     try {
@@ -46,13 +59,10 @@ export default function Dashboard() {
   // pass over the trackers array) so the wasted work on the loading
   // render is negligible compared with the bug a hooks-order mismatch
   // causes: React unmounts the whole tree and you get a blank page.
-  const purchasedCount = useMemo(
-    () => trackers.filter(t => t.status === 'purchased').length,
-    [trackers],
-  )
+  const counts = useMemo(() => filterCounts(trackers), [trackers])
   const visibleTrackers = useMemo(
-    () => (showPurchased ? trackers : trackers.filter(t => t.status !== 'purchased')),
-    [trackers, showPurchased],
+    () => sortTrackers(filterTrackers(trackers, filter, query), sort),
+    [trackers, filter, query, sort],
   )
 
   if (loading) {
@@ -79,7 +89,19 @@ export default function Dashboard() {
     )
   }
 
-  const { items, totalErrored, totalActive } = buildDashboardLayout(visibleTrackers)
+  // Header counts describe the whole (non-purchased) collection, not the
+  // currently narrowed view — a chip that filters the grid down to "Errors"
+  // shouldn't also make the "X active" summary above it read as 0.
+  const { totalErrored, totalActive } = buildDashboardLayout(trackers.filter(t => t.status !== 'purchased'))
+
+  // "Smart" sort keeps the categorized/bucketed layout (errors first, then
+  // below-target, then active, then paused, with same-domain overflow
+  // collapsed into CategoryCards). Any explicit sort (price/recent/alpha)
+  // overrides that grouping — the user asked for one specific order, so we
+  // render a flat list instead of re-bucketing on top of it.
+  const items = sort === 'smart'
+    ? buildDashboardLayout(visibleTrackers).items
+    : visibleTrackers.map(tracker => ({ kind: 'tracker' as const, tracker }))
 
   return (
     <div>
@@ -93,16 +115,6 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {purchasedCount > 0 && (
-            <label className="flex items-center gap-2 text-sm text-text-muted cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showPurchased}
-                onChange={e => setShowPurchased(e.target.checked)}
-              />
-              Show purchased ({purchasedCount})
-            </label>
-          )}
           <Link
             to="/add"
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors no-underline"
@@ -112,6 +124,16 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      <DashboardToolbar
+        filter={filter}
+        counts={counts}
+        sort={sort}
+        query={query}
+        onQueryChange={setQuery}
+        onFilterChange={f => setParam('filter', f, 'all')}
+        onSortChange={s => setParam('sort', s, 'smart')}
+      />
 
       <StatCards trackers={trackers} />
 

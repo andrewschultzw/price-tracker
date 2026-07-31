@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import * as api from '../api';
 
@@ -22,11 +22,63 @@ const baseTracker = {
   errored_seller_count: 0,
 };
 
+// Extended fixtures covering the other filter buckets — below-target,
+// errored, paused, purchased — reused across the toolbar tests below.
+const belowTargetTracker = {
+  ...baseTracker,
+  id: 2,
+  name: 'SSD 1TB',
+  url: 'https://newegg.com/ssd',
+  threshold_price: 80,
+  last_price: 70,
+};
+const erroredTracker = {
+  ...baseTracker,
+  id: 3,
+  name: 'Broken Router',
+  url: 'https://acme.com/router',
+  status: 'error',
+  last_error: 'boom',
+  consecutive_failures: 3,
+};
+const pausedTracker = {
+  ...baseTracker,
+  id: 4,
+  name: 'Paused Desk',
+  url: 'https://acme.com/desk',
+  status: 'paused',
+};
+const purchasedTracker = {
+  ...baseTracker,
+  id: 5,
+  name: 'Bought Chair',
+  url: 'https://wayfair.com/chair',
+  status: 'purchased',
+};
+
 function mockHappyPath(trackers: any[]) {
   vi.mocked(api.getTrackers).mockResolvedValue(trackers as any);
   vi.mocked(api.getTrackerStats).mockResolvedValue({});
   vi.mocked(api.getSettings).mockResolvedValue({} as any);
   vi.mocked(api.getOverlapCounts).mockResolvedValue({});
+}
+
+// Exposes the router's current location as text so URL-sync assertions can
+// read it without touching window.location (MemoryRouter keeps its own
+// in-memory history, it never sets window.location).
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location-probe">{location.pathname}{location.search}</div>;
+}
+
+function renderAt(initialEntry: string, trackers: any[]) {
+  mockHappyPath(trackers);
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Dashboard />
+      <LocationProbe />
+    </MemoryRouter>,
+  );
 }
 
 beforeEach(() => {
@@ -47,21 +99,89 @@ describe('Dashboard', () => {
     expect(screen.getByText('Widget')).toBeInTheDocument();
   });
 
-  it('shows "Show purchased" toggle only when at least one purchased tracker exists', async () => {
-    mockHappyPath([
-      baseTracker,
-      { ...baseTracker, id: 2, name: 'Bought thing', status: 'purchased' },
-    ]);
-    render(<MemoryRouter><Dashboard /></MemoryRouter>);
-    await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
-    expect(screen.getByText(/show purchased \(1\)/i)).toBeInTheDocument();
-    expect(screen.queryByText('Bought thing')).not.toBeInTheDocument();
-  });
+  describe('toolbar', () => {
+    const allFixtures = [baseTracker, belowTargetTracker, erroredTracker, pausedTracker, purchasedTracker];
 
-  it('hides the toggle when no purchased trackers exist', async () => {
-    mockHappyPath([baseTracker]);
-    render(<MemoryRouter><Dashboard /></MemoryRouter>);
-    await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
-    expect(screen.queryByText(/show purchased/i)).not.toBeInTheDocument();
+    it('filter chips show live counts and filter the grid', async () => {
+      renderAt('/', allFixtures);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      const errorsChip = screen.getByRole('button', { name: /errors/i });
+      expect(errorsChip).toHaveTextContent('1');
+      expect(errorsChip).toHaveAttribute('aria-pressed', 'false');
+
+      fireEvent.click(errorsChip);
+
+      expect(errorsChip).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Broken Router')).toBeInTheDocument();
+      expect(screen.queryByText('Widget')).not.toBeInTheDocument();
+      expect(screen.queryByText('SSD 1TB')).not.toBeInTheDocument();
+      expect(screen.queryByText('Paused Desk')).not.toBeInTheDocument();
+      expect(screen.queryByText('Bought Chair')).not.toBeInTheDocument();
+    });
+
+    it('search input filters by title', async () => {
+      renderAt('/', allFixtures);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      const search = screen.getByPlaceholderText(/filter trackers/i);
+      fireEvent.change(search, { target: { value: 'ssd' } });
+
+      expect(screen.getByText('SSD 1TB')).toBeInTheDocument();
+      expect(screen.queryByText('Widget')).not.toBeInTheDocument();
+      expect(screen.queryByText('Broken Router')).not.toBeInTheDocument();
+    });
+
+    it('filter state syncs to URL and back', async () => {
+      renderAt('/?filter=errors', allFixtures);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      const errorsChip = screen.getByRole('button', { name: /errors/i });
+      expect(errorsChip).toHaveAttribute('aria-pressed', 'true');
+
+      const pausedChip = screen.getByRole('button', { name: /paused/i });
+      fireEvent.click(pausedChip);
+
+      expect(pausedChip).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('filter=paused');
+    });
+
+    it('unknown filter param falls back to All', async () => {
+      renderAt('/?filter=bogus', allFixtures);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      const allChip = screen.getByRole('button', { name: /^all/i });
+      expect(allChip).toHaveAttribute('aria-pressed', 'true');
+      // All non-purchased trackers should be visible — no crash, no filtering applied.
+      expect(screen.getByText('Widget')).toBeInTheDocument();
+      expect(screen.getByText('Broken Router')).toBeInTheDocument();
+    });
+
+    it('purchased chip replaces the old checkbox', async () => {
+      renderAt('/', allFixtures);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      expect(screen.queryByLabelText(/show purchased/i)).not.toBeInTheDocument();
+      expect(screen.queryByText('Bought Chair')).not.toBeInTheDocument();
+
+      const purchasedChip = screen.getByRole('button', { name: /purchased/i });
+      expect(purchasedChip).toHaveTextContent('1');
+
+      fireEvent.click(purchasedChip);
+
+      expect(screen.getByText('Bought Chair')).toBeInTheDocument();
+    });
+
+    it('hides niche chips (paused/purchased/errors) when their count is zero', async () => {
+      renderAt('/', [baseTracker]);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      expect(screen.queryByRole('button', { name: /errors/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /paused/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /purchased/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^all/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /active/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /below target/i })).toBeInTheDocument();
+    });
   });
 });
