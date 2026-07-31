@@ -9,6 +9,10 @@ export default defineConfig({
       '/api': 'http://localhost:3100',
     },
   },
+  // Pre-merge browser-smoke scaffolding (kept deliberately — issue #68 decision):
+  // `vite preview` served at preview.schultzsolutions.tech lets the mandatory
+  // real-browser smoke run against a built client + the live CT302 API before
+  // merging UI changes. Preview-only; no effect on dev server or prod builds.
   preview: {
     host: true,
     allowedHosts: ['preview.schultzsolutions.tech'],

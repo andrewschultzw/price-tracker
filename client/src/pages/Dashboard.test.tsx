@@ -7,11 +7,13 @@ import type { Tracker } from '../types';
 
 vi.mock('../api');
 
-const baseTracker = {
+const baseTracker: Tracker = {
   id: 1,
-  user_id: 1,
   name: 'Widget',
   url: 'https://example.com/widget',
+  normalized_url: null,
+  check_interval_minutes: 60,
+  css_selector: null,
   last_price: 50,
   last_checked_at: '2026-05-20T00:00:00Z',
   last_error: null,
@@ -25,7 +27,7 @@ const baseTracker = {
 
 // Extended fixtures covering the other filter buckets — below-target,
 // errored, paused, purchased — reused across the toolbar tests below.
-const belowTargetTracker = {
+const belowTargetTracker: Tracker = {
   ...baseTracker,
   id: 2,
   name: 'SSD 1TB',
@@ -33,7 +35,7 @@ const belowTargetTracker = {
   threshold_price: 80,
   last_price: 70,
 };
-const erroredTracker = {
+const erroredTracker: Tracker = {
   ...baseTracker,
   id: 3,
   name: 'Broken Router',
@@ -42,14 +44,14 @@ const erroredTracker = {
   last_error: 'boom',
   consecutive_failures: 3,
 };
-const pausedTracker = {
+const pausedTracker: Tracker = {
   ...baseTracker,
   id: 4,
   name: 'Paused Desk',
   url: 'https://acme.com/desk',
   status: 'paused',
 };
-const purchasedTracker = {
+const purchasedTracker: Tracker = {
   ...baseTracker,
   id: 5,
   name: 'Bought Chair',
@@ -61,7 +63,7 @@ const purchasedTracker = {
 // is exactly the case where the old StatCards computation (status ===
 // 'active') and the chip computation (status === 'active' && !isErrored)
 // diverged: the card would count this tracker as Active, the chip would not.
-const activeButErroredTracker = {
+const activeButErroredTracker: Tracker = {
   ...baseTracker,
   id: 6,
   name: 'Flaky Monitor',
@@ -70,17 +72,14 @@ const activeButErroredTracker = {
   errored_seller_count: 1,
 };
 
-function mockHappyPath(trackers: any[]) {
-  vi.mocked(api.getTrackers).mockResolvedValue(trackers as any);
+function mockHappyPath(trackers: Tracker[]) {
+  vi.mocked(api.getTrackers).mockResolvedValue(trackers);
   vi.mocked(api.getTrackerStats).mockResolvedValue({});
-  vi.mocked(api.getSettings).mockResolvedValue({} as any);
+  vi.mocked(api.getSettings).mockResolvedValue({} as Awaited<ReturnType<typeof api.getSettings>>);
   vi.mocked(api.getOverlapCounts).mockResolvedValue({});
   // checkTracker's response body isn't asserted on by any test — only that
-  // it was called and that the promise resolves — so a cast is fine here.
-  // `as unknown as Tracker` (not `as any`) keeps this from adding to the
-  // file's pre-existing any-cast debt (tracked separately, out of scope
-  // for this fix).
-  vi.mocked(api.checkTracker).mockResolvedValue(baseTracker as unknown as Tracker);
+  // it was called and that the promise resolves.
+  vi.mocked(api.checkTracker).mockResolvedValue(baseTracker);
 }
 
 // Exposes the router's current location as text so URL-sync assertions can
@@ -91,7 +90,7 @@ function LocationProbe() {
   return <div data-testid="location-probe">{location.pathname}{location.search}</div>;
 }
 
-function renderAt(initialEntry: string, trackers: any[]) {
+function renderAt(initialEntry: string, trackers: Tracker[]) {
   mockHappyPath(trackers);
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -224,6 +223,7 @@ describe('Dashboard', () => {
       await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
 
       expect(within(toolbarGroup()).queryByRole('button', { name: /errors/i })).not.toBeInTheDocument();
+      expect(within(toolbarGroup()).queryByRole('button', { name: /blocked/i })).not.toBeInTheDocument();
       expect(within(toolbarGroup()).queryByRole('button', { name: /paused/i })).not.toBeInTheDocument();
       expect(within(toolbarGroup()).queryByRole('button', { name: /purchased/i })).not.toBeInTheDocument();
       expect(within(toolbarGroup()).getByRole('button', { name: /^all/i })).toBeInTheDocument();
@@ -252,6 +252,49 @@ describe('Dashboard', () => {
 
       const ssdCard = screen.getByText('SSD 1TB').closest('a');
       expect(ssdCard).toHaveClass('bit-border-glow');
+    });
+
+    // Issue #68: the glow rule used the raw threshold check with no status
+    // guard, so a purchased tracker whose buy price beat its threshold kept
+    // glowing under the Purchased chip — reading as a live deal on an item
+    // already bought. isBelowTarget() requires status === 'active'.
+    it('purchased-below-threshold cards do NOT glow', async () => {
+      const boughtBelowThreshold: Tracker = {
+        ...purchasedTracker, threshold_price: 100, last_price: 70,
+      };
+      renderAt('/?filter=purchased', [baseTracker, boughtBelowThreshold]);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      const card = screen.getByText('Bought Chair').closest('a');
+      expect(card).not.toHaveClass('bit-border-glow');
+    });
+
+    it('Blocked chip appears only when a tracker is WAF-blocked, and filters the grid', async () => {
+      const blockedTracker: Tracker = {
+        ...baseTracker, id: 7, name: 'Blocked TV', url: 'https://bestbuy.com/tv', status: 'blocked',
+      };
+      renderAt('/', [...allFixtures, blockedTracker]);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      const blockedChip = within(toolbarGroup()).getByRole('button', { name: /blocked/i });
+      expect(blockedChip).toHaveTextContent('1');
+
+      fireEvent.click(blockedChip);
+
+      expect(screen.getByText('Blocked TV')).toBeInTheDocument();
+      expect(screen.queryByText('Widget')).not.toBeInTheDocument();
+      // Blocked is not an error state: the Errors bulk re-check button must
+      // not offer to re-scrape trackers a re-check cannot fix.
+      expect(screen.queryByRole('button', { name: /check all now/i })).not.toBeInTheDocument();
+    });
+
+    it('per-filter page title reflects the active chip', async () => {
+      renderAt('/?filter=errors', allFixtures);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+      expect(document.title).toBe('Dashboard — Errors | Price Tracker');
+
+      fireEvent.click(within(toolbarGroup()).getByRole('button', { name: /^all/i }));
+      await waitFor(() => expect(document.title).toBe('Dashboard | Price Tracker'));
     });
 
     // Finding 1: a URL like ?filter=errors with zero errored trackers used

@@ -1,17 +1,17 @@
 import type { Tracker } from '../types'
 import { isErrored } from './dashboard-sort'
 
-export type DashboardFilter = 'all' | 'active' | 'below-target' | 'errors' | 'paused' | 'purchased'
+export type DashboardFilter = 'all' | 'active' | 'below-target' | 'errors' | 'blocked' | 'paused' | 'purchased'
 export type DashboardSortMode = 'smart' | 'price' | 'recent' | 'alpha'
 
-const FILTERS: DashboardFilter[] = ['all', 'active', 'below-target', 'errors', 'paused', 'purchased']
+const FILTERS: DashboardFilter[] = ['all', 'active', 'below-target', 'errors', 'blocked', 'paused', 'purchased']
 const SORTS: DashboardSortMode[] = ['smart', 'price', 'recent', 'alpha']
 
 // Shared human-readable labels — used by both the toolbar chips and the
 // Dashboard empty state, so a filter name only has one spelling in the UI.
 export const FILTER_LABELS: Record<DashboardFilter, string> = {
   all: 'All', active: 'Active', 'below-target': 'Below target',
-  errors: 'Errors', paused: 'Paused', purchased: 'Purchased',
+  errors: 'Errors', blocked: 'Blocked', paused: 'Paused', purchased: 'Purchased',
 }
 
 export function parseFilter(raw: string | null): DashboardFilter {
@@ -31,6 +31,10 @@ function matchesFilter(t: Tracker, filter: DashboardFilter): boolean {
     case 'active': return t.status === 'active' && !isErrored(t)
     case 'below-target': return isBelowTarget(t) && t.status !== 'purchased'
     case 'errors': return isErrored(t)
+    // Distinct from 'errors': blocked = the retailer's WAF rejects our egress
+    // IP outright. A re-check can't fix it, so it must not join the Errors
+    // chip (whose "Check All Now" would pointlessly re-scrape every one).
+    case 'blocked': return t.status === 'blocked'
     case 'paused': return t.status === 'paused'
     case 'purchased': return t.status === 'purchased'
   }

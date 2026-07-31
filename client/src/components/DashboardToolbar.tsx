@@ -2,7 +2,7 @@ import { Search } from 'lucide-react'
 import { FILTER_LABELS, type DashboardFilter, type DashboardSortMode } from '../lib/dashboard-filter'
 
 const CHIP_LABELS = FILTER_LABELS
-const CHIP_ORDER: DashboardFilter[] = ['all', 'active', 'below-target', 'errors', 'paused', 'purchased']
+const CHIP_ORDER: DashboardFilter[] = ['all', 'active', 'below-target', 'errors', 'blocked', 'paused', 'purchased']
 const SORT_LABELS: Record<DashboardSortMode, string> = {
   smart: 'Smart', price: 'Price', recent: 'Recently checked', alpha: 'A–Z',
 }
@@ -40,7 +40,7 @@ export default function DashboardToolbar({ filter, counts, sort, query, onQueryC
           // zero errored trackers must still show the selected chip so the
           // (now-empty) grid has a visible, deselectable filter state
           // instead of silently vanishing.
-          if (!selected && counts[f] === 0 && (f === 'paused' || f === 'purchased' || f === 'errors')) return null
+          if (!selected && counts[f] === 0 && (f === 'paused' || f === 'purchased' || f === 'errors' || f === 'blocked')) return null
           return (
             <button
               key={f}
