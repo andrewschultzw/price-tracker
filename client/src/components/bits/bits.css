@@ -1,0 +1,11 @@
+/* Vendored-in-spirit from reactbits.dev Border Glow (new) — plain CSS. */
+.bit-border-glow {
+  position: relative;
+  border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border)) !important;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.12);
+  transition: box-shadow 0.3s ease;
+}
+.bit-border-glow:hover { box-shadow: 0 0 22px rgba(16, 185, 129, 0.22); }
+@media (prefers-reduced-motion: reduce) {
+  .bit-border-glow, .bit-border-glow:hover { transition: none; }
+}

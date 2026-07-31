@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Plus, Package } from 'lucide-react'
-import { getTrackers, getTrackerStats, getSettings, getOverlapCounts } from '../api'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Plus, Package, RefreshCw } from 'lucide-react'
+import { getTrackers, getTrackerStats, getSettings, getOverlapCounts, checkTracker } from '../api'
 import type { TrackerStat } from '../api'
 import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
 import CategoryCard from '../components/CategoryCard'
 import StatCards from '../components/StatCards'
 import WelcomeModal from '../components/WelcomeModal'
+import DashboardToolbar from '../components/DashboardToolbar'
 import useTitle from '../useTitle'
-import { buildDashboardLayout } from '../lib/dashboard-sort'
+import { buildDashboardLayout, isErrored } from '../lib/dashboard-sort'
+import { parseFilter, parseSort, filterTrackers, filterCounts, sortTrackers, FILTER_LABELS } from '../lib/dashboard-filter'
 
 export default function Dashboard() {
   const [trackers, setTrackers] = useState<Tracker[]>([])
@@ -17,11 +19,24 @@ export default function Dashboard() {
   const [notificationsConfigured, setNotificationsConfigured] = useState(true)
   const [overlapCounts, setOverlapCounts] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
-  // Purchased trackers are hidden by default — the dashboard is for "what
-  // am I still watching". Users can re-surface them via the toggle to
-  // review past wins or correct a mistaken purchase log.
-  const [showPurchased, setShowPurchased] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [query, setQuery] = useState('')
+  const [checkingAll, setCheckingAll] = useState(false)
+  const [checkAllError, setCheckAllError] = useState<string | null>(null)
   useTitle('Dashboard')
+
+  // Filter/sort mode are URL-driven so a filtered view is shareable/
+  // bookmarkable and survives a page refresh. Search text stays local
+  // component state — it's transient, not something you'd want to link to.
+  const filter = parseFilter(searchParams.get('filter'))
+  const sort = parseSort(searchParams.get('sort'))
+
+  const setParam = (key: 'filter' | 'sort', value: string, defaultValue: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === defaultValue) next.delete(key)
+    else next.set(key, value)
+    setSearchParams(next, { replace: true })
+  }
 
   const load = async () => {
     try {
@@ -41,18 +56,38 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [])
 
+  // Restores the "Check All Now" bulk re-check that lived on the standalone
+  // /errors page before Task 3 folded it into the dashboard filter. Fans
+  // out checkTracker() over every currently-errored tracker in parallel —
+  // the server's PQueue caps real scrape concurrency, so firing them all at
+  // once is safe. allSettled (not all()) so one failed re-check doesn't
+  // abort the rest; every errored tracker gets a fresh attempt regardless.
+  const handleCheckAll = async () => {
+    const erroredTrackers = trackers.filter(isErrored)
+    if (erroredTrackers.length === 0 || checkingAll) return
+    setCheckingAll(true)
+    setCheckAllError(null)
+    try {
+      const results = await Promise.allSettled(erroredTrackers.map(t => checkTracker(t.id)))
+      const failed = results.filter(r => r.status === 'rejected').length
+      if (failed > 0) {
+        setCheckAllError(`${failed} tracker${failed !== 1 ? 's' : ''} failed to refresh. Reloading anyway.`)
+      }
+      await load()
+    } finally {
+      setCheckingAll(false)
+    }
+  }
+
   // Hooks must run on every render in the same order — keep these above
   // the loading/empty early returns. Both derivations are cheap (single
   // pass over the trackers array) so the wasted work on the loading
   // render is negligible compared with the bug a hooks-order mismatch
   // causes: React unmounts the whole tree and you get a blank page.
-  const purchasedCount = useMemo(
-    () => trackers.filter(t => t.status === 'purchased').length,
-    [trackers],
-  )
+  const counts = useMemo(() => filterCounts(trackers), [trackers])
   const visibleTrackers = useMemo(
-    () => (showPurchased ? trackers : trackers.filter(t => t.status !== 'purchased')),
-    [trackers, showPurchased],
+    () => sortTrackers(filterTrackers(trackers, filter, query), sort),
+    [trackers, filter, query, sort],
   )
 
   if (loading) {
@@ -79,7 +114,19 @@ export default function Dashboard() {
     )
   }
 
-  const { items, totalErrored, totalActive } = buildDashboardLayout(visibleTrackers)
+  // Header counts describe the whole (non-purchased) collection, not the
+  // currently narrowed view — a chip that filters the grid down to "Errors"
+  // shouldn't also make the "X active" summary above it read as 0.
+  const { totalErrored, totalActive } = buildDashboardLayout(trackers.filter(t => t.status !== 'purchased'))
+
+  // "Smart" sort keeps the categorized/bucketed layout (errors first, then
+  // below-target, then active, then paused, with same-domain overflow
+  // collapsed into CategoryCards). Any explicit sort (price/recent/alpha)
+  // overrides that grouping — the user asked for one specific order, so we
+  // render a flat list instead of re-bucketing on top of it.
+  const items = sort === 'smart'
+    ? buildDashboardLayout(visibleTrackers).items
+    : visibleTrackers.map(tracker => ({ kind: 'tracker' as const, tracker }))
 
   return (
     <div>
@@ -93,16 +140,6 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {purchasedCount > 0 && (
-            <label className="flex items-center gap-2 text-sm text-text-muted cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showPurchased}
-                onChange={e => setShowPurchased(e.target.checked)}
-              />
-              Show purchased ({purchasedCount})
-            </label>
-          )}
           <Link
             to="/add"
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors no-underline"
@@ -113,30 +150,65 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <StatCards trackers={trackers} />
+      <DashboardToolbar
+        filter={filter}
+        counts={counts}
+        sort={sort}
+        query={query}
+        onQueryChange={setQuery}
+        onFilterChange={f => setParam('filter', f, 'all')}
+        onSortChange={s => setParam('sort', s, 'smart')}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map(item =>
-          item.kind === 'tracker' ? (
-            <TrackerCard
-              key={`t-${item.tracker.id}`}
-              tracker={item.tracker}
-              sparklineData={stats[item.tracker.id]?.sparkline || []}
-              minPrice={stats[item.tracker.id]?.min_price ?? null}
-              onUpdate={load}
-              notificationsConfigured={notificationsConfigured}
-              overlapCount={overlapCounts[item.tracker.id] ?? 0}
-              isPurchased={item.tracker.status === 'purchased'}
-            />
-          ) : (
-            <CategoryCard
-              key={`c-${item.hostname}`}
-              hostname={item.hostname}
-              trackers={item.trackers}
-            />
-          ),
-        )}
-      </div>
+      {filter === 'errors' && counts.errors > 0 && (
+        <div className="flex justify-end mb-4">
+          <button
+            type="button"
+            onClick={handleCheckAll}
+            disabled={checkingAll}
+            className="flex items-center justify-center gap-2 px-4 py-2 border border-primary text-primary hover:bg-primary/10 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${checkingAll ? 'animate-spin' : ''}`} />
+            {checkingAll ? `Checking ${counts.errors}...` : 'Check All Now'}
+          </button>
+        </div>
+      )}
+
+      {checkAllError && (
+        <div className="mb-4 text-sm text-danger bg-danger/10 rounded-lg px-3 py-2">{checkAllError}</div>
+      )}
+
+      <StatCards trackers={trackers} counts={counts} onSelectFilter={f => setParam('filter', f, 'all')} />
+
+      {items.length === 0 ? (
+        <div className="flex items-center justify-center h-40 text-text-muted text-sm">
+          No trackers match this filter — {FILTER_LABELS[filter]}.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map(item =>
+            item.kind === 'tracker' ? (
+              <TrackerCard
+                key={`t-${item.tracker.id}`}
+                tracker={item.tracker}
+                sparklineData={stats[item.tracker.id]?.sparkline || []}
+                minPrice={stats[item.tracker.id]?.min_price ?? null}
+                onUpdate={load}
+                notificationsConfigured={notificationsConfigured}
+                overlapCount={overlapCounts[item.tracker.id] ?? 0}
+                isPurchased={item.tracker.status === 'purchased'}
+                glow={!!(item.tracker.threshold_price && item.tracker.last_price && item.tracker.last_price <= item.tracker.threshold_price)}
+              />
+            ) : (
+              <CategoryCard
+                key={`c-${item.hostname}`}
+                hostname={item.hostname}
+                trackers={item.trackers}
+              />
+            ),
+          )}
+        </div>
+      )}
     </div>
   )
 }

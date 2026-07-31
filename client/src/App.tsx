@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
 import { BarChart3, Plus, Settings as SettingsIcon, Shield, LogOut, Menu, X, Inbox, Package, TrendingUp, ShoppingBag } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
+import NotificationBell from './components/NotificationBell'
+import UserMenu from './components/UserMenu'
 
 // Dashboard is the landing page — loaded eagerly so first paint is
 // as fast as possible and the hero content doesn't briefly flash a
@@ -38,9 +40,6 @@ const WishlistPublic = lazy(() => import('./pages/WishlistPublic'))
 const AddTracker = lazy(() => import('./pages/AddTracker'))
 const TrackerDetail = lazy(() => import('./pages/TrackerDetail'))
 const Category = lazy(() => import('./pages/Category'))
-const BelowTarget = lazy(() => import('./pages/BelowTarget'))
-const Errors = lazy(() => import('./pages/Errors'))
-const Active = lazy(() => import('./pages/Active'))
 const Notifications = lazy(() => import('./pages/Notifications'))
 const SettingsPage = lazy(() => import('./pages/Settings'))
 const Admin = lazy(() => import('./pages/Admin'))
@@ -117,25 +116,17 @@ function App() {
           {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-2">
             {navLink('/', 'Dashboard', <BarChart3 className="w-4 h-4" />)}
-            {navLink('/add', 'Add Tracker', <Plus className="w-4 h-4" />)}
             {navLink('/deals', 'Deals', <TrendingUp className="w-4 h-4" />)}
-            {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
             {navLink('/projects', 'Projects', <Package className="w-4 h-4" />)}
-            {navLink('/purchased', 'Purchased', <ShoppingBag className="w-4 h-4" />)}
-            {navLink('/settings', 'Settings', <SettingsIcon className="w-4 h-4" />)}
-            {user?.role === 'admin' && navLink('/admin', 'Admin', <Shield className="w-4 h-4" />)}
-            {user && (
-              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border">
-                <span className="text-sm text-text-muted">{user.display_name}</span>
-                <button
-                  onClick={logout}
-                  className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-                  title="Logout"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+            <Link
+              to="/add"
+              className="flex items-center gap-2 px-4 py-2 ml-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors no-underline"
+            >
+              <Plus className="w-4 h-4" />
+              Add Tracker
+            </Link>
+            <NotificationBell />
+            <UserMenu />
           </div>
 
           {/* Mobile hamburger toggle */}
@@ -154,13 +145,17 @@ function App() {
           <div className="md:hidden border-t border-border bg-surface">
             <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-1">
               {navLink('/', 'Dashboard', <BarChart3 className="w-4 h-4" />)}
-              {navLink('/add', 'Add Tracker', <Plus className="w-4 h-4" />)}
               {navLink('/deals', 'Deals', <TrendingUp className="w-4 h-4" />)}
-              {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
               {navLink('/projects', 'Projects', <Package className="w-4 h-4" />)}
+              {navLink('/add', 'Add Tracker', <Plus className="w-4 h-4" />)}
+
+              <div className="my-2 border-t border-border" />
+
+              {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
               {navLink('/purchased', 'Purchased', <ShoppingBag className="w-4 h-4" />)}
               {navLink('/settings', 'Settings', <SettingsIcon className="w-4 h-4" />)}
               {user?.role === 'admin' && navLink('/admin', 'Admin', <Shield className="w-4 h-4" />)}
+
               {user && (
                 <div className="flex items-center justify-between mt-2 pt-3 border-t border-border">
                   <span className="text-sm text-text-muted px-4">{user.display_name}</span>
@@ -185,9 +180,9 @@ function App() {
             <Route path="/share" element={<ProtectedRoute><Share /></ProtectedRoute>} />
             <Route path="/tracker/:id" element={<ProtectedRoute><TrackerDetail /></ProtectedRoute>} />
             <Route path="/category/:domain" element={<ProtectedRoute><Category /></ProtectedRoute>} />
-            <Route path="/below-target" element={<ProtectedRoute><BelowTarget /></ProtectedRoute>} />
-            <Route path="/errors" element={<ProtectedRoute><Errors /></ProtectedRoute>} />
-            <Route path="/active" element={<ProtectedRoute><Active /></ProtectedRoute>} />
+            <Route path="/below-target" element={<Navigate to="/?filter=below-target" replace />} />
+            <Route path="/errors" element={<Navigate to="/?filter=errors" replace />} />
+            <Route path="/active" element={<Navigate to="/?filter=active" replace />} />
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
             <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />

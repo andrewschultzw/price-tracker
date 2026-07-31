@@ -9,6 +9,13 @@ export default defineConfig({
       '/api': 'http://localhost:3100',
     },
   },
+  preview: {
+    host: true,
+    allowedHosts: ['preview.schultzsolutions.tech'],
+    proxy: {
+      '/api': 'http://192.168.1.166:3100',
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
