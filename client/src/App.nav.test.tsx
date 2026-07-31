@@ -57,6 +57,7 @@ function mockAuthedHappyPath() {
   vi.mocked(api.getOverlapCounts).mockResolvedValue({});
   vi.mocked(api.getPublicSavings).mockResolvedValue(emptySavings);
   vi.mocked(api.getNotificationHistory).mockResolvedValue([]);
+  vi.mocked(api.getUnreadNotificationCount).mockResolvedValue({ count: 0 });
 }
 
 function renderApp() {

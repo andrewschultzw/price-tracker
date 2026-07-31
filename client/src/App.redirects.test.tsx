@@ -73,6 +73,7 @@ function mockAuthedHappyPath() {
   // NotificationBell (Task 6) fetches notification history on mount to
   // compute its unread badge.
   vi.mocked(api.getNotificationHistory).mockResolvedValue([]);
+  vi.mocked(api.getUnreadNotificationCount).mockResolvedValue({ count: 0 });
 }
 
 function renderAt(initialEntry: string) {

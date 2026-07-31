@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bell, MessageSquare, Webhook, HelpCircle, Inbox } from 'lucide-react'
-import { getNotificationHistory, type NotificationHistoryRow } from '../api'
+import { getNotificationHistory, markNotificationsRead, type NotificationHistoryRow } from '../api'
+import { NOTIFICATIONS_READ_EVENT } from '../useNotificationCount'
 import useTitle from '../useTitle'
 
 function formatDateTime(s: string): string {
@@ -52,6 +53,12 @@ export default function NotificationsPage() {
       .then(setRows)
       .catch(err => console.error('Failed to load notifications', err))
       .finally(() => setLoading(false))
+    // Reading the page IS reading the notifications: bulk mark-read, then
+    // tell any mounted badge (bell, drawer) to refetch its count now instead
+    // of waiting for the next route change.
+    markNotificationsRead()
+      .then(() => window.dispatchEvent(new Event(NOTIFICATIONS_READ_EVENT)))
+      .catch(err => console.error('Failed to mark notifications read', err))
   }, [])
 
   if (loading) {
