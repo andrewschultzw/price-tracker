@@ -10,7 +10,7 @@ import StatCards from '../components/StatCards'
 import WelcomeModal from '../components/WelcomeModal'
 import DashboardToolbar from '../components/DashboardToolbar'
 import useTitle from '../useTitle'
-import { buildDashboardLayout, isErrored } from '../lib/dashboard-sort'
+import { buildDashboardLayout, isErrored, isBelowTarget } from '../lib/dashboard-sort'
 import { parseFilter, parseSort, filterTrackers, filterCounts, sortTrackers, FILTER_LABELS } from '../lib/dashboard-filter'
 
 export default function Dashboard() {
@@ -23,13 +23,13 @@ export default function Dashboard() {
   const [query, setQuery] = useState('')
   const [checkingAll, setCheckingAll] = useState(false)
   const [checkAllError, setCheckAllError] = useState<string | null>(null)
-  useTitle('Dashboard')
 
   // Filter/sort mode are URL-driven so a filtered view is shareable/
   // bookmarkable and survives a page refresh. Search text stays local
   // component state — it's transient, not something you'd want to link to.
   const filter = parseFilter(searchParams.get('filter'))
   const sort = parseSort(searchParams.get('sort'))
+  useTitle(filter === 'all' ? 'Dashboard' : `Dashboard — ${FILTER_LABELS[filter]}`)
 
   const setParam = (key: 'filter' | 'sort', value: string, defaultValue: string) => {
     const next = new URLSearchParams(searchParams)
@@ -197,7 +197,7 @@ export default function Dashboard() {
                 notificationsConfigured={notificationsConfigured}
                 overlapCount={overlapCounts[item.tracker.id] ?? 0}
                 isPurchased={item.tracker.status === 'purchased'}
-                glow={!!(item.tracker.threshold_price && item.tracker.last_price && item.tracker.last_price <= item.tracker.threshold_price)}
+                glow={isBelowTarget(item.tracker)}
               />
             ) : (
               <CategoryCard

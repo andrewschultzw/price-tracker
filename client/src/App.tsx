@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
 import NotificationBell from './components/NotificationBell'
 import UserMenu from './components/UserMenu'
+import useNotificationCount from './useNotificationCount'
 
 // Dashboard is the landing page — loaded eagerly so first paint is
 // as fast as possible and the hero content doesn't briefly flash a
@@ -53,6 +54,31 @@ const Buy = lazy(() => import('./pages/Buy'))
 // style the pages themselves use so the transition is visually smooth.
 function RouteFallback() {
   return <div className="flex items-center justify-center h-64 text-text-muted">Loading...</div>
+}
+
+// The drawer's Notifications entry — a component (not a navLink call) so the
+// notification-count hook only runs while the drawer is actually open, and
+// never on the public pages where the authed history endpoint would 401.
+// Mirrors NotificationBell's badge, same 9+ cap.
+function DrawerNotificationsLink() {
+  const location = useLocation()
+  const count = useNotificationCount()
+  const active = location.pathname === '/notifications'
+  return (
+    <Link
+      to="/notifications"
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors
+        ${active ? 'bg-primary text-white' : 'text-text-muted hover:text-text hover:bg-surface-hover'}`}
+    >
+      <Inbox className="w-4 h-4" />
+      Notifications
+      {count > 0 && (
+        <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
+          {count > 9 ? '9+' : count}
+        </span>
+      )}
+    </Link>
+  )
 }
 
 function App() {
@@ -151,7 +177,7 @@ function App() {
 
               <div className="my-2 border-t border-border" />
 
-              {navLink('/notifications', 'Notifications', <Inbox className="w-4 h-4" />)}
+              <DrawerNotificationsLink />
               {navLink('/purchased', 'Purchased', <ShoppingBag className="w-4 h-4" />)}
               {navLink('/settings', 'Settings', <SettingsIcon className="w-4 h-4" />)}
               {user?.role === 'admin' && navLink('/admin', 'Admin', <Shield className="w-4 h-4" />)}
