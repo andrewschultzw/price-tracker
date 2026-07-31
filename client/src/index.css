@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import './components/bits/bits.css';
 
 @theme {
   --color-bg: #0f172a;
