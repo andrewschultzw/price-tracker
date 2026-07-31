@@ -2,6 +2,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { randomBytes } from 'crypto';
 
+// Stub the cron registration entirely: these tests exercise the boot-time
+// recovery path only, but the real `* * * * *` tick raced them — a test that
+// started within its ~50ms drain window of a wall-clock minute boundary got a
+// second scrape enqueued by the tick and failed on toHaveBeenCalledTimes(1)
+// (seen on CI 2026-07-31). With schedule() stubbed the tick can never fire.
+vi.mock('node-cron', () => ({
+  default: { schedule: vi.fn(() => ({ stop: vi.fn() })) },
+}));
 vi.mock('../scraper/extractor.js', () => ({
   extractPrice: vi.fn().mockResolvedValue({
     price: 600, currency: 'USD', strategy: 'css-patterns', finalUrl: 'https://example.com/item',
