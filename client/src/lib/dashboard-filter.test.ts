@@ -35,6 +35,11 @@ describe('parseFilter', () => {
   it('falls back to all on junk', () => expect(parseFilter('bogus')).toBe('all'))
 })
 
+describe('parseSort', () => {
+  it('passes through valid sort modes', () => expect(parseSort('price')).toBe('price'))
+  it('falls back to smart on junk', () => expect(parseSort('bogus')).toBe('smart'))
+})
+
 describe('filterTrackers', () => {
   it('all hides purchased', () =>
     expect(filterTrackers(fixture, 'all', '').map(x => x.id)).toEqual([1, 2, 3, 4]))

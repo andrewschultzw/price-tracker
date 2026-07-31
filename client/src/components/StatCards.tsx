@@ -1,7 +1,6 @@
 import { lazy, Suspense, useState, useCallback, useRef } from 'react'
 import { Activity, TrendingDown, AlertCircle, DollarSign } from 'lucide-react'
 import type { Tracker } from '../types'
-import { isErrored } from '../lib/dashboard-sort'
 import { getTier, pickSaying, type SavingsTier } from '../lib/savings-tiers'
 import type { DashboardFilter } from '../lib/dashboard-filter'
 import CountUp from './bits/CountUp'
@@ -13,17 +12,21 @@ const SavingsCelebration = lazy(() => import('./SavingsCelebration'))
 
 interface Props {
   trackers: Tracker[]
+  // Same Record the toolbar chips render their badges from (Dashboard
+  // computes it once via filterCounts() and passes it to both). Active /
+  // Below Target / Errors MUST read from here rather than recomputing
+  // their own predicate — a card and its matching chip disagreeing on the
+  // count (e.g. Active counting a status-active-but-errored tracker that
+  // the chip excludes) reads as a bug even though each number is
+  // individually "correct" for its own private definition.
+  counts: Record<DashboardFilter, number>
   onSelectFilter: (f: DashboardFilter) => void
 }
 
-export default function StatCards({ trackers, onSelectFilter }: Props) {
-  const active = trackers.filter(t => t.status === 'active').length
-  // Use the shared isErrored() helper so the count here stays in lockstep
-  // with the /errors page and the dashboard sort's errored bucket.
-  const errors = trackers.filter(isErrored).length
-  const belowThreshold = trackers.filter(
-    t => t.threshold_price && t.last_price && t.last_price <= t.threshold_price
-  ).length
+export default function StatCards({ trackers, counts, onSelectFilter }: Props) {
+  const active = counts.active
+  const errors = counts.errors
+  const belowThreshold = counts['below-target']
   const trackersWithSavings = trackers.filter(
     t => t.threshold_price && t.last_price && t.last_price < t.threshold_price
   )

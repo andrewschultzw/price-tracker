@@ -7,6 +7,13 @@ export type DashboardSortMode = 'smart' | 'price' | 'recent' | 'alpha'
 const FILTERS: DashboardFilter[] = ['all', 'active', 'below-target', 'errors', 'paused', 'purchased']
 const SORTS: DashboardSortMode[] = ['smart', 'price', 'recent', 'alpha']
 
+// Shared human-readable labels — used by both the toolbar chips and the
+// Dashboard empty state, so a filter name only has one spelling in the UI.
+export const FILTER_LABELS: Record<DashboardFilter, string> = {
+  all: 'All', active: 'Active', 'below-target': 'Below target',
+  errors: 'Errors', paused: 'Paused', purchased: 'Purchased',
+}
+
 export function parseFilter(raw: string | null): DashboardFilter {
   return FILTERS.includes(raw as DashboardFilter) ? (raw as DashboardFilter) : 'all'
 }

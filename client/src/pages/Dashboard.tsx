@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Plus, Package } from 'lucide-react'
-import { getTrackers, getTrackerStats, getSettings, getOverlapCounts } from '../api'
+import { Plus, Package, RefreshCw } from 'lucide-react'
+import { getTrackers, getTrackerStats, getSettings, getOverlapCounts, checkTracker } from '../api'
 import type { TrackerStat } from '../api'
 import type { Tracker } from '../types'
 import TrackerCard from '../components/TrackerCard'
@@ -10,8 +10,8 @@ import StatCards from '../components/StatCards'
 import WelcomeModal from '../components/WelcomeModal'
 import DashboardToolbar from '../components/DashboardToolbar'
 import useTitle from '../useTitle'
-import { buildDashboardLayout } from '../lib/dashboard-sort'
-import { parseFilter, parseSort, filterTrackers, filterCounts, sortTrackers } from '../lib/dashboard-filter'
+import { buildDashboardLayout, isErrored } from '../lib/dashboard-sort'
+import { parseFilter, parseSort, filterTrackers, filterCounts, sortTrackers, FILTER_LABELS } from '../lib/dashboard-filter'
 
 export default function Dashboard() {
   const [trackers, setTrackers] = useState<Tracker[]>([])
@@ -21,6 +21,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState('')
+  const [checkingAll, setCheckingAll] = useState(false)
+  const [checkAllError, setCheckAllError] = useState<string | null>(null)
   useTitle('Dashboard')
 
   // Filter/sort mode are URL-driven so a filtered view is shareable/
@@ -53,6 +55,29 @@ export default function Dashboard() {
   }
 
   useEffect(() => { load() }, [])
+
+  // Restores the "Check All Now" bulk re-check that lived on the standalone
+  // /errors page before Task 3 folded it into the dashboard filter. Fans
+  // out checkTracker() over every currently-errored tracker in parallel —
+  // the server's PQueue caps real scrape concurrency, so firing them all at
+  // once is safe. allSettled (not all()) so one failed re-check doesn't
+  // abort the rest; every errored tracker gets a fresh attempt regardless.
+  const handleCheckAll = async () => {
+    const erroredTrackers = trackers.filter(isErrored)
+    if (erroredTrackers.length === 0 || checkingAll) return
+    setCheckingAll(true)
+    setCheckAllError(null)
+    try {
+      const results = await Promise.allSettled(erroredTrackers.map(t => checkTracker(t.id)))
+      const failed = results.filter(r => r.status === 'rejected').length
+      if (failed > 0) {
+        setCheckAllError(`${failed} tracker${failed !== 1 ? 's' : ''} failed to refresh. Reloading anyway.`)
+      }
+      await load()
+    } finally {
+      setCheckingAll(false)
+    }
+  }
 
   // Hooks must run on every render in the same order — keep these above
   // the loading/empty early returns. Both derivations are cheap (single
@@ -135,31 +160,55 @@ export default function Dashboard() {
         onSortChange={s => setParam('sort', s, 'smart')}
       />
 
-      <StatCards trackers={trackers} onSelectFilter={f => setParam('filter', f, 'all')} />
+      {filter === 'errors' && counts.errors > 0 && (
+        <div className="flex justify-end mb-4">
+          <button
+            type="button"
+            onClick={handleCheckAll}
+            disabled={checkingAll}
+            className="flex items-center justify-center gap-2 px-4 py-2 border border-primary text-primary hover:bg-primary/10 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${checkingAll ? 'animate-spin' : ''}`} />
+            {checkingAll ? `Checking ${counts.errors}...` : 'Check All Now'}
+          </button>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map(item =>
-          item.kind === 'tracker' ? (
-            <TrackerCard
-              key={`t-${item.tracker.id}`}
-              tracker={item.tracker}
-              sparklineData={stats[item.tracker.id]?.sparkline || []}
-              minPrice={stats[item.tracker.id]?.min_price ?? null}
-              onUpdate={load}
-              notificationsConfigured={notificationsConfigured}
-              overlapCount={overlapCounts[item.tracker.id] ?? 0}
-              isPurchased={item.tracker.status === 'purchased'}
-              glow={!!(item.tracker.threshold_price && item.tracker.last_price && item.tracker.last_price <= item.tracker.threshold_price)}
-            />
-          ) : (
-            <CategoryCard
-              key={`c-${item.hostname}`}
-              hostname={item.hostname}
-              trackers={item.trackers}
-            />
-          ),
-        )}
-      </div>
+      {checkAllError && (
+        <div className="mb-4 text-sm text-danger bg-danger/10 rounded-lg px-3 py-2">{checkAllError}</div>
+      )}
+
+      <StatCards trackers={trackers} counts={counts} onSelectFilter={f => setParam('filter', f, 'all')} />
+
+      {items.length === 0 ? (
+        <div className="flex items-center justify-center h-40 text-text-muted text-sm">
+          No trackers match this filter — {FILTER_LABELS[filter]}.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map(item =>
+            item.kind === 'tracker' ? (
+              <TrackerCard
+                key={`t-${item.tracker.id}`}
+                tracker={item.tracker}
+                sparklineData={stats[item.tracker.id]?.sparkline || []}
+                minPrice={stats[item.tracker.id]?.min_price ?? null}
+                onUpdate={load}
+                notificationsConfigured={notificationsConfigured}
+                overlapCount={overlapCounts[item.tracker.id] ?? 0}
+                isPurchased={item.tracker.status === 'purchased'}
+                glow={!!(item.tracker.threshold_price && item.tracker.last_price && item.tracker.last_price <= item.tracker.threshold_price)}
+              />
+            ) : (
+              <CategoryCard
+                key={`c-${item.hostname}`}
+                hostname={item.hostname}
+                trackers={item.trackers}
+              />
+            ),
+          )}
+        </div>
+      )}
     </div>
   )
 }

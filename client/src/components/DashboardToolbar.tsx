@@ -1,10 +1,7 @@
 import { Search } from 'lucide-react'
-import type { DashboardFilter, DashboardSortMode } from '../lib/dashboard-filter'
+import { FILTER_LABELS, type DashboardFilter, type DashboardSortMode } from '../lib/dashboard-filter'
 
-const CHIP_LABELS: Record<DashboardFilter, string> = {
-  all: 'All', active: 'Active', 'below-target': 'Below target',
-  errors: 'Errors', paused: 'Paused', purchased: 'Purchased',
-}
+const CHIP_LABELS = FILTER_LABELS
 const CHIP_ORDER: DashboardFilter[] = ['all', 'active', 'below-target', 'errors', 'paused', 'purchased']
 const SORT_LABELS: Record<DashboardSortMode, string> = {
   smart: 'Smart', price: 'Price', recent: 'Recently checked', alpha: 'A–Z',
@@ -36,10 +33,14 @@ export default function DashboardToolbar({ filter, counts, sort, query, onQueryC
       </div>
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by status">
         {CHIP_ORDER.map(f => {
-          // Hide empty niche chips (paused/purchased/errors with 0) to avoid clutter;
-          // All / Active / Below target always show.
-          if (counts[f] === 0 && (f === 'paused' || f === 'purchased' || f === 'errors')) return null
           const selected = filter === f
+          // Hide empty niche chips (paused/purchased/errors with 0) to avoid clutter;
+          // All / Active / Below target always show. The *selected* chip is
+          // never hidden, even at count 0 — a URL like ?filter=errors with
+          // zero errored trackers must still show the selected chip so the
+          // (now-empty) grid has a visible, deselectable filter state
+          // instead of silently vanishing.
+          if (!selected && counts[f] === 0 && (f === 'paused' || f === 'purchased' || f === 'errors')) return null
           return (
             <button
               key={f}

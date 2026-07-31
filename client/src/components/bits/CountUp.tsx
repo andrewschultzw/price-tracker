@@ -18,6 +18,12 @@ export default function CountUp({ value, prefix = '', decimals = 0, durationMs =
   const frame = useRef<number | null>(null)
 
   useEffect(() => {
+    // Synchronous setState-in-effect: reduced-motion needs the final value
+    // to appear on the very next paint (no rAF tick to carry it), and this
+    // is a one-shot correction gated on a media-query check rather than a
+    // loop, so it can't cascade. Same accepted-debt pattern UserMenu.tsx
+    // documents for its route-change close effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (prefersReducedMotion()) { setDisplay(value); return }
     const start = performance.now()
     const from = 0

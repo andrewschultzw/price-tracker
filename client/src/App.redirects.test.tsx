@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import * as api from './api';
+import type { Tracker, User, SavingsSummary } from './types';
 
 vi.mock('./api');
 
@@ -12,11 +13,11 @@ vi.mock('./api');
 // routes should now redirect straight to the dashboard with the equivalent
 // `?filter=` param set — no separate page, no separate chunk.
 
-const authedUser = {
+const authedUser: User = {
   id: 1,
   email: 'andrew@example.com',
   display_name: 'Andrew',
-  role: 'user' as const,
+  role: 'user',
   is_active: 1,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -34,32 +35,41 @@ function LocationProbe() {
 // Dashboard renders its "no trackers yet" empty state (h2, no h1) when the
 // tracker list is empty, so the redirect assertions need at least one
 // tracker to reach the real "Dashboard" h1 heading.
-const baseTracker = {
+const baseTracker: Tracker = {
   id: 1,
-  user_id: 1,
   name: 'Widget',
   url: 'https://example.com/widget',
+  normalized_url: null,
+  threshold_price: null,
+  check_interval_minutes: 60,
+  css_selector: null,
   last_price: 50,
   last_checked_at: '2026-05-20T00:00:00Z',
   last_error: null,
   consecutive_failures: 0,
   status: 'active',
-  threshold_price: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
   errored_seller_count: 0,
 };
 
+const emptySavings: SavingsSummary = {
+  total_saved: 0,
+  purchase_count: 0,
+  since: null,
+  monthly: [],
+};
+
 function mockAuthedHappyPath() {
   vi.mocked(api.getSetupStatus).mockResolvedValue({ needsSetup: false, hasSetupToken: false });
-  vi.mocked(api.getMe).mockResolvedValue(authedUser as any);
-  vi.mocked(api.getTrackers).mockResolvedValue([baseTracker] as any);
+  vi.mocked(api.getMe).mockResolvedValue(authedUser);
+  vi.mocked(api.getTrackers).mockResolvedValue([baseTracker]);
   vi.mocked(api.getTrackerStats).mockResolvedValue({});
-  vi.mocked(api.getSettings).mockResolvedValue({} as any);
+  vi.mocked(api.getSettings).mockResolvedValue({});
   vi.mocked(api.getOverlapCounts).mockResolvedValue({});
   // AffiliateDisclosure renders unconditionally at the bottom of the
   // authenticated shell and fires this on mount.
-  vi.mocked(api.getPublicSavings).mockResolvedValue({} as any);
+  vi.mocked(api.getPublicSavings).mockResolvedValue(emptySavings);
   // NotificationBell (Task 6) fetches notification history on mount to
   // compute its unread badge.
   vi.mocked(api.getNotificationHistory).mockResolvedValue([]);

@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import * as api from '../api';
+import type { Tracker } from '../types';
 
 vi.mock('../api');
 
@@ -55,12 +56,31 @@ const purchasedTracker = {
   url: 'https://wayfair.com/chair',
   status: 'purchased',
 };
+// status stays 'active' but one seller is currently erroring — isErrored()
+// is true (errored_seller_count > 0) even though status !== 'error'. This
+// is exactly the case where the old StatCards computation (status ===
+// 'active') and the chip computation (status === 'active' && !isErrored)
+// diverged: the card would count this tracker as Active, the chip would not.
+const activeButErroredTracker = {
+  ...baseTracker,
+  id: 6,
+  name: 'Flaky Monitor',
+  url: 'https://acme.com/monitor',
+  status: 'active',
+  errored_seller_count: 1,
+};
 
 function mockHappyPath(trackers: any[]) {
   vi.mocked(api.getTrackers).mockResolvedValue(trackers as any);
   vi.mocked(api.getTrackerStats).mockResolvedValue({});
   vi.mocked(api.getSettings).mockResolvedValue({} as any);
   vi.mocked(api.getOverlapCounts).mockResolvedValue({});
+  // checkTracker's response body isn't asserted on by any test — only that
+  // it was called and that the promise resolves — so a cast is fine here.
+  // `as unknown as Tracker` (not `as any`) keeps this from adding to the
+  // file's pre-existing any-cast debt (tracked separately, out of scope
+  // for this fix).
+  vi.mocked(api.checkTracker).mockResolvedValue(baseTracker as unknown as Tracker);
 }
 
 // Exposes the router's current location as text so URL-sync assertions can
@@ -232,6 +252,86 @@ describe('Dashboard', () => {
 
       const ssdCard = screen.getByText('SSD 1TB').closest('a');
       expect(ssdCard).toHaveClass('bit-border-glow');
+    });
+
+    // Finding 1: a URL like ?filter=errors with zero errored trackers used
+    // to hide the Errors chip entirely (it's a "niche, hide at 0" chip) and
+    // leave the grid empty with no explanation — the selected filter
+    // effectively vanished with no trace of why the page looked broken.
+    it('keeps the selected chip visible at count 0 and shows an empty state instead of a blank grid', async () => {
+      renderAt('/?filter=errors', [baseTracker]);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      const errorsChip = within(toolbarGroup()).getByRole('button', { name: /errors/i });
+      expect(errorsChip).toBeInTheDocument();
+      expect(errorsChip).toHaveTextContent('0');
+      expect(errorsChip).toHaveAttribute('aria-pressed', 'true');
+
+      expect(screen.getByText(/no trackers match this filter/i)).toBeInTheDocument();
+      expect(screen.queryByText('Widget')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('stat card / chip count lockstep', () => {
+    const toolbarGroup = () => screen.getByRole('group', { name: /filter by status/i });
+
+    // Finding 2: StatCards used to compute its own active/errors counts
+    // (e.g. Active = status === 'active', full stop) that diverged from the
+    // chip counts (Active excludes errored). A tracker that's status
+    // 'active' but has an errored seller exposed exactly that split.
+    it('Active card count matches the Active chip badge for a status-active-but-errored tracker', async () => {
+      renderAt('/', [activeButErroredTracker]);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      const activeChip = within(toolbarGroup()).getByRole('button', { name: /^active/i });
+      // The chip excludes the errored tracker, so its badge count is 0.
+      expect(activeChip).toHaveTextContent('0');
+
+      const statCardsGrid = document.querySelector('.stat-cards-grid') as HTMLElement;
+      const activeCard = within(statCardsGrid).getByText('Active').parentElement!.parentElement!;
+      expect(activeCard).toHaveTextContent('0');
+    });
+  });
+
+  describe('Check All Now (errors filter)', () => {
+    const toolbarGroup = () => screen.getByRole('group', { name: /filter by status/i });
+
+    it('is not rendered outside the errors filter', async () => {
+      renderAt('/', [erroredTracker]);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      expect(screen.queryByRole('button', { name: /check all now/i })).not.toBeInTheDocument();
+    });
+
+    it('is not rendered under the errors filter when there are no errored trackers', async () => {
+      renderAt('/?filter=errors', [baseTracker]);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      expect(screen.queryByRole('button', { name: /check all now/i })).not.toBeInTheDocument();
+    });
+
+    it('fans out checkTracker over every errored tracker and reloads data on click', async () => {
+      const secondErrored = { ...erroredTracker, id: 7, name: 'Second Broken Thing' };
+      renderAt('/?filter=errors', [erroredTracker, secondErrored]);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      within(toolbarGroup()).getByRole('button', { name: /errors/i }); // sanity: chip present
+
+      // vi.mock's call history isn't reset between tests in this file (only
+      // implementations are restored), so assert the reload as an increment
+      // off a captured baseline rather than an absolute count.
+      const getTrackersCallsBefore = vi.mocked(api.getTrackers).mock.calls.length
+
+      const button = screen.getByRole('button', { name: /check all now/i });
+      fireEvent.click(button);
+
+      await waitFor(() => expect(api.checkTracker).toHaveBeenCalledTimes(2));
+      expect(api.checkTracker).toHaveBeenCalledWith(erroredTracker.id);
+      expect(api.checkTracker).toHaveBeenCalledWith(secondErrored.id);
+
+      // Data reload fires once at the end of the check-all fan-out.
+      await waitFor(() =>
+        expect(vi.mocked(api.getTrackers).mock.calls.length).toBe(getTrackersCallsBefore + 1));
     });
   });
 });
