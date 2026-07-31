@@ -713,6 +713,19 @@ const migrations: Migration[] = [
         run(`ALTER TABLE tracker_urls ADD COLUMN availability_changed_at TEXT`);
       }
     },
+  },  {
+    version: 22,
+    description: 'Notification read-state: read_at column for the real unread badge',
+    up: () => {
+      const db = getDb();
+      const cols = (db.pragma('table_info(notifications)') as { name: string }[]).map(c => c.name);
+      if (!cols.includes('read_at')) {
+        db.prepare('ALTER TABLE notifications ADD COLUMN read_at TEXT').run();
+        // Rows that predate read-state are treated as already read — otherwise
+        // every user's badge lights up with their whole alert history on upgrade.
+        db.prepare("UPDATE notifications SET read_at = datetime('now')").run();
+      }
+    },
   },
 ];
 

@@ -111,7 +111,10 @@ export function initializeSchema(): void {
       -- deal-intelligence roadmap phases 3/4.
       alert_type TEXT NOT NULL DEFAULT 'threshold'
         CHECK(alert_type IN ('threshold','low_30d','low_90d','low_all_time','back_in_stock','digest')),
-      sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+      sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+      -- Read-state (migration v22). NULL = unread; the badge counts these.
+      -- Set in bulk by POST /api/notifications/mark-read.
+      read_at TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_notifications_tracker_id ON notifications(tracker_id);

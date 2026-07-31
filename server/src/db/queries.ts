@@ -921,6 +921,33 @@ export function getNotificationHistory(
 }
 
 /**
+ * Count of the user's unread notifications (read_at IS NULL). Backs the
+ * bell/drawer badge — a COUNT here beats shipping 200 history rows to the
+ * client just to derive a number.
+ */
+export function getUnreadNotificationCount(userId: number): number {
+  const row = getDb().prepare(`
+    SELECT COUNT(*) AS c
+    FROM notifications n
+    INNER JOIN trackers t ON t.id = n.tracker_id
+    WHERE t.user_id = ? AND n.read_at IS NULL
+  `).get(userId) as { c: number };
+  return row.c;
+}
+
+/**
+ * Mark every unread notification belonging to the user as read. Fired when
+ * the /notifications page loads. Returns how many rows flipped.
+ */
+export function markNotificationsRead(userId: number): number {
+  return getDb().prepare(`
+    UPDATE notifications SET read_at = datetime('now')
+    WHERE read_at IS NULL
+      AND tracker_id IN (SELECT id FROM trackers WHERE user_id = ?)
+  `).run(userId).changes;
+}
+
+/**
  * Most recent notification for a specific (seller, channel) pair. Drives
  * the per-channel cooldown gate in the scheduler — Discord firing does
  * not silence ntfy etc.

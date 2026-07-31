@@ -138,6 +138,8 @@ export interface NotificationHistoryRow {
   threshold_price: number
   sent_at: string
   channel: string | null
+  // Read-state (server migration v22). Null = unread.
+  read_at?: string | null
 }
 export const getNotificationHistory = (trackerId?: number, limit?: number) => {
   const params = new URLSearchParams()
@@ -146,6 +148,12 @@ export const getNotificationHistory = (trackerId?: number, limit?: number) => {
   const qs = params.toString()
   return request<NotificationHistoryRow[]>(`/notifications${qs ? '?' + qs : ''}`)
 }
+// Real unread state (server migration v22): the badge reads a bare count,
+// and opening the notifications page bulk-marks everything read.
+export const getUnreadNotificationCount = () =>
+  request<{ count: number }>('/notifications/unread-count')
+export const markNotificationsRead = () =>
+  request<{ marked: number }>('/notifications/mark-read', { method: 'POST' })
 
 // Seller URLs (tracker_urls)
 import type { TrackerUrl } from './types'
