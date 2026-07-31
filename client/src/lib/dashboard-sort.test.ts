@@ -71,6 +71,25 @@ describe('buildDashboardLayout', () => {
       expect(items[0].kind === 'tracker' && items[0].tracker.id).toBe(2)
       expect(items[1].kind === 'tracker' && items[1].tracker.id).toBe(1)
     })
+
+    it('places a blocked individual tracker in the paused bucket instead of dropping it', () => {
+      // 'blocked' (WAF-blocked retailer, set by the server cron with
+      // consecutive_failures reset — see queries.ts) is a real production
+      // status that isErrored() deliberately does not treat as errored.
+      // Before the fix, buildDashboardLayout's individual bucketing only
+      // recognized status === 'paused' for the fallback bucket, so a
+      // blocked tracker matched none of errored/belowTarget/active/paused
+      // and was silently dropped from `items` on the default dashboard
+      // view — independent of any filter chip.
+      const trackers: Tracker[] = [
+        makeTracker({ id: 1, url: 'https://a.example.com/1', status: 'active' }),
+        makeTracker({ id: 2, url: 'https://b.example.com/1', status: 'blocked' }),
+      ]
+      const { items } = buildDashboardLayout(trackers)
+      const ids = items.filter(i => i.kind === 'tracker').map(i => (i as { tracker: Tracker }).tracker.id)
+      expect(ids).toEqual([1, 2]) // active first, blocked falls into the paused/catch-all bucket
+      expect(items).toHaveLength(2) // not dropped
+    })
   })
 
   describe('category collapse', () => {

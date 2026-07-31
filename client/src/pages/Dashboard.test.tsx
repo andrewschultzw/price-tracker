@@ -146,6 +146,27 @@ describe('Dashboard', () => {
       expect(screen.getByTestId('location-probe')).toHaveTextContent('filter=paused');
     });
 
+    it('defaults delete their URL param instead of writing it', async () => {
+      renderAt('/', allFixtures);
+      await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
+
+      // Non-default filter → param written.
+      fireEvent.click(screen.getByRole('button', { name: /errors/i }));
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('filter=errors');
+
+      // Back to the default filter ('all') → param removed, not set to 'all'.
+      fireEvent.click(screen.getByRole('button', { name: /^all/i }));
+      expect(screen.getByTestId('location-probe')).not.toHaveTextContent('filter=');
+
+      // Same contract for sort: non-default writes, default ('smart') deletes.
+      const sortSelect = screen.getByLabelText(/sort/i);
+      fireEvent.change(sortSelect, { target: { value: 'price' } });
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('sort=price');
+
+      fireEvent.change(sortSelect, { target: { value: 'smart' } });
+      expect(screen.getByTestId('location-probe')).not.toHaveTextContent('sort=');
+    });
+
     it('unknown filter param falls back to All', async () => {
       renderAt('/?filter=bogus', allFixtures);
       await waitFor(() => screen.getByRole('heading', { name: /dashboard/i }));
