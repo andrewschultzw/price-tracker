@@ -1,5 +1,21 @@
 import { resolve } from 'path';
 
+/**
+ * Secure attribute for auth cookies. Defaults to the production flag,
+ * but that conflates "production" with "served over HTTPS": self-hosted
+ * deployments often run NODE_ENV=production on plain HTTP inside a LAN,
+ * and browsers silently reject Secure cookies on http:// — which breaks
+ * login entirely (issue #76). COOKIE_SECURE=false opts those
+ * deployments out; COOKIE_SECURE=true forces it on anywhere else.
+ * Anything on the public internet should stay on HTTPS + the default.
+ */
+export function resolveCookieSecure(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.COOKIE_SECURE !== undefined && env.COOKIE_SECURE !== '') {
+    return env.COOKIE_SECURE !== 'false';
+  }
+  return env.NODE_ENV === 'production';
+}
+
 export const config = {
   port: parseInt(process.env.PORT || '3100', 10),
   databasePath: resolve(process.env.DATABASE_PATH || './data/price-tracker.db'),
@@ -44,6 +60,7 @@ export const config = {
   smtpPass: process.env.SMTP_PASS || '',
   smtpFrom: process.env.SMTP_FROM || '',
   isProduction: process.env.NODE_ENV === 'production',
+  cookieSecure: resolveCookieSecure(),
   // AI Buyer's Assistant (Claude API)
   // NB: AI_ENABLED is read directly from process.env in client.ts, generators.ts,
   // and cron.ts so test env mutations (process.env.AI_ENABLED = 'true' in

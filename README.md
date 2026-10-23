@@ -176,6 +176,7 @@ Open that URL, create your admin account, and you're in.
 | `JWT_SECRET` | **yes (prod)** | dev placeholder | Signs JWT access/refresh tokens. Generate with `openssl rand -hex 64`. Fail-fast in production if unset. |
 | `SETTINGS_ENCRYPTION_KEY` | **yes (prod)** | — | AES-256-GCM key for encrypting webhook URLs and tokens at rest. Accepts either a base64-encoded 32-byte key (preferred, high entropy) or any passphrase (SHA-256'd to 32 bytes). Fail-fast in production if unset. |
 | `NODE_ENV` | — | `development` | Set to `production` to enable fail-fast checks |
+| `COOKIE_SECURE` | — | on in production | Secure attribute on auth cookies. **Set to `false` when serving plain HTTP** (LAN-only deploy without TLS) — browsers reject Secure cookies over http://, which breaks login. Keep the default behind HTTPS. |
 | `SCRAPE_MAX_RETRIES` | — | `2` | Number of retry attempts on transient scrape failures |
 | `SCRAPE_RETRY_BASE_MS` | — | `1000` | Base delay for exponential backoff (doubled each attempt) |
 
@@ -210,7 +211,7 @@ WantedBy=multi-user.target
 
 ### Reverse proxy
 
-Works behind any reverse proxy. The auth flow uses httpOnly cookies so make sure your proxy forwards them correctly. Example Nginx snippet:
+Works behind any reverse proxy. The auth flow uses httpOnly cookies so make sure your proxy forwards them correctly. If clients reach the app over plain HTTP (no TLS anywhere in the chain), set `COOKIE_SECURE=false` or login will silently fail — browsers drop Secure cookies on http://. Example Nginx snippet:
 
 ```nginx
 location / {

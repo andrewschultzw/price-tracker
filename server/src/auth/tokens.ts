@@ -27,13 +27,20 @@ export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export function setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
-  const cookieOptions = {
+// Secure comes from config.cookieSecure (COOKIE_SECURE env override),
+// not isProduction — production deployments on plain LAN HTTP need
+// non-Secure cookies or the browser rejects them (issue #76).
+function baseCookieOptions() {
+  return {
     httpOnly: true,
-    secure: config.isProduction,
+    secure: config.cookieSecure,
     sameSite: 'strict' as const,
     path: '/',
   };
+}
+
+export function setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
+  const cookieOptions = baseCookieOptions();
 
   res.cookie('access_token', accessToken, {
     ...cookieOptions,
@@ -48,12 +55,7 @@ export function setAuthCookies(res: Response, accessToken: string, refreshToken:
 }
 
 export function clearAuthCookies(res: Response): void {
-  const cookieOptions = {
-    httpOnly: true,
-    secure: config.isProduction,
-    sameSite: 'strict' as const,
-    path: '/',
-  };
+  const cookieOptions = baseCookieOptions();
 
   res.clearCookie('access_token', cookieOptions);
   res.clearCookie('refresh_token', { ...cookieOptions, path: '/api/auth' });

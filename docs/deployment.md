@@ -43,6 +43,7 @@ All env vars live in `/opt/price-tracker/.env`. The systemd service loads them v
 | `DATABASE_PATH` | Yes | **Absolute path** to SQLite DB (`/opt/price-tracker/data/price-tracker.db`) |
 | `NODE_ENV` | Yes | `production` in prod |
 | `JWT_SECRET` | Yes (prod) | 64-char hex string for signing JWTs. Generate with `openssl rand -hex 32` |
+| `COOKIE_SECURE` | No | Secure attribute on auth cookies. Defaults to on in production. **Set to `false` when serving plain HTTP** (e.g. LAN-only homelab without TLS) — browsers reject Secure cookies over http:// and login breaks. Keep the default behind HTTPS. |
 | `DISCORD_WEBHOOK_URL` | No | Deprecated — users now configure webhooks per-account in the app |
 
 **Important:** `DATABASE_PATH` must be an absolute path. The systemd service runs with `WorkingDirectory=/opt/price-tracker/server`, so relative paths resolve from there, not the project root.
