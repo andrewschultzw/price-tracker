@@ -175,8 +175,35 @@ describe('cron.ts per-seller cooldown', () => {
       });
       const seller = getDb().prepare('SELECT * FROM tracker_urls WHERE tracker_id = ? AND position = 0').get(tracker.id) as { id: number };
 
-      // Manually insert a notification from 12 hours ago (well past
-      // the 6h default cooldown)
+      // Manually insert a notification from 73 hours ago (just past
+      // the 72h default cooldown)
+      const pastCooldown = new Date(Date.now() - 73 * 60 * 60 * 1000)
+        .toISOString()
+        .replace('T', ' ')
+        .slice(0, 19);
+      getDb().prepare(`
+        INSERT INTO notifications (tracker_id, tracker_url_id, price, threshold_price, channel, sent_at)
+        VALUES (?, ?, 40, 50, 'discord', ?)
+      `).run(tracker.id, seller.id, pastCooldown);
+
+      // Now check — cooldown should NOT apply
+      await checkTrackerUrl(seller.id);
+
+      // A new notification row should have been written
+      expect(countNotifications(tracker.id, seller.id)).toBe(2);
+      expect(vi.mocked(sendDiscordPriceAlert)).toHaveBeenCalledTimes(1);
+    });
+
+    it('default window is 72h: a 12h-old alert still suppresses the same price (old 6h default re-alerted)', async () => {
+      const userId = seedTestUser();
+      setSetting('discord_webhook_url', 'https://discord.com/api/webhooks/fake', userId);
+      const tracker = createTracker({
+        name: 'Default window',
+        url: 'https://amazon.com/dp/A',
+        threshold_price: 50,
+        user_id: userId,
+      });
+      const seller = getDb().prepare('SELECT * FROM tracker_urls WHERE tracker_id = ? AND position = 0').get(tracker.id) as { id: number };
       const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000)
         .toISOString()
         .replace('T', ' ')
@@ -186,12 +213,10 @@ describe('cron.ts per-seller cooldown', () => {
         VALUES (?, ?, 40, 50, 'discord', ?)
       `).run(tracker.id, seller.id, twelveHoursAgo);
 
-      // Now check — cooldown should NOT apply
       await checkTrackerUrl(seller.id);
 
-      // A new notification row should have been written
-      expect(countNotifications(tracker.id, seller.id)).toBe(2);
-      expect(vi.mocked(sendDiscordPriceAlert)).toHaveBeenCalledTimes(1);
+      expect(countNotifications(tracker.id, seller.id)).toBe(1);
+      expect(vi.mocked(sendDiscordPriceAlert)).not.toHaveBeenCalled();
     });
   });
 
@@ -398,12 +423,12 @@ describe('cron.ts per-seller cooldown', () => {
       expect(vi.mocked(sendGenericPriceAlert)).toHaveBeenCalledTimes(1);
     });
 
-    it('per-channel duration: 2h discord + 6h ntfy with both 3h-old rows fires only discord', async () => {
+    it('per-channel duration: 2h discord + default ntfy with both 3h-old rows fires only discord', async () => {
       const userId = seedTestUser();
       setSetting('discord_webhook_url', 'https://discord.com/api/webhooks/fake', userId);
       setSetting('ntfy_url', 'https://ntfy.sh/test-topic', userId);
       setSetting('discord_cooldown_hours', '2', userId);
-      // ntfy uses default (6h)
+      // ntfy uses default (72h)
       const tracker = createTracker({
         name: 'Mixed durations',
         url: 'https://amazon.com/dp/A',
@@ -418,14 +443,14 @@ describe('cron.ts per-seller cooldown', () => {
       await checkTrackerUrl(seller.id);
 
       // Discord: 3h > 2h window → fires
-      // ntfy:    3h < 6h window → suppressed
+      // ntfy:    3h < 72h window → suppressed
       expect(countChannelNotifications(tracker.id, seller.id, 'discord')).toBe(2);
       expect(countChannelNotifications(tracker.id, seller.id, 'ntfy')).toBe(1);
       expect(vi.mocked(sendDiscordPriceAlert)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(sendNtfyPriceAlert)).not.toHaveBeenCalled();
     });
 
-    it('non-numeric cooldown setting falls back to default (6h)', async () => {
+    it('non-numeric cooldown setting falls back to default (72h)', async () => {
       const userId = seedTestUser();
       setSetting('discord_webhook_url', 'https://discord.com/api/webhooks/fake', userId);
       setSetting('discord_cooldown_hours', 'banana', userId);
@@ -437,7 +462,7 @@ describe('cron.ts per-seller cooldown', () => {
       });
       const seller = getDb().prepare('SELECT * FROM tracker_urls WHERE tracker_id = ? AND position = 0').get(tracker.id) as { id: number };
 
-      // 1h-old row + default 6h fallback → suppressed
+      // 1h-old row + default 72h fallback → suppressed
       insertNotification(tracker.id, seller.id, 'discord', 1);
 
       await checkTrackerUrl(seller.id);
@@ -446,7 +471,7 @@ describe('cron.ts per-seller cooldown', () => {
       expect(vi.mocked(sendDiscordPriceAlert)).not.toHaveBeenCalled();
     });
 
-    it('negative cooldown setting falls back to default (6h)', async () => {
+    it('negative cooldown setting falls back to default (72h)', async () => {
       const userId = seedTestUser();
       setSetting('discord_webhook_url', 'https://discord.com/api/webhooks/fake', userId);
       setSetting('discord_cooldown_hours', '-5', userId);
@@ -462,7 +487,7 @@ describe('cron.ts per-seller cooldown', () => {
 
       await checkTrackerUrl(seller.id);
 
-      // Default 6h applied → 1h row still in cooldown → suppressed
+      // Default 72h applied → 1h row still in cooldown → suppressed
       expect(countChannelNotifications(tracker.id, seller.id, 'discord')).toBe(1);
       expect(vi.mocked(sendDiscordPriceAlert)).not.toHaveBeenCalled();
     });
