@@ -130,14 +130,14 @@ describe('evaluateAndFireForProject', () => {
     expect(sendDiscordBasketAlert).not.toHaveBeenCalled();
   });
 
-  it('respects per-channel cooldown — Discord skipped within 6h, ntfy still fires', async () => {
+  it('respects per-channel cooldown — Discord skipped within cooldown, ntfy still fires', async () => {
     const u = seedUser();
     setupChannels(u);
     const t1 = seedTracker(u, 'A', 30);
     const p = createProject({ user_id: u, name: 'NAS', target_total: 100 });
     addProjectTracker({ project_id: p, tracker_id: t1 });
 
-    // Seed a recent Discord notification (1 hour ago — well within default 6h cooldown).
+    // Seed a recent Discord notification (1 hour ago — well within default 72h cooldown).
     getDb().prepare(
       `INSERT INTO project_notifications (project_id, channel, basket_total, target_total, sent_at)
        VALUES (?, 'discord', 30, 100, datetime('now', '-1 hour'))`
@@ -210,7 +210,7 @@ describe('evaluateAndFireForProject', () => {
     const p = createProject({ user_id: u, name: 'NAS', target_total: 100 });
     addProjectTracker({ project_id: p, tracker_id: t1 });
 
-    // Seed a recent web_push project notification (1 hour ago — within default 6h)
+    // Seed a recent web_push project notification (1 hour ago — within default 72h)
     getDb().prepare(
       `INSERT INTO project_notifications (project_id, channel, basket_total, target_total, sent_at)
        VALUES (?, 'web_push', 30, 100, datetime('now', '-1 hour'))`

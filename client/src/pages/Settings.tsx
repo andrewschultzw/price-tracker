@@ -101,7 +101,7 @@ export default function SettingsPage() {
   useTitle('Settings')
   const [values, setValues] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '', web_push: '' })
   // Per-channel cooldown overrides. Empty string = use server default
-  // (config.notificationCooldownHours, currently 6h). "0" = no cooldown.
+  // (config.notificationCooldownHours, currently 72h). "0" = no cooldown.
   const [cooldowns, setCooldowns] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '', web_push: '' })
   // Per-channel minimum confidence level. Empty string = 'LOW' (all deals).
   const [minConfidences, setMinConfidences] = useState<Record<ChannelKey, string>>({ discord: '', ntfy: '', webhook: '', email: '', web_push: '' })
@@ -261,7 +261,7 @@ export default function SettingsPage() {
                       step={1}
                       value={cooldowns[ch.key]}
                       onChange={e => setCooldowns(c => ({ ...c, [ch.key]: e.target.value }))}
-                      placeholder="6"
+                      placeholder="72"
                       className="w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-text placeholder-text-muted/50 focus:outline-none focus:border-primary"
                     />
                   </div>

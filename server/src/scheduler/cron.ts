@@ -74,7 +74,7 @@ export interface EnabledChannels {
 
 /**
  * Resolve a channel's cooldown duration for a given user, falling back
- * to `config.notificationCooldownHours` (6h) when unset, blank, non-
+ * to `config.notificationCooldownHours` (72h) when unset, blank, non-
  * numeric, or negative. Zero is a valid value and means "no cooldown".
  */
 export function getCooldownHoursForChannel(userId: number, channel: ChannelName): number {

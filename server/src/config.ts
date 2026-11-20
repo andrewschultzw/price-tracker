@@ -22,7 +22,10 @@ export const config = {
   discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL || '',
   nodeEnv: process.env.NODE_ENV || 'development',
   defaultCheckInterval: 360, // minutes
-  notificationCooldownHours: 6,
+  // Default per-(tracker, seller, channel) re-alert window when the user hasn't set
+  // `<channel>_cooldown_hours`. 72h: at 6h the same price re-alerted 4x/day on every
+  // channel (~170 threshold alerts x3 channels in one week, 2026-11).
+  notificationCooldownHours: 72,
   maxConsecutiveFailures: 3,
   maxConcurrentScrapes: 2,
   // Scrape retry policy. We retry the page fetch on transient failures

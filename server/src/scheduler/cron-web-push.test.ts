@@ -120,7 +120,7 @@ describe('cron web_push channel', () => {
 
     await checkTrackerUrl(trackerUrlId);
 
-    // Default cooldown is 6h → recent 1-hour-old notification suppresses
+    // Default cooldown is 72h → recent 1-hour-old notification suppresses
     expect(vi.mocked(sendWebPushPriceAlert)).not.toHaveBeenCalled();
   });
 
